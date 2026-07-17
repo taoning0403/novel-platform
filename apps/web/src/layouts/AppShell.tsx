@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </span>
             </div>
             <Button type="text" size="small" onClick={() => void logout()}>退出</Button>
-            <span className={styles.version}>漫读 v0.7.0</span>
+            <span className={styles.version}>漫读 v0.8.0</span>
           </div>
         </aside>
       ) : null}

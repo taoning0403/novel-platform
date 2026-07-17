@@ -55,7 +55,7 @@ export function SeriesPage() {
   return (
     <main className={styles.page}>
       <PageHeader
-        eyebrow="共享馆藏 · v0.7.0"
+        eyebrow="共享馆藏 · v0.8.0"
         title="图书系列"
         description={canManage
           ? "按加入先后稳定整理图书；删除系列不会删除 Book、Edition 或上传文件。"
