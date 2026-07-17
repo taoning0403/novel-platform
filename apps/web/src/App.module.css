@@ -1,0 +1,14 @@
+.routePage {
+  width: min(1180px, 100%);
+  min-height: 55vh;
+  display: grid;
+  align-content: center;
+  margin: 0 auto;
+  padding: clamp(32px, 6vw, 72px) clamp(20px, 4vw, 48px) 96px;
+}
+
+@media (max-width: 860px) {
+  .routePage {
+    padding-bottom: calc(var(--mobile-nav-height) + 48px);
+  }
+}

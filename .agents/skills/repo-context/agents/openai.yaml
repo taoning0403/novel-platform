@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repository Context"
+  short_description: "Orient quickly using trusted repository context"
+  default_prompt: "Use $repo-context to orient yourself in this repository before working on my request."

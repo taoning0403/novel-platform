@@ -1,0 +1,99 @@
+name: novel-platform
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-novel_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-novel_platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novel_platform}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ./apps/server
+    environment: &server-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-novel_platform}:${POSTGRES_PASSWORD:-novel_platform}@postgres:5432/${POSTGRES_DB:-novel_platform}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: '["http://localhost:${WEB_PORT:-3000}"]'
+      TRUSTED_HOSTS: '["localhost","127.0.0.1","server","test","testserver"]'
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-development-jwt-secret-change-me-0001}
+      AUTH_HASH_SECRET: ${AUTH_HASH_SECRET:-development-hash-secret-change-me-001}
+      AUTH_CREDENTIAL_HASH_SECRET: ${AUTH_CREDENTIAL_HASH_SECRET:-development-credential-hash-secret-change-me-001}
+      AUTH_ACCESS_TOKEN_TTL_SECONDS: ${AUTH_ACCESS_TOKEN_TTL_SECONDS:-900}
+      AUTH_REFRESH_TOKEN_TTL_DAYS: ${AUTH_REFRESH_TOKEN_TTL_DAYS:-30}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-novel_refresh}
+      AUTH_DEVICE_COOKIE_NAME: ${AUTH_DEVICE_COOKIE_NAME:-novel_device}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      AUTH_ISSUER: ${AUTH_ISSUER:-novel-platform}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-novel-platform-client}
+      AUTH_LOGIN_MAX_FAILURES: ${AUTH_LOGIN_MAX_FAILURES:-5}
+      AUTH_LOGIN_WINDOW_SECONDS: ${AUTH_LOGIN_WINDOW_SECONDS:-600}
+      AUTH_LOGIN_BLOCK_SECONDS: ${AUTH_LOGIN_BLOCK_SECONDS:-900}
+      ADMIN_RECOVERY_TTL_MINUTES: ${ADMIN_RECOVERY_TTL_MINUTES:-15}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-localhost}
+      WEBAUTHN_RP_NAME: ${WEBAUTHN_RP_NAME:-个人数字阅读与藏书整理}
+      WEBAUTHN_ORIGINS: '["http://localhost:${WEB_PORT:-3000}"]'
+      WEBAUTHN_CHALLENGE_TTL_SECONDS: ${WEBAUTHN_CHALLENGE_TTL_SECONDS:-300}
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      LIBRARY_STORAGE_ROOT: /data/library
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-104857600}
+      MAX_EPUB_UNCOMPRESSED_BYTES: ${MAX_EPUB_UNCOMPRESSED_BYTES:-524288000}
+      MAX_EPUB_ENTRY_COUNT: ${MAX_EPUB_ENTRY_COUNT:-10000}
+      MAX_COVER_BYTES: ${MAX_COVER_BYTES:-20971520}
+      MAX_COVER_PIXELS: ${MAX_COVER_PIXELS:-40000000}
+    ports:
+      - "${SERVER_PORT:-8000}:8000"
+    volumes:
+      - library_data:/data/library
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["uvicorn", "novel_platform.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./apps/server
+    environment:
+      <<: *server-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-104857600}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  library_data:

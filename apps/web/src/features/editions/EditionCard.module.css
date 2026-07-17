@@ -1,0 +1,156 @@
+.card {
+  border-color: var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.header h3 {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.progress {
+  margin: 18px 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.primaryLink,
+.defaultLink,
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.primaryLink {
+  color: #fff;
+  background: var(--brand);
+}
+
+.defaultLink {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.textLink {
+  min-height: 44px;
+  justify-content: flex-start;
+  padding: 0;
+  color: var(--brand);
+}
+
+.note {
+  display: grid;
+  gap: 5px;
+  margin-top: 18px;
+  padding: 15px 17px;
+  border-left: 3px solid var(--brand);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgb(49 94 244 / 5%);
+}
+
+.note strong {
+  color: var(--ink);
+}
+
+.relationship {
+  margin: 14px 0 0;
+  color: var(--muted);
+}
+
+.preference {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.preference p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  font-weight: 650;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.formActions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 700px) {
+  .form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .full,
+  .formActions {
+    grid-column: auto;
+  }
+
+  .preference {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions :global(.ant-btn),
+  .formActions :global(.ant-btn),
+  .primaryLink,
+  .defaultLink,
+  .textLink {
+    min-height: 46px;
+  }
+}

@@ -1,0 +1,52 @@
+.mark {
+  width: 28px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+
+.mark i {
+  width: 5px;
+  display: block;
+  border-radius: 2px 2px 0 0;
+}
+
+.mark i:nth-child(1) {
+  height: 20px;
+  background: #9aabf8;
+}
+
+.mark i:nth-child(2) {
+  height: 29px;
+  background: var(--brand);
+}
+
+.mark i:nth-child(3) {
+  height: 36px;
+  background: var(--ink);
+}
+
+.compact {
+  width: 24px;
+  height: 30px;
+  gap: 3px;
+}
+
+.compact i {
+  width: 4px;
+}
+
+.compact i:nth-child(1) {
+  height: 17px;
+}
+
+.compact i:nth-child(2) {
+  height: 24px;
+}
+
+.compact i:nth-child(3) {
+  height: 30px;
+}

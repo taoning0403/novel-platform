@@ -1,0 +1,33 @@
+.panel {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  padding: clamp(24px, 4vw, 40px);
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  text-align: center;
+}
+
+.loading {
+  min-height: 110px;
+}
+
+.error {
+  place-items: stretch;
+  border-style: solid;
+  border-color: rgb(198 63 69 / 25%);
+  background: var(--danger-soft);
+  text-align: left;
+}
+
+.status {
+  min-height: auto;
+  place-items: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}

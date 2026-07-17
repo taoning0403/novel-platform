@@ -1,0 +1,22 @@
+novel-platform
+Copyright 2026 taoning0403
+
+This project depends on Psycopg 3 and its optional psycopg-binary package.
+
+Psycopg 3
+Copyright (C) 2020 The Psycopg Team
+SPDX-License-Identifier: LGPL-3.0-only
+Current locked version: 3.3.4
+Project: https://www.psycopg.org/
+Source: https://github.com/psycopg/psycopg/tree/3.3.4
+License text: https://github.com/psycopg/psycopg/blob/3.3.4/LICENSE.txt
+
+Psycopg is separate third-party software and is not licensed under the Apache
+License, Version 2.0 of novel-platform. Its use and redistribution remain
+subject to the GNU Lesser General Public License version 3. The Psycopg and
+psycopg-binary Python distributions include a copy of their applicable license.
+
+This notice is provided for attribution and licensing clarity. It does not
+replace license files shipped with third-party packages. Distributors of
+built images or other binary artifacts are responsible for preserving all
+applicable third-party notices and license texts.

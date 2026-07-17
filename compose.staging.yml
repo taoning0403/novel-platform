@@ -1,0 +1,185 @@
+name: novel-platform-staging
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-server-environment: &server-environment
+  DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
+  ENVIRONMENT: "${ENVIRONMENT:?ENVIRONMENT is required}"
+  CORS_ORIGINS: "${CORS_ORIGINS:?CORS_ORIGINS is required}"
+  TRUSTED_HOSTS: "${TRUSTED_HOSTS:?TRUSTED_HOSTS is required}"
+  LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+  AUTH_JWT_SECRET: "${AUTH_JWT_SECRET:?AUTH_JWT_SECRET is required}"
+  AUTH_HASH_SECRET: "${AUTH_HASH_SECRET:?AUTH_HASH_SECRET is required}"
+  AUTH_CREDENTIAL_HASH_SECRET: "${AUTH_CREDENTIAL_HASH_SECRET:?AUTH_CREDENTIAL_HASH_SECRET is required}"
+  AUTH_ACCESS_TOKEN_TTL_SECONDS: "${AUTH_ACCESS_TOKEN_TTL_SECONDS:-900}"
+  AUTH_REFRESH_TOKEN_TTL_DAYS: "${AUTH_REFRESH_TOKEN_TTL_DAYS:-30}"
+  AUTH_COOKIE_NAME: "${AUTH_COOKIE_NAME:-novel_refresh}"
+  AUTH_DEVICE_COOKIE_NAME: "${AUTH_DEVICE_COOKIE_NAME:-novel_device}"
+  AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:?AUTH_COOKIE_SECURE is required}"
+  AUTH_COOKIE_SAMESITE: "${AUTH_COOKIE_SAMESITE:-strict}"
+  AUTH_COOKIE_DOMAIN: "${AUTH_COOKIE_DOMAIN:-}"
+  AUTH_DEVICE_COOKIE_TTL_DAYS: "${AUTH_DEVICE_COOKIE_TTL_DAYS:-365}"
+  AUTH_ISSUER: "${AUTH_ISSUER:-novel-platform-staging}"
+  AUTH_AUDIENCE: "${AUTH_AUDIENCE:-novel-platform-staging-client}"
+  AUTH_LOGIN_MAX_FAILURES: "${AUTH_LOGIN_MAX_FAILURES:-5}"
+  AUTH_LOGIN_WINDOW_SECONDS: "${AUTH_LOGIN_WINDOW_SECONDS:-600}"
+  AUTH_LOGIN_BLOCK_SECONDS: "${AUTH_LOGIN_BLOCK_SECONDS:-900}"
+  ADMIN_RECOVERY_TTL_MINUTES: "${ADMIN_RECOVERY_TTL_MINUTES:-15}"
+  WEBAUTHN_RP_ID: "${WEBAUTHN_RP_ID:?WEBAUTHN_RP_ID is required}"
+  WEBAUTHN_RP_NAME: "${WEBAUTHN_RP_NAME:-个人数字阅读与藏书整理}"
+  WEBAUTHN_ORIGINS: "${WEBAUTHN_ORIGINS:?WEBAUTHN_ORIGINS is required}"
+  WEBAUTHN_CHALLENGE_TTL_SECONDS: "${WEBAUTHN_CHALLENGE_TTL_SECONDS:-300}"
+  OPENAPI_ENABLED: "${OPENAPI_ENABLED:-false}"
+  TRUST_PROXY_HEADERS: "true"
+  LIBRARY_STORAGE_ROOT: "/data/library"
+  MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-104857600}"
+  MAX_EPUB_UNCOMPRESSED_BYTES: "${MAX_EPUB_UNCOMPRESSED_BYTES:-524288000}"
+  MAX_EPUB_ENTRY_COUNT: "${MAX_EPUB_ENTRY_COUNT:-10000}"
+  MAX_COVER_BYTES: "${MAX_COVER_BYTES:-20971520}"
+  MAX_COVER_PIXELS: "${MAX_COVER_PIXELS:-40000000}"
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER is required}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - max_connections=50
+    volumes:
+      - "${STAGING_POSTGRES_DATA_DIR:-/srv/novel-platform/data/postgres}:/var/lib/postgresql/data"
+    networks:
+      database:
+        ipv4_address: 172.30.21.10
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    shm_size: 64m
+    restart: unless-stopped
+    logging: *default-logging
+
+  migrate:
+    build:
+      context: ./apps/server
+    environment: *server-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      database:
+        ipv4_address: 172.30.21.20
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    logging: *default-logging
+
+  server:
+    build:
+      context: ./apps/server
+    environment: *server-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - novel_platform.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --no-access-log
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - 172.30.20.10
+    networks:
+      proxy:
+        ipv4_address: 172.30.20.20
+      database:
+        ipv4_address: 172.30.21.30
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - "${STAGING_LIBRARY_DATA_DIR:-/srv/novel-platform/data/library}:/data/library"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging: *default-logging
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.staging
+      args:
+        MAX_UPLOAD_BYTES: "${MAX_UPLOAD_BYTES:-104857600}"
+        STAGING_REAL_IP_PEER: "${STAGING_REAL_IP_PEER:-172.30.19.1}"
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${STAGING_HTTP_PORT:-8080}:8080"
+    networks:
+      edge:
+        ipv4_address: 172.30.19.10
+      proxy:
+        ipv4_address: 172.30.20.10
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+      - /var/cache/nginx:size=32m,mode=0755
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging: *default-logging
+
+networks:
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.19.0/24
+  proxy:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.20.0/24
+  database:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.21.0/24

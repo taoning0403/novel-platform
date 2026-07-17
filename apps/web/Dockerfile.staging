@@ -1,0 +1,46 @@
+FROM node:22.17.1-alpine AS build
+ARG MAX_UPLOAD_BYTES=104857600
+ENV VITE_MAX_UPLOAD_BYTES=$MAX_UPLOAD_BYTES
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
+WORKDIR /workspace
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
+COPY packages/api-client/package.json ./packages/api-client/package.json
+RUN pnpm install --frozen-lockfile --filter @novel-platform/web...
+COPY apps/web ./apps/web
+COPY packages/api-client ./packages/api-client
+WORKDIR /workspace/apps/web
+RUN pnpm build
+
+FROM nginxinc/nginx-unprivileged:1.27.5-alpine
+ARG MAX_UPLOAD_BYTES=104857600
+# The only peer whose X-Forwarded-For chain is trusted: the measured host-edge
+# bridge address. Must be a single canonical IPv4 address (no CIDR, no
+# wildcards); the build fails closed on anything else.
+ARG STAGING_REAL_IP_PEER=172.30.19.1
+COPY apps/web/nginx.staging.conf /etc/nginx/conf.d/default.conf
+COPY apps/web/nginx/staging-upstream-headers.conf /etc/nginx/snippets/staging-upstream-headers.conf
+COPY apps/web/nginx/staging-api-proxy.conf /etc/nginx/snippets/staging-api-proxy.conf
+RUN case "$MAX_UPLOAD_BYTES" in ''|*[!0-9]*) exit 1 ;; esac \
+    && test "$MAX_UPLOAD_BYTES" -ge 1 \
+    && test "$MAX_UPLOAD_BYTES" -le 2147483647 \
+    && client_max_body_size=$((MAX_UPLOAD_BYTES + 1048576)) \
+    && sed -i "s/__MAX_UPLOAD_BODY_BYTES__/${client_max_body_size}/" \
+        /etc/nginx/conf.d/default.conf \
+    && ! grep -q '__MAX_UPLOAD_BODY_BYTES__' /etc/nginx/conf.d/default.conf
+RUN echo "$STAGING_REAL_IP_PEER" | grep -Eq '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$' \
+    && [ "$STAGING_REAL_IP_PEER" != "0.0.0.0" ] \
+    && sed -i "s/__STAGING_REAL_IP_PEER__/${STAGING_REAL_IP_PEER}/" \
+        /etc/nginx/conf.d/default.conf \
+    && ! grep -q '__STAGING_REAL_IP_PEER__' /etc/nginx/conf.d/default.conf \
+    && mkdir -p /tmp/nginx-test \
+    && cp /etc/nginx/conf.d/default.conf /tmp/nginx-test/default.conf \
+    && cp /etc/nginx/snippets/staging-*.conf /tmp/nginx-test/ \
+    && sed -i 's|http://server:8000|http://127.0.0.1:8000|g; s|/etc/nginx/snippets/|/tmp/nginx-test/|g' \
+        /tmp/nginx-test/*.conf \
+    && { printf 'events {}\nhttp {\n'; cat /tmp/nginx-test/default.conf; printf '}\n'; } \
+        > /tmp/nginx-test/main.conf \
+    && nginx -t -q -c /tmp/nginx-test/main.conf \
+        -g 'pid /tmp/nginx.pid; error_log /tmp/nginx-error.log;'
+COPY --from=build /workspace/apps/web/dist /usr/share/nginx/html
+EXPOSE 8080

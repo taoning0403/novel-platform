@@ -1,0 +1,4 @@
+interface:
+  display_name: "漫读设计系统"
+  short_description: "在 novel-platform 中一致地实现 Quiet Trace 界面"
+  default_prompt: "Use $novel-platform-design-system to implement this novel-platform UI change consistently."
