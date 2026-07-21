@@ -80,7 +80,7 @@
   color: #536181;
   font-size: 14px;
   text-decoration: none;
-  transition: color 140ms ease, background 140ms ease;
+  transition: color var(--motion-press) ease, background var(--motion-press) ease;
 }
 
 .navLink::before {
@@ -277,6 +277,11 @@
   .mobileTrigger {
     width: 44px;
     height: 44px;
+    transition: transform var(--motion-press) var(--ease-out);
+  }
+
+  .mobileTrigger:active {
+    transform: scale(0.96);
   }
 
   .content {
@@ -315,6 +320,11 @@
     background: transparent;
     font-size: 10px;
     text-decoration: none;
+    transition: color var(--motion-press) ease, transform var(--motion-press) var(--ease-out);
+  }
+
+  .bottomLink:active {
+    transform: scale(0.96);
   }
 
   .bottomLink svg {

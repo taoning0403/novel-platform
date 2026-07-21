@@ -38,6 +38,25 @@ const statusLabels = {
   finished: "已读完",
 } as const;
 
+const THEME_HINT_KEY = "reader-theme-hint";
+
+function readThemeHint(): ReaderSettings["theme"] | null {
+  try {
+    const hint = window.localStorage.getItem(THEME_HINT_KEY);
+    return hint === "dark" || hint === "sepia" || hint === "light" ? hint : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeThemeHint(theme: ReaderSettings["theme"]) {
+  try {
+    window.localStorage.setItem(THEME_HINT_KEY, theme);
+  } catch {
+    // Private browsing or storage denial: the hint is an enhancement only.
+  }
+}
+
 function initialSectionIndex(opened: ReaderOpen): number {
   const exact = opened.publication.sections.findIndex(
     (section) => section.id === opened.progress.section_id,
@@ -67,6 +86,9 @@ export function ReaderPage() {
   const [syncState, setSyncState] = useState("已从云端恢复");
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
+  // Remembered only to keep the opening/error screens on the reader's theme,
+  // so dark-theme readers never see a full-screen light flash on entry.
+  const [themeHint] = useState(readThemeHint);
   const conflictRef = useRef<ConflictState | null>(null);
   const chromeTimerRef = useRef<number | null>(null);
   const tocRailRef = useRef<HTMLElement | null>(null);
@@ -141,6 +163,7 @@ export function ReaderPage() {
       restoreRef.current = restored;
       setOpened(result);
       setSettings(result.settings);
+      writeThemeHint(result.settings.theme);
       setSectionIndex(index);
       setVisualProgress(result.progress.overall_progress);
       setSyncState("已从云端恢复");
@@ -380,6 +403,7 @@ export function ReaderPage() {
     if (!settings) return;
     const next = { ...settings, ...changes };
     setSettings(next);
+    writeThemeHint(next.theme);
     if (settingsTimerRef.current !== null) window.clearTimeout(settingsTimerRef.current);
     settingsTimerRef.current = window.setTimeout(() => {
       void api.patchReaderSettings({
@@ -418,16 +442,19 @@ export function ReaderPage() {
     setVisualProgress(0);
   }
 
+  const openingThemeClass =
+    themeHint === "dark" ? styles.dark : themeHint === "sepia" ? styles.sepia : "";
+
   if (isOpening) {
     return (
-      <main className={styles.loading}>
+      <main className={`${styles.loading} ${openingThemeClass}`}>
         <LoadingBlock label="正在打开 Edition 并恢复阅读位置…" />
       </main>
     );
   }
   if (error || !opened || !settings) {
     return (
-      <main className={styles.error}>
+      <main className={`${styles.error} ${openingThemeClass}`}>
         <ErrorNotice
           message={error ?? "阅读器无法打开。"}
           onRetry={() => void loadReader()}
@@ -470,7 +497,13 @@ export function ReaderPage() {
       onFocusCapture={() => revealChrome()}
       onKeyDownCapture={() => revealChrome()}
       onPointerDownCapture={() => revealChrome()}
-      onPointerMove={() => revealChrome()}
+      onPointerMove={(event) => {
+        // Moving the cursor mid-page is part of reading, not a request for
+        // chrome: only the top/bottom edges (where the bars live) reveal it.
+        if (event.clientY < 96 || event.clientY > window.innerHeight - 132) {
+          revealChrome();
+        }
+      }}
     >
       <header className={`${styles.toolbar} ${styles.chrome}${chromeHiddenClass}`}>
         <div className={styles.toolbarLeft}>

@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Input, Space } from "antd";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { api, userFacingError } from "../api/client";
 import type { Passkey, Session, SiteSettings } from "../api/types";
@@ -23,10 +23,11 @@ export function AdminSecurityPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     if (recoveryMode) return;
-    setIsLoading(true);
+    if (!loadedRef.current) setIsLoading(true);
     setError(null);
     try {
       const [nextPasskeys, nextSessions, nextSite] = await Promise.all([
@@ -42,6 +43,7 @@ export function AdminSecurityPage() {
           nextPasskeys.map((passkey) => [passkey.id, passkey.name]),
         ),
       );
+      loadedRef.current = true;
     } catch (caught) {
       setError(userFacingError(caught));
     } finally {

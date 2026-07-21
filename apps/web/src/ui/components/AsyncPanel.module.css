@@ -9,6 +9,14 @@
   color: var(--muted);
   background: var(--surface-subtle);
   text-align: center;
+  /* Delay so quick loads never flash a spinner; entrance stays opacity-only. */
+  animation: panelIn var(--motion-fast) var(--ease-out) 80ms backwards;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+  }
 }
 
 .loading {

@@ -140,6 +140,32 @@
   box-shadow: var(--shadow-overlay);
   font-size: 12px;
   line-height: 1.6;
+  transform-origin: 100% 100%;
+  animation: authDisclosureIn var(--motion-fast) var(--ease-out);
+}
+
+@keyframes authDisclosureIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes authDisclosureInCentered {
+  from {
+    opacity: 0;
+    transform: translateX(50%) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(50%) scale(1);
+  }
 }
 
 .disclosurePanel strong {
@@ -186,5 +212,7 @@
   .disclosurePanel {
     right: 50%;
     transform: translateX(50%);
+    transform-origin: 50% 100%;
+    animation-name: authDisclosureInCentered;
   }
 }

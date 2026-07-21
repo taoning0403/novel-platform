@@ -193,6 +193,7 @@ export function UploadPage() {
         onProgress: setUploadProgress,
       });
       setInspection(result);
+      setUploadProgress(0);
       const preview = result.metadata_preview;
       const extractedTitle = previewString(preview, "title");
       const extractedLanguage = previewString(preview, "language");
@@ -364,7 +365,6 @@ export function UploadPage() {
             accept=".epub,.txt,application/epub+zip,text/plain"
             maxCount={1}
             showUploadList={false}
-            openFileDialogOnClick={false}
             beforeUpload={(nextFile) => {
               chooseFile(nextFile);
               return false;
@@ -380,6 +380,7 @@ export function UploadPage() {
               aria-label="选择 EPUB 或 TXT 文件"
               type="file"
               accept=".epub,.txt,application/epub+zip,text/plain"
+              onClick={(event) => event.stopPropagation()}
               onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
             />
           </Dragger>

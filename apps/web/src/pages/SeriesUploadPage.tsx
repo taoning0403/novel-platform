@@ -61,6 +61,46 @@ export function SeriesUploadPage() {
     )));
   }
 
+  async function processOne(index: number, file: File) {
+    if (!seriesId) return;
+    if (file.size > maxUploadBytes) {
+      update(index, { status: "failed", message: `超过 ${formattedByteLimit(maxUploadBytes)} 单文件上限` });
+      return;
+    }
+    try {
+      update(index, { status: "inspecting", progress: 0, message: "正在上传并安全解析" });
+      const inspection = await api.inspectImport({
+        file,
+        operation: "create_book",
+        textEncoding: encoding,
+        onProgress: (progress) => update(index, { progress }),
+      });
+      const title = previewString(inspection.metadata_preview, "title") || inferredTitle(file.name);
+      const language = previewString(inspection.metadata_preview, "language") || "und";
+      update(index, { status: "committing", progress: 100, message: "正在创建 Book 与 Edition" });
+      const committed = await api.commitImport(inspection.id, {
+        series_id: seriesId,
+        canonical_title: title,
+        canonical_author: null,
+        description: null,
+        edition_title: title,
+        language,
+        content_role: "source",
+        translation_origin: null,
+        set_preferred: true,
+        use_extracted_cover: inspection.cover_available,
+      });
+      update(index, {
+        status: "succeeded",
+        message: "已上传并加入系列",
+        bookId: committed.book.id,
+      });
+    } catch (caught) {
+      const message = caught instanceof ApiError ? `${caught.message}（${caught.code}）` : userFacingError(caught);
+      update(index, { status: "failed", message });
+    }
+  }
+
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!seriesId || files.length === 0) {
@@ -70,44 +110,17 @@ export function SeriesUploadPage() {
     setIsUploading(true);
     setError(null);
     for (const [index, file] of files.entries()) {
-      if (file.size > maxUploadBytes) {
-        update(index, { status: "failed", message: `超过 ${formattedByteLimit(maxUploadBytes)} 单文件上限` });
-        continue;
-      }
-      try {
-        update(index, { status: "inspecting", message: "正在上传并安全解析" });
-        const inspection = await api.inspectImport({
-          file,
-          operation: "create_book",
-          textEncoding: encoding,
-          onProgress: (progress) => update(index, { progress }),
-        });
-        const title = previewString(inspection.metadata_preview, "title") || inferredTitle(file.name);
-        const language = previewString(inspection.metadata_preview, "language") || "und";
-        update(index, { status: "committing", progress: 100, message: "正在创建 Book 与 Edition" });
-        const committed = await api.commitImport(inspection.id, {
-          series_id: seriesId,
-          canonical_title: title,
-          canonical_author: null,
-          description: null,
-          edition_title: title,
-          language,
-          content_role: "source",
-          translation_origin: null,
-          set_preferred: true,
-          use_extracted_cover: inspection.cover_available,
-        });
-        update(index, {
-          status: "succeeded",
-          message: "已上传并加入系列",
-          bookId: committed.book.id,
-        });
-      } catch (caught) {
-        const message = caught instanceof ApiError ? `${caught.message}（${caught.code}）` : userFacingError(caught);
-        update(index, { status: "failed", message });
-      }
+      await processOne(index, file);
     }
     setIsUploading(false);
+  }
+
+  async function retry(index: number) {
+    if (isUploading) return;
+    const file = files[index];
+    if (!file) return;
+    setError(null);
+    await processOne(index, file);
   }
 
   return (
@@ -125,7 +138,6 @@ export function SeriesUploadPage() {
             className={styles.dragger}
             multiple
             accept=".epub,.txt,application/epub+zip,text/plain"
-            openFileDialogOnClick={false}
             beforeUpload={() => false}
             onChange={({ fileList }) => chooseFiles(
               fileList
@@ -133,7 +145,7 @@ export function SeriesUploadPage() {
                 .filter((item): item is NonNullable<typeof item> => item !== undefined),
             )}
           >
-            <p className={styles.draggerTitle}>选择 EPUB / TXT 文件（可多选）</p>
+            <p className={styles.draggerTitle}>拖放或点击选择 EPUB / TXT 文件（可多选）</p>
             <p className={styles.draggerHint}>每个文件会独立执行安全解析与提交，不会由 antd 自动上传。</p>
             <input
               className={styles.nativeFileInput}
@@ -141,6 +153,7 @@ export function SeriesUploadPage() {
               type="file"
               multiple
               accept=".epub,.txt,application/epub+zip,text/plain"
+              onClick={(event) => event.stopPropagation()}
               onChange={(event) => chooseFiles(Array.from(event.target.files ?? []))}
             />
           </Dragger>
@@ -175,7 +188,19 @@ export function SeriesUploadPage() {
               <article className={styles.queueBody}>
                 <div className={styles.queueHeading}>
                   <div><strong>{result.filename}</strong><p className={styles.queueMessage}>{result.message}</p></div>
-                  <StatusTag status={result.status} />
+                  <div className={styles.queueActions}>
+                    <StatusTag status={result.status} />
+                    {result.status === "failed" ? (
+                      <Button
+                        size="small"
+                        type="text"
+                        disabled={isUploading}
+                        onClick={() => void retry(index)}
+                      >
+                        重试
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 {result.status === "inspecting" ? <Progress percent={result.progress} status="active" /> : null}
                 {result.bookId ? <Link className={styles.textLink} to={`/books/${result.bookId}`}>打开图书 →</Link> : null}

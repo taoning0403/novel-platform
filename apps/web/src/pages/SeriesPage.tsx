@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Input } from "antd";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, userFacingError } from "../api/client";
@@ -19,12 +19,15 @@ export function SeriesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
-    setIsLoading(true);
+    if (!loadedRef.current) setIsLoading(true);
     setError(null);
     try {
       setSeries(await api.listSeries());
+      loadedRef.current = true;
     } catch (caught) {
       setError(userFacingError(caught));
     } finally {
@@ -40,10 +43,12 @@ export function SeriesPage() {
     event.preventDefault();
     setIsCreating(true);
     setError(null);
+    setMessage(null);
     try {
       await api.createSeries({ name, description: description.trim() || null });
       setName("");
       setDescription("");
+      setMessage("系列已创建。");
       await load();
     } catch (caught) {
       setError(userFacingError(caught));
@@ -61,6 +66,8 @@ export function SeriesPage() {
           ? "按加入先后稳定整理图书；删除系列不会删除 Book、Edition 或上传文件。"
           : "按管理员维护的系列顺序浏览可读作品。"}
       />
+
+      {message ? <Alert type="success" showIcon title={message} role="status" /> : null}
 
       <div className={`${styles.contentGrid}${canManage ? "" : ` ${styles.contentGridSingle}`}`}>
         {canManage ? <aside>
