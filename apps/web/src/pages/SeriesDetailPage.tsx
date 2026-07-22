@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Input, Select } from "antd";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, userFacingError } from "../api/client";
@@ -32,10 +32,12 @@ export function SeriesDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!seriesId) return;
-    setIsLoading(true);
+    if (!loadedRef.current) setIsLoading(true);
     setError(null);
     try {
       const [nextSeries, books] = await Promise.all([
@@ -46,6 +48,7 @@ export function SeriesDetailPage() {
       setLibrary(books);
       setName(nextSeries.name);
       setDescription(nextSeries.description ?? "");
+      loadedRef.current = true;
     } catch (caught) {
       setError(userFacingError(caught));
     } finally {
@@ -67,8 +70,10 @@ export function SeriesDetailPage() {
     if (!seriesId) return;
     setIsSaving(true);
     setError(null);
+    setMessage(null);
     try {
       await api.patchSeries(seriesId, { name, description: description.trim() || null });
+      setMessage("系列信息已保存。");
       await load();
     } catch (caught) {
       setError(userFacingError(caught));
@@ -80,9 +85,11 @@ export function SeriesDetailPage() {
   async function addBook() {
     if (!seriesId || !bookId) return;
     setError(null);
+    setMessage(null);
     try {
       await api.addBookToSeries(seriesId, bookId);
       setBookId("");
+      setMessage("已加入当前系列。");
       await load();
     } catch (caught) {
       setError(userFacingError(caught));
@@ -92,8 +99,10 @@ export function SeriesDetailPage() {
   async function removeBook(id: string) {
     if (!seriesId) return;
     setError(null);
+    setMessage(null);
     try {
       await api.removeBookFromSeries(seriesId, id);
+      setMessage("已移出系列。");
       await load();
     } catch (caught) {
       setError(userFacingError(caught));
@@ -128,6 +137,7 @@ export function SeriesDetailPage() {
           <Link className={styles.primaryLink} to={`/series/${series.id}/upload`}>在系列中上传 EPUB / TXT</Link>
         ) : undefined}
       />
+      {message ? <Alert type="success" showIcon title={message} role="status" /> : null}
       {error ? <Alert type="error" showIcon title={error} /> : null}
       <div className={`${styles.contentGrid}${canManage ? "" : ` ${styles.contentGridSingle}`}`}>
         {canManage ? <aside className={`${styles.sidebar} ${styles.sidebarStack}`}>

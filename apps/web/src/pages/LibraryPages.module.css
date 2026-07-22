@@ -161,7 +161,7 @@
   border-radius: 10px;
   font-weight: 650;
   text-decoration: none;
-  transition: transform 140ms ease, background 140ms ease;
+  transition: background var(--motion-press) ease, color var(--motion-press) ease, border-color var(--motion-press) ease, transform var(--motion-press) ease;
 }
 
 .calloutLink {
@@ -187,10 +187,25 @@
   color: var(--brand);
 }
 
-.calloutLink:hover,
-.primaryLink:hover,
-.defaultLink:hover {
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .calloutLink:hover {
+    background: var(--surface-muted);
+  }
+
+  .primaryLink:hover {
+    background: var(--brand-strong);
+  }
+
+  .defaultLink:hover {
+    border-color: #c7d2e3;
+    background: var(--surface-muted);
+  }
+}
+
+.calloutLink:active,
+.primaryLink:active,
+.defaultLink:active {
+  transform: scale(0.97);
 }
 
 .catalog {
@@ -562,11 +577,19 @@
   font-size: 14px;
   font-weight: 680;
   text-decoration: none;
+  transition: background var(--motion-press) ease, transform var(--motion-press) ease;
 }
 
-.uploadAction:hover,
-.continueAction:hover {
-  background: var(--brand-strong);
+@media (hover: hover) and (pointer: fine) {
+  .uploadAction:hover,
+  .continueAction:hover {
+    background: var(--brand-strong);
+  }
+}
+
+.uploadAction:active,
+.continueAction:active {
+  transform: scale(0.97);
 }
 
 .continueStrip {
@@ -784,12 +807,13 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  transition: border-color 140ms ease, transform 140ms ease;
+  transition: border-color var(--motion-press) ease;
 }
 
-.catalogueBook:hover {
-  border-color: #c7d2e3;
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .catalogueBook:hover {
+    border-color: #c7d2e3;
+  }
 }
 
 .catalogueCoverWrap {

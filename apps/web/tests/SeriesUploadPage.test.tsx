@@ -128,4 +128,40 @@ describe("SeriesUploadPage", () => {
       `/books/${bookId}`,
     );
   });
+
+  it("retries only the failed file when its retry button is clicked", async () => {
+    vi.spyOn(api, "getSeries").mockResolvedValue(series);
+    const inspect = vi.spyOn(api, "inspectImport")
+      .mockRejectedValueOnce(new ApiError("解析失败", "invalid_txt", 422))
+      .mockImplementationOnce((options) => {
+        options.onProgress?.(100);
+        return Promise.resolve(inspection);
+      });
+    const commit = vi.spyOn(api, "commitImport").mockResolvedValue(committed);
+
+    render(
+      <MemoryRouter
+        initialEntries={[`/series/${seriesId}/upload`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes><Route path="/series/:seriesId/upload" element={<SeriesUploadPage />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "上传到「测试系列」" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("选择一个或多个 EPUB 或 TXT 文件"), {
+      target: { files: [new File(["第一本"], "第一本.txt", { type: "text/plain" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "上传这本图书" }));
+    expect(await screen.findByText("解析失败（invalid_txt）")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    expect(await screen.findByText("已上传并加入系列")).toBeInTheDocument();
+    expect(inspect).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(commit).toHaveBeenCalledWith(
+      importId,
+      expect.objectContaining({ series_id: seriesId, canonical_title: "第一本" }),
+    ));
+  });
 });

@@ -51,6 +51,7 @@
   border-radius: 10px;
   font-weight: 650;
   text-decoration: none;
+  transition: background var(--motion-press) ease, color var(--motion-press) ease, border-color var(--motion-press) ease, transform var(--motion-press) ease;
 }
 
 .primaryLink {
@@ -69,6 +70,27 @@
   justify-content: flex-start;
   padding: 0;
   color: var(--brand);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .primaryLink:hover {
+    background: var(--brand-strong);
+  }
+
+  .defaultLink:hover {
+    border-color: #c7d2e3;
+    background: var(--surface-muted);
+  }
+
+  .textLink:hover {
+    color: var(--brand-strong);
+  }
+}
+
+.primaryLink:active,
+.defaultLink:active,
+.textLink:active {
+  transform: scale(0.97);
 }
 
 .note {

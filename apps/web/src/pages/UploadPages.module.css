@@ -239,6 +239,13 @@
   overflow-wrap: anywhere;
 }
 
+.queueActions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
 .queueMessage {
   margin: 4px 0 0;
   color: var(--muted);

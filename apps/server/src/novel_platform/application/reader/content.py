@@ -120,7 +120,6 @@ _DROP_WITH_CONTENT = {
     "script",
     "select",
     "style",
-    "svg",
     "textarea",
     "video",
 }
@@ -647,6 +646,7 @@ class _EpubSanitizer(HTMLParser):
         self.requires_body = requires_body
         self.in_body = not requires_body
         self.skip_depth = 0
+        self.svg_depth = 0
         self.parts: list[str] = []
         self.block_count = 0
         self.resource_ids: set[str] = set()
@@ -669,6 +669,14 @@ class _EpubSanitizer(HTMLParser):
             return
         if lowered in _DROP_WITH_CONTENT:
             self.skip_depth = 1
+            return
+        if lowered == "svg":
+            self.svg_depth += 1
+            return
+        if self.svg_depth:
+            if lowered == "image":
+                attribute_map = {name.lower(): value for name, value in attrs if value is not None}
+                self._append_svg_image(attribute_map)
             return
         if lowered not in _SAFE_TAGS:
             return
@@ -698,6 +706,7 @@ class _EpubSanitizer(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
         lowered = tag.lower()
@@ -710,11 +719,17 @@ class _EpubSanitizer(HTMLParser):
             if lowered in _DROP_WITH_CONTENT:
                 self.skip_depth -= 1
             return
+        if lowered == "svg":
+            if self.svg_depth:
+                self.svg_depth -= 1
+            return
+        if self.svg_depth:
+            return
         if lowered in _SAFE_TAGS and lowered not in _VOID_TAGS:
             self.parts.append(f"</{lowered}>")
 
     def handle_data(self, data: str) -> None:
-        if not self.in_body or self.skip_depth:
+        if not self.in_body or self.skip_depth or self.svg_depth:
             return
         if data.strip():
             self.has_readable_content = True
@@ -731,6 +746,26 @@ class _EpubSanitizer(HTMLParser):
         except ApplicationError:
             return None
         return self.resource_map.get(path)
+
+    def _append_svg_image(self, attribute_map: dict[str, str]) -> None:
+        source = attribute_map.get("href") or attribute_map.get("xlink:href") or ""
+        resource_id = self._resource_id(source)
+        if resource_id is None:
+            return
+        alt = attribute_map.get("aria-label") or attribute_map.get("title") or ""
+        safe_attrs = [
+            ("data-reader-resource", resource_id),
+            ("alt", alt[:500]),
+        ]
+        title = attribute_map.get("title")
+        if title and len(title) <= 300:
+            safe_attrs.append(("title", title))
+        rendered_attrs = "".join(
+            f' {name}="{html.escape(value, quote=True)}"' for name, value in safe_attrs
+        )
+        self.parts.append(f"<img{rendered_attrs}>")
+        self.resource_ids.add(resource_id)
+        self.has_readable_content = True
 
 
 def _read_entry(

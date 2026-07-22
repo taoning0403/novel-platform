@@ -89,4 +89,15 @@ img {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* Loading and progress indicators are status feedback, not decorative
+     motion: keep them running so async states stay legible. */
+  [class*="ant-spin"],
+  [class*="ant-spin"]::before,
+  [class*="ant-spin"]::after,
+  [class*="anticon-spin"],
+  [class*="ant-progress"]::before {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

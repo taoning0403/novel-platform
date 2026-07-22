@@ -4,6 +4,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -38,6 +39,25 @@ const statusLabels = {
   finished: "已读完",
 } as const;
 
+const THEME_HINT_KEY = "reader-theme-hint";
+
+function readThemeHint(): ReaderSettings["theme"] | null {
+  try {
+    const hint = window.localStorage.getItem(THEME_HINT_KEY);
+    return hint === "dark" || hint === "sepia" || hint === "light" ? hint : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeThemeHint(theme: ReaderSettings["theme"]) {
+  try {
+    window.localStorage.setItem(THEME_HINT_KEY, theme);
+  } catch {
+    // Private browsing or storage denial: the hint is an enhancement only.
+  }
+}
+
 function initialSectionIndex(opened: ReaderOpen): number {
   const exact = opened.publication.sections.findIndex(
     (section) => section.id === opened.progress.section_id,
@@ -47,6 +67,28 @@ function initialSectionIndex(opened: ReaderOpen): number {
     opened.publication.sections.length - 1,
     Math.max(0, Math.floor(opened.progress.overall_progress * opened.publication.sections.length)),
   );
+}
+
+function normalizedHeading(value: string): string {
+  return value.normalize("NFKC").replace(/[\s\u200b\u2060]+/gu, "");
+}
+
+function publicationStartsWithHeading(html: string, title: string): boolean {
+  if (typeof DOMParser === "undefined") return false;
+  const document = new DOMParser().parseFromString(html, "text/html");
+  let candidate = document.body.firstElementChild;
+  while (candidate?.tagName.toLowerCase() === "div") {
+    const firstElement = candidate.firstElementChild;
+    if (!firstElement) return false;
+    for (const node of candidate.childNodes) {
+      if (node === firstElement) break;
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) return false;
+    }
+    candidate = firstElement;
+  }
+  if (!candidate?.matches("h1, h2, h3, h4, h5, h6")) return false;
+  const expected = normalizedHeading(title);
+  return Boolean(expected) && normalizedHeading(candidate.textContent ?? "") === expected;
 }
 
 export function ReaderPage() {
@@ -67,6 +109,9 @@ export function ReaderPage() {
   const [syncState, setSyncState] = useState("已从云端恢复");
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
+  // Remembered only to keep the opening/error screens on the reader's theme,
+  // so dark-theme readers never see a full-screen light flash on entry.
+  const [themeHint] = useState(readThemeHint);
   const conflictRef = useRef<ConflictState | null>(null);
   const chromeTimerRef = useRef<number | null>(null);
   const tocRailRef = useRef<HTMLElement | null>(null);
@@ -79,6 +124,10 @@ export function ReaderPage() {
   const settingsTimerRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const readerReady = opened !== null;
+  const publicationHasOwnHeading = useMemo(() => {
+    const title = opened?.publication.sections[sectionIndex]?.title;
+    return Boolean(section && title && publicationStartsWithHeading(section.html, title));
+  }, [opened?.publication.sections, section, sectionIndex]);
 
   const clearChromeTimer = useCallback(() => {
     if (chromeTimerRef.current === null) return;
@@ -141,6 +190,7 @@ export function ReaderPage() {
       restoreRef.current = restored;
       setOpened(result);
       setSettings(result.settings);
+      writeThemeHint(result.settings.theme);
       setSectionIndex(index);
       setVisualProgress(result.progress.overall_progress);
       setSyncState("已从云端恢复");
@@ -156,13 +206,12 @@ export function ReaderPage() {
   }, [loadReader]);
 
   useEffect(() => {
-    if (!opened || !editionId) return;
-    const descriptor = opened.publication.sections[sectionIndex];
-    if (!descriptor) return;
+    const sectionId = opened?.publication.sections[sectionIndex]?.id;
+    if (!sectionId || !editionId) return;
     let cancelled = false;
     setIsLoadingSection(true);
     setSectionError(null);
-    void api.getReaderSection(editionId, descriptor.id)
+    void api.getReaderSection(editionId, sectionId)
       .then((result) => {
         if (!cancelled) setSection(result);
       })
@@ -175,7 +224,7 @@ export function ReaderPage() {
     return () => {
       cancelled = true;
     };
-  }, [editionId, opened, sectionAttempt, sectionIndex]);
+  }, [editionId, opened?.publication.sections, sectionAttempt, sectionIndex]);
 
   useEffect(() => {
     if (!section || !editionId) return;
@@ -358,6 +407,7 @@ export function ReaderPage() {
     restoreRef.current = null;
     setVisualProgress(nextLocation.overallProgress);
     setSection(null);
+    if (nextIndex === sectionIndex) setSectionAttempt((value) => value + 1);
     setSectionIndex(nextIndex);
     setTocOpen(false);
   }
@@ -380,6 +430,7 @@ export function ReaderPage() {
     if (!settings) return;
     const next = { ...settings, ...changes };
     setSettings(next);
+    writeThemeHint(next.theme);
     if (settingsTimerRef.current !== null) window.clearTimeout(settingsTimerRef.current);
     settingsTimerRef.current = window.setTimeout(() => {
       void api.patchReaderSettings({
@@ -414,20 +465,24 @@ export function ReaderPage() {
     restoreRef.current = start;
     await persist(false, "reading", undefined, start);
     setSection(null);
+    if (sectionIndex === 0) setSectionAttempt((value) => value + 1);
     setSectionIndex(0);
     setVisualProgress(0);
   }
 
+  const openingThemeClass =
+    themeHint === "dark" ? styles.dark : themeHint === "sepia" ? styles.sepia : "";
+
   if (isOpening) {
     return (
-      <main className={styles.loading}>
+      <main className={`${styles.loading} ${openingThemeClass}`}>
         <LoadingBlock label="正在打开 Edition 并恢复阅读位置…" />
       </main>
     );
   }
   if (error || !opened || !settings) {
     return (
-      <main className={styles.error}>
+      <main className={`${styles.error} ${openingThemeClass}`}>
         <ErrorNotice
           message={error ?? "阅读器无法打开。"}
           onRetry={() => void loadReader()}
@@ -470,7 +525,13 @@ export function ReaderPage() {
       onFocusCapture={() => revealChrome()}
       onKeyDownCapture={() => revealChrome()}
       onPointerDownCapture={() => revealChrome()}
-      onPointerMove={() => revealChrome()}
+      onPointerMove={(event) => {
+        // Moving the cursor mid-page is part of reading, not a request for
+        // chrome: only the top/bottom edges (where the bars live) reveal it.
+        if (event.clientY < 96 || event.clientY > window.innerHeight - 132) {
+          revealChrome();
+        }
+      }}
     >
       <header className={`${styles.toolbar} ${styles.chrome}${chromeHiddenClass}`}>
         <div className={styles.toolbarLeft}>
@@ -709,12 +770,16 @@ export function ReaderPage() {
 
       <div className={styles.scroll} ref={scrollRef} onScroll={handleScroll}>
         <article className={styles.paper} aria-busy={isLoadingSection}>
-          <header className={styles.sectionHeading}>
+          <header
+            className={`${styles.sectionHeading}${publicationHasOwnHeading
+              ? ` ${styles.sectionHeadingWithPublicationTitle}`
+              : ""}`}
+          >
             <p>
               <span>{String(sectionIndex + 1).padStart(2, "0")}</span>
               <span>{sectionIndex + 1} / {opened.publication.sections.length}</span>
             </p>
-            <h1>{currentDescriptor.title}</h1>
+            {publicationHasOwnHeading ? null : <h1>{currentDescriptor.title}</h1>}
           </header>
           {isLoadingSection ? (
             <LoadingBlock label="正在加载这一节…" />

@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Input } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, userFacingError } from "../api/client";
 import type { Device } from "../api/types";
@@ -19,14 +19,16 @@ export function DevicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
-    setIsLoading(true);
+    if (!loadedRef.current) setIsLoading(true);
     setError(null);
     try {
       const rows = await api.listDevices();
       setDevices(rows);
       setNames(Object.fromEntries(rows.map((device) => [device.id, device.name])));
+      loadedRef.current = true;
     } catch (caught) {
       setError(userFacingError(caught));
     } finally {

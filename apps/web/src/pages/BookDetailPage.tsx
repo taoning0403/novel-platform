@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Collapse, Input } from "antd";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, userFacingError } from "../api/client";
@@ -27,7 +27,9 @@ export function BookDetailPage() {
   const [description, setDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [legacyCreateOpen, setLegacyCreateOpen] = useState(false);
+  const loadedRef = useRef(false);
 
   const loadBook = useCallback(async () => {
     if (!bookId) {
@@ -35,7 +37,7 @@ export function BookDetailPage() {
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    if (!loadedRef.current) setIsLoading(true);
     setError(null);
     try {
       const [nextBook, nextPreference] = await Promise.all([
@@ -47,6 +49,7 @@ export function BookDetailPage() {
       setTitle(nextBook.canonical_title);
       setAuthor(nextBook.canonical_author ?? "");
       setDescription(nextBook.description ?? "");
+      loadedRef.current = true;
     } catch (caught) {
       setError(userFacingError(caught));
     } finally {
@@ -66,12 +69,14 @@ export function BookDetailPage() {
     if (!bookId) return;
     setIsSaving(true);
     setActionError(null);
+    setMessage(null);
     try {
       await api.patchBook(bookId, {
         canonical_title: title,
         canonical_author: author.trim() || null,
         description: description.trim() || null,
       });
+      setMessage("图书信息已保存。");
       await loadBook();
     } catch (caught) {
       setActionError(userFacingError(caught));
@@ -89,6 +94,16 @@ export function BookDetailPage() {
     } catch (caught) {
       setActionError(userFacingError(caught));
     }
+  }
+
+  async function handleEditionCreated() {
+    setMessage("新版本已创建。");
+    await loadBook();
+  }
+
+  async function handleEditionDeleted() {
+    setMessage("已删除该版本。");
+    await loadBook();
   }
 
   useEffect(() => {
@@ -133,6 +148,8 @@ export function BookDetailPage() {
         </div>
       </div>
 
+      {message ? <Alert type="success" showIcon title={message} role="status" /> : null}
+
       <div className={`${styles.contentGrid}${canManage ? "" : ` ${styles.contentGridSingle}`}`}>
         {canManage ? <aside className={`${styles.sidebar} ${styles.sidebarStack}`}>
           <Card className={styles.surface} title={<h2 className={styles.cardTitle}>馆藏操作</h2>}>
@@ -170,7 +187,7 @@ export function BookDetailPage() {
             items={[{
               key: "legacy-edition",
               label: "仅添加无文件 Edition（兼容旧流程）",
-              children: <EditionCreateForm book={book} onCreated={loadBook} />,
+              children: <EditionCreateForm book={book} onCreated={handleEditionCreated} />,
             }]}
           />
         </aside> : null}
@@ -183,7 +200,10 @@ export function BookDetailPage() {
             <Button onClick={() => void loadBook()}>刷新</Button>
           </div>
           {book.editions.length === 0 ? (
-            <EmptyState title="还没有版本" detail="使用左侧表单添加原文或一份可独立存在的译文。" />
+            <EmptyState
+              title="还没有版本"
+              detail={canManage ? "使用左侧表单添加原文或一份可独立存在的译文。" : "这部作品暂时没有可阅读的版本。"}
+            />
           ) : (
             <div className={styles.editionList}>
               {book.editions.map((edition) => (
@@ -194,7 +214,7 @@ export function BookDetailPage() {
                   onUpdated={loadBook}
                   isPreferred={preference?.preferred_edition_id === edition.id}
                   onSetPreferred={setPreferred}
-                  onDeleted={loadBook}
+                  onDeleted={handleEditionDeleted}
                   canManage={canManage}
                 />
               ))}

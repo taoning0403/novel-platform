@@ -54,6 +54,7 @@ export function EditionCard({
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const sourceEditions = allEditions.filter((item) => item.content_role === "source");
   const source = allEditions.find((item) => item.id === edition.source_edition_id);
   const superseded = allEditions.find((item) => item.id === edition.supersedes_edition_id);
@@ -69,6 +70,7 @@ export function EditionCard({
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setMessage(null);
     try {
       const updated = await api.patchEdition(edition.book_id, edition.id, {
         title,
@@ -76,6 +78,7 @@ export function EditionCard({
         supersedes_edition_id: supersedesId || null,
         status,
       });
+      setMessage("版本信息已保存。");
       await onUpdated(updated);
     } catch (caught) {
       setError(userFacingError(caught));
@@ -251,6 +254,7 @@ export function EditionCard({
           />
         </label>
         {error ? <Alert className={styles.full} type="error" showIcon title={error} /> : null}
+        {message ? <Alert className={styles.full} type="success" showIcon title={message} role="status" /> : null}
         <div className={styles.formActions}>
           <Button type="primary" htmlType="submit" loading={isSubmitting}>保存关系与状态</Button>
           <DestructiveAction

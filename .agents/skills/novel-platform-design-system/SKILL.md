@@ -33,7 +33,11 @@ making reading and curation tasks easier to scan and complete.
   reserve shadows for overlays and the active reading sheet.
 - Use the three slim vertical reading-trace marks only for the brand, active navigation, actual
   book progress, and the Reader viewport progress. Do not repeat them as decoration.
-- Keep motion concentrated in Reader-chrome transitions only. Respect reduced motion.
+- Motion stays minimal and uses the shared tokens in `ui/tokens.ts`: `--ease-out` /
+  `--ease-in-out` curves and `--motion-press` (140 ms press/hover), `--motion-fast` (180 ms small
+  entrances), `--motion-overlay` (220 ms overlays). Keep UI motion under 300 ms, ease-out for
+  entrances, explicit property lists (never `transition: all`), hover motion gated behind
+  `@media (hover: hover) and (pointer: fine)`, and respect reduced motion.
 
 ## Compose each surface around one job
 

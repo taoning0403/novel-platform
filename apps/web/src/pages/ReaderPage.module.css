@@ -63,8 +63,8 @@
 
 .chrome {
   transition:
-    opacity 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--motion-fast) ease,
+    transform var(--motion-overlay) var(--ease-out);
 }
 
 .toolbar {
@@ -138,6 +138,24 @@
 .tocNav button:hover,
 .drawerActions button:hover {
   border-color: #9cacf0;
+}
+
+.tool,
+.footer button,
+.tocRail button,
+.tocNav button,
+.drawerActions button,
+.conflict button {
+  transition: transform var(--motion-press) var(--ease-out);
+}
+
+.tool:active,
+.footer button:active,
+.tocRail button:active,
+.tocNav button:active,
+.drawerActions button:active,
+.conflict button:active {
+  transform: scale(0.96);
 }
 
 .tool:focus-visible,
@@ -339,7 +357,6 @@
   inset: 70px 0 72px 220px;
   overflow: auto;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
 }
 
 .paper {
@@ -388,12 +405,30 @@
   letter-spacing: -0.03em;
 }
 
+.sectionHeadingWithPublicationTitle {
+  margin-bottom: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--reader-ink) 18%, transparent);
+}
+
+.sectionHeadingWithPublicationTitle p {
+  margin-bottom: 0;
+}
+
 .content {
   color: var(--reader-ink);
   font-size: var(--reader-font-size);
   line-height: var(--reader-line-height);
   overflow-wrap: anywhere;
   word-break: normal;
+  /* Mask the spinner-to-content cut on section change; opacity only. */
+  animation: contentIn var(--motion-fast) var(--ease-out);
+}
+
+@keyframes contentIn {
+  from {
+    opacity: 0;
+  }
 }
 
 .fontSerif .content {
@@ -654,6 +689,15 @@
   box-shadow: 0 12px 35px rgb(0 0 0 / 25%);
   transform: translateX(-50%);
   font-size: 12px;
+  /* Rare, high-attention event: earn one short entrance. */
+  animation: conflictIn var(--motion-overlay) var(--ease-out);
+}
+
+@keyframes conflictIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
 }
 
 .conflict button {
@@ -667,7 +711,8 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #f5f7fa;
+  color: var(--reader-ink, var(--ink));
+  background: var(--reader-stage, #e8ecf2);
 }
 
 .error {
@@ -780,6 +825,11 @@
     font-size: 34px;
   }
 
+  .sectionHeadingWithPublicationTitle {
+    margin-bottom: 0;
+    padding-bottom: 14px;
+  }
+
   .content {
     font-size: var(--reader-font-size);
     line-height: var(--reader-line-height);
@@ -831,9 +881,5 @@
 @media (prefers-reduced-motion: reduce) {
   .chrome {
     transition: none;
-  }
-
-  .scroll {
-    scroll-behavior: auto;
   }
 }

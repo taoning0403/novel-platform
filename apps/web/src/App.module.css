@@ -5,6 +5,14 @@
   align-content: center;
   margin: 0 auto;
   padding: clamp(32px, 6vw, 72px) clamp(20px, 4vw, 48px) 96px;
+  /* Delay the fallback so fast chunk loads never flash a spinner. */
+  animation: routePageIn var(--motion-fast) var(--ease-out) 120ms backwards;
+}
+
+@keyframes routePageIn {
+  from {
+    opacity: 0;
+  }
 }
 
 @media (max-width: 860px) {

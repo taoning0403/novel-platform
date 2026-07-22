@@ -1,5 +1,5 @@
 import { Alert, Card } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, userFacingError } from "../api/client";
 import type { Session } from "../api/types";
@@ -19,11 +19,15 @@ export function SessionsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
   const load = useCallback(async () => {
-    setIsLoading(true);
+    if (!loadedRef.current) setIsLoading(true);
     setError(null);
-    try { setSessions(await api.listSessions()); }
+    try {
+      setSessions(await api.listSessions());
+      loadedRef.current = true;
+    }
     catch (caught) { setError(userFacingError(caught)); }
     finally { setIsLoading(false); }
   }, []);

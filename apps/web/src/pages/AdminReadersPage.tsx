@@ -100,6 +100,7 @@ function ReaderDetail({
   const [isSecurityLoading, setIsSecurityLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const tabRefs = useRef<Record<DetailTab, HTMLButtonElement | null>>({
     overview: null,
@@ -133,13 +134,15 @@ function ReaderDetail({
     }
   }, [reader.id]);
 
-  async function runAction(run: () => Promise<unknown>): Promise<boolean> {
+  async function runAction(run: () => Promise<unknown>, successMessage: string): Promise<boolean> {
     setBusy(true);
     setError(null);
+    setMessage(null);
     try {
       await run();
       await onChanged();
       if (devices !== null || events !== null) await loadSecurityDetails();
+      setMessage(successMessage);
       return true;
     } catch (caught) {
       setError(userFacingError(caught));
@@ -151,14 +154,16 @@ function ReaderDetail({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runAction(() =>
-      api.patchReader(reader.id, {
-        display_name: displayName,
-        admin_note: adminNote.trim() || null,
-        expires_at: expiryIso(expiresAt),
-        max_devices: maxDevices,
-        allow_new_devices: allowNewDevices,
-      }),
+    await runAction(
+      () =>
+        api.patchReader(reader.id, {
+          display_name: displayName,
+          admin_note: adminNote.trim() || null,
+          expires_at: expiryIso(expiresAt),
+          max_devices: maxDevices,
+          allow_new_devices: allowNewDevices,
+        }),
+      "阅读者设置已保存。",
     );
   }
 
@@ -173,9 +178,15 @@ function ReaderDetail({
     if (!confirmAction) return;
     let succeeded = false;
     if (confirmAction === "revoke") {
-      succeeded = await runAction(() => api.revokeReaderCredential(reader.id));
+      succeeded = await runAction(
+        () => api.revokeReaderCredential(reader.id),
+        "凭证已永久撤销。",
+      );
     } else if (confirmAction === "revoke-sessions") {
-      succeeded = await runAction(() => api.revokeReaderSessions(reader.id));
+      succeeded = await runAction(
+        () => api.revokeReaderSessions(reader.id),
+        "已撤销该阅读者的全部会话。",
+      );
     } else {
       succeeded = await runAction(async () => {
         const issued = await api.reissueReaderCredential(reader.id, {
@@ -184,7 +195,7 @@ function ReaderDetail({
           allow_new_devices: allowNewDevices,
         });
         onIssued(issued);
-      });
+      }, "已重新签发访问凭证。");
     }
     if (succeeded) setConfirmAction(null);
   }
@@ -219,9 +230,9 @@ function ReaderDetail({
 
   function handleMenuAction(key: string) {
     if (key === "suspend") {
-      void runAction(() => api.suspendReaderCredential(reader.id));
+      void runAction(() => api.suspendReaderCredential(reader.id), "凭证已暂停。");
     } else if (key === "resume") {
-      void runAction(() => api.resumeReaderCredential(reader.id));
+      void runAction(() => api.resumeReaderCredential(reader.id), "凭证已恢复。");
     } else {
       setConfirmAction(key as ConfirmAction);
     }
@@ -339,6 +350,7 @@ function ReaderDetail({
         ))}
       </nav>
 
+      {message ? <Alert className={styles.notice} type="success" showIcon title={message} role="status" /> : null}
       {error ? <Alert className={styles.notice} type="error" showIcon title={error} /> : null}
 
       {activeTab === "overview" ? (
@@ -453,7 +465,10 @@ function ReaderDetail({
                     description="该设备的授权和活跃会话将失效。"
                     loading={busy}
                     onConfirm={async () => {
-                      await runAction(() => api.revokeReaderDevice(reader.id, device.id));
+                      await runAction(
+                        () => api.revokeReaderDevice(reader.id, device.id),
+                        "设备已撤销。",
+                      );
                     }}
                     size="small"
                   />
