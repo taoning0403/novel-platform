@@ -4,6 +4,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -68,6 +69,28 @@ function initialSectionIndex(opened: ReaderOpen): number {
   );
 }
 
+function normalizedHeading(value: string): string {
+  return value.normalize("NFKC").replace(/[\s\u200b\u2060]+/gu, "");
+}
+
+function publicationStartsWithHeading(html: string, title: string): boolean {
+  if (typeof DOMParser === "undefined") return false;
+  const document = new DOMParser().parseFromString(html, "text/html");
+  let candidate = document.body.firstElementChild;
+  while (candidate?.tagName.toLowerCase() === "div") {
+    const firstElement = candidate.firstElementChild;
+    if (!firstElement) return false;
+    for (const node of candidate.childNodes) {
+      if (node === firstElement) break;
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) return false;
+    }
+    candidate = firstElement;
+  }
+  if (!candidate?.matches("h1, h2, h3, h4, h5, h6")) return false;
+  const expected = normalizedHeading(title);
+  return Boolean(expected) && normalizedHeading(candidate.textContent ?? "") === expected;
+}
+
 export function ReaderPage() {
   const { editionId } = useParams<{ editionId: string }>();
   const navigate = useNavigate();
@@ -101,6 +124,10 @@ export function ReaderPage() {
   const settingsTimerRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const readerReady = opened !== null;
+  const publicationHasOwnHeading = useMemo(() => {
+    const title = opened?.publication.sections[sectionIndex]?.title;
+    return Boolean(section && title && publicationStartsWithHeading(section.html, title));
+  }, [opened?.publication.sections, section, sectionIndex]);
 
   const clearChromeTimer = useCallback(() => {
     if (chromeTimerRef.current === null) return;
@@ -179,13 +206,12 @@ export function ReaderPage() {
   }, [loadReader]);
 
   useEffect(() => {
-    if (!opened || !editionId) return;
-    const descriptor = opened.publication.sections[sectionIndex];
-    if (!descriptor) return;
+    const sectionId = opened?.publication.sections[sectionIndex]?.id;
+    if (!sectionId || !editionId) return;
     let cancelled = false;
     setIsLoadingSection(true);
     setSectionError(null);
-    void api.getReaderSection(editionId, descriptor.id)
+    void api.getReaderSection(editionId, sectionId)
       .then((result) => {
         if (!cancelled) setSection(result);
       })
@@ -198,7 +224,7 @@ export function ReaderPage() {
     return () => {
       cancelled = true;
     };
-  }, [editionId, opened, sectionAttempt, sectionIndex]);
+  }, [editionId, opened?.publication.sections, sectionAttempt, sectionIndex]);
 
   useEffect(() => {
     if (!section || !editionId) return;
@@ -381,6 +407,7 @@ export function ReaderPage() {
     restoreRef.current = null;
     setVisualProgress(nextLocation.overallProgress);
     setSection(null);
+    if (nextIndex === sectionIndex) setSectionAttempt((value) => value + 1);
     setSectionIndex(nextIndex);
     setTocOpen(false);
   }
@@ -438,6 +465,7 @@ export function ReaderPage() {
     restoreRef.current = start;
     await persist(false, "reading", undefined, start);
     setSection(null);
+    if (sectionIndex === 0) setSectionAttempt((value) => value + 1);
     setSectionIndex(0);
     setVisualProgress(0);
   }
@@ -742,12 +770,16 @@ export function ReaderPage() {
 
       <div className={styles.scroll} ref={scrollRef} onScroll={handleScroll}>
         <article className={styles.paper} aria-busy={isLoadingSection}>
-          <header className={styles.sectionHeading}>
+          <header
+            className={`${styles.sectionHeading}${publicationHasOwnHeading
+              ? ` ${styles.sectionHeadingWithPublicationTitle}`
+              : ""}`}
+          >
             <p>
               <span>{String(sectionIndex + 1).padStart(2, "0")}</span>
               <span>{sectionIndex + 1} / {opened.publication.sections.length}</span>
             </p>
-            <h1>{currentDescriptor.title}</h1>
+            {publicationHasOwnHeading ? null : <h1>{currentDescriptor.title}</h1>}
           </header>
           {isLoadingSection ? (
             <LoadingBlock label="正在加载这一节…" />

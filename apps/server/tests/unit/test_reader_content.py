@@ -79,6 +79,34 @@ def reader_epub_without_toc_with_one_oversized_chapter() -> bytes:
     return destination.getvalue()
 
 
+def reader_epub_with_svg_wrapped_image() -> bytes:
+    destination = io.BytesIO()
+    container = b"""<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+      <rootfiles><rootfile full-path="OPS/book.opf"/></rootfiles>
+    </container>"""
+    opf = b"""<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+      <manifest>
+        <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>
+        <item id="image" href="image.png" media-type="image/png"/>
+      </manifest>
+      <spine><itemref idref="cover"/></spine>
+    </package>"""
+    cover = b"""<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:xlink="http://www.w3.org/1999/xlink"><body>
+      <figure><svg xmlns="http://www.w3.org/2000/svg">
+          <script>alert('unsafe')</script>
+          <foreignObject><p>unsafe fallback</p></foreignObject>
+          <image xlink:href="image.png" onload="steal()" aria-label="Cover image" />
+        </svg></figure></body></html>"""
+    with zipfile.ZipFile(destination, "w") as archive:
+        archive.writestr("mimetype", b"application/epub+zip", zipfile.ZIP_STORED)
+        archive.writestr("META-INF/container.xml", container)
+        archive.writestr("OPS/book.opf", opf)
+        archive.writestr("OPS/cover.xhtml", cover)
+        archive.writestr("OPS/image.png", _PNG)
+    return destination.getvalue()
+
+
 def test_epub_reader_uses_spine_toc_and_sanitizes_active_content() -> None:
     content = reader_epub()
     publication = build_epub_publication(io.BytesIO(content), file_revision=3)
@@ -105,6 +133,20 @@ def test_epub_reader_uses_spine_toc_and_sanitizes_active_content() -> None:
     )
     assert image.content == _PNG
     assert image.media_type == "image/png"
+
+
+def test_epub_reader_projects_declared_raster_images_from_svg_wrappers() -> None:
+    content = reader_epub_with_svg_wrapped_image()
+    publication = build_epub_publication(io.BytesIO(content), file_revision=1)
+
+    section = read_epub_section(io.BytesIO(content), publication, publication.sections[0].id)
+
+    assert section.html.startswith('<figure data-reader-block="b00001"><img ')
+    assert 'data-reader-resource="' in section.html
+    assert 'alt="Cover image"' in section.html
+    assert len(section.resource_ids) == 1
+    for forbidden in ("<svg", "<image", "<script", "unsafe fallback", "onload", "xlink"):
+        assert forbidden not in section.html
 
 
 def test_epub_reader_rejects_unknown_sections_and_resources() -> None:

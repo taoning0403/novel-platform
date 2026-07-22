@@ -210,4 +210,56 @@ describe("ReaderPage", () => {
     }));
     expect(await screen.findByText(/已同步/)).toBeInTheDocument();
   });
+
+  it("keeps the current scroll position after a debounced progress save", async () => {
+    const getSection = vi.mocked(api.getReaderSection);
+    getSection.mockImplementation(() => Promise.resolve({ ...section }));
+    const save = vi.spyOn(api, "saveReadingProgress").mockResolvedValue({
+      ...progress,
+      block_id: null,
+      section_progress: 0.5,
+      overall_progress: 0.75,
+      version: 4,
+    });
+
+    const { container } = renderReader();
+    expect(await screen.findByText("正文第二节")).toBeInTheDocument();
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    const scroller = container.querySelector("article")?.parentElement as HTMLDivElement;
+    Object.defineProperties(scroller, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    scroller.scrollTop = 300;
+    fireEvent.scroll(scroller);
+
+    await waitFor(() => expect(save).toHaveBeenCalledWith(
+      editionId,
+      expect.objectContaining({
+        section_id: "section-2",
+        section_progress: 0.5,
+        overall_progress: 0.75,
+      }),
+      false,
+    ), { timeout: 1600 });
+    await waitFor(() => expect(screen.getByText(/已同步/)).toBeInTheDocument());
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    expect(getSection).toHaveBeenCalledTimes(1);
+    expect(scroller.scrollTop).toBe(300);
+  });
+
+  it("does not repeat a matching heading supplied by the publication", async () => {
+    vi.mocked(api.getReaderSection).mockResolvedValue({
+      ...section,
+      html: '<div><h1 data-reader-block="block-1">第二节</h1>'
+        + '<p data-reader-block="block-2">正文第二节</p></div>',
+    });
+
+    renderReader();
+
+    expect(await screen.findByText("正文第二节")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "第二节" })).toHaveLength(1);
+  });
 });

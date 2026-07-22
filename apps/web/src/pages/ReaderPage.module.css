@@ -405,6 +405,16 @@
   letter-spacing: -0.03em;
 }
 
+.sectionHeadingWithPublicationTitle {
+  margin-bottom: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--reader-ink) 18%, transparent);
+}
+
+.sectionHeadingWithPublicationTitle p {
+  margin-bottom: 0;
+}
+
 .content {
   color: var(--reader-ink);
   font-size: var(--reader-font-size);
@@ -813,6 +823,11 @@
   .sectionHeading h1 {
     padding-bottom: 20px;
     font-size: 34px;
+  }
+
+  .sectionHeadingWithPublicationTitle {
+    margin-bottom: 0;
+    padding-bottom: 14px;
   }
 
   .content {
