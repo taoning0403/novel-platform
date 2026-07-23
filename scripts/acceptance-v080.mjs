@@ -9,6 +9,8 @@ const artifacts = path.join(root, "artifacts");
 const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.8.0";
 const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v080";
 const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v080";
+const acceptanceExpectedRevision =
+  process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260715_0005";
 const coreTag = `${acceptanceTag}-core`;
 const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
 const jsonPath = path.join(artifacts, `acceptance-${acceptanceTag}.json`);
@@ -487,7 +489,7 @@ async function main() {
       const revision = (
         await psql("read Alembic revision", "SELECT version_num FROM alembic_version")
       ).trim();
-      assert(revision === "20260715_0005", `unexpected migration revision ${revision}`);
+      assert(revision === acceptanceExpectedRevision, `unexpected migration revision ${revision}`);
     });
 
     await chainCriterion(106, async () => {
