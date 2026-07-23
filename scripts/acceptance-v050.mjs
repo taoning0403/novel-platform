@@ -15,6 +15,9 @@ const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v050";
 const acceptanceProfile = process.env.ACCEPTANCE_PROFILE ?? "v050";
 const acceptanceExpectedRevision =
   process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260715_0005";
+const acceptanceReaderCapabilities = process.env.ACCEPTANCE_READER_CAPABILITIES
+  ?.split(",")
+  .filter(Boolean);
 const quietTraceProfile = acceptanceProfile === "v070";
 const releaseLabel = `v${acceptanceVersion}`;
 const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
@@ -776,6 +779,9 @@ async function main() {
           expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
           max_devices: 1,
           allow_new_devices: true,
+          ...(acceptanceReaderCapabilities
+            ? { capabilities: acceptanceReaderCapabilities }
+            : {}),
         },
       });
       assert(secondReader.headers.get("cache-control") === "no-store", "second credential response is cacheable");
@@ -1048,6 +1054,9 @@ async function main() {
           expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
           max_devices: 3,
           allow_new_devices: true,
+          ...(acceptanceReaderCapabilities
+            ? { capabilities: acceptanceReaderCapabilities }
+            : {}),
         },
       });
       assert(reissued.headers.get("cache-control") === "no-store", "reissue response is cacheable");
