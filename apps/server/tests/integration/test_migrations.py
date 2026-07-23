@@ -174,9 +174,11 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
     auth_session = UUID("30000000-0000-0000-0000-000000000001")
     refresh = UUID("40000000-0000-0000-0000-000000000001")
     book = UUID("50000000-0000-0000-0000-000000000001")
+    empty_book = UUID("50000000-0000-0000-0000-000000000002")
     source = UUID("60000000-0000-0000-0000-000000000001")
     translation = UUID("60000000-0000-0000-0000-000000000002")
     successor = UUID("60000000-0000-0000-0000-000000000003")
+    empty_edition = UUID("60000000-0000-0000-0000-000000000004")
     series = UUID("90000000-0000-0000-0000-000000000001")
     try:
         run_alembic(database_url, "upgrade", "20260714_0004")
@@ -229,9 +231,10 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
             await connection.execute(
                 text(
                     "INSERT INTO books (id, owner_user_id, canonical_title, metadata) "
-                    "VALUES (:book, :other, 'Preserved Book', '{}'::jsonb)"
+                    "VALUES (:book, :other, 'Preserved Book', '{}'::jsonb), "
+                    "(:empty_book, :other, 'Placeholder Book', '{}'::jsonb)"
                 ),
-                {"book": book, "other": other_admin},
+                {"book": book, "empty_book": empty_book, "other": other_admin},
             )
             await connection.execute(
                 text(
@@ -243,12 +246,16 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                     "(:translation, :book, 'Translation', 'zh-CN', 'translation', "
                     "'human', 'uploaded', 'ready', '{}'::jsonb), "
                     "(:successor, :book, 'Successor', 'zh-CN', 'translation', "
-                    "'mixed', 'edited', 'draft', '{}'::jsonb)"
+                    "'mixed', 'edited', 'draft', '{}'::jsonb), "
+                    "(:empty_edition, :empty_book, 'Placeholder', 'en', 'source', NULL, "
+                    "'uploaded', 'draft', '{}'::jsonb)"
                 ),
                 {
                     "source": source,
                     "translation": translation,
                     "successor": successor,
+                    "empty_edition": empty_edition,
+                    "empty_book": empty_book,
                     "book": book,
                 },
             )
@@ -299,21 +306,24 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
             await connection.execute(
                 text(
                     "INSERT INTO series_memberships (series_id, book_id, position) "
-                    "VALUES (:series, :book, 1)"
+                    "VALUES (:series, :book, 1), (:series, :empty_book, 2)"
                 ),
-                {"series": series, "book": book},
+                {"series": series, "book": book, "empty_book": empty_book},
             )
             await connection.execute(
                 text(
                     "INSERT INTO user_book_preferences "
                     "(user_id, book_id, preferred_edition_id, last_opened_edition_id) "
-                    "VALUES (:reader, :book, :source, :translation)"
+                    "VALUES (:reader, :book, :source, :translation), "
+                    "(:reader, :empty_book, :empty_edition, :empty_edition)"
                 ),
                 {
                     "reader": reader,
                     "book": book,
                     "source": source,
                     "translation": translation,
+                    "empty_book": empty_book,
+                    "empty_edition": empty_edition,
                 },
             )
             await connection.execute(
@@ -328,9 +338,15 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                     "INSERT INTO reading_progresses "
                     "(user_id, edition_id, status, section_id, overall_progress, "
                     "edition_file_revision, version, updated_device_id) VALUES "
-                    "(:reader, :source, 'reading', 's00001', 0.42, 1, 7, :device)"
+                    "(:reader, :source, 'reading', 's00001', 0.42, 1, 7, :device), "
+                    "(:reader, :empty_edition, 'reading', 's00001', 0.10, 1, 1, :device)"
                 ),
-                {"reader": reader, "source": source, "device": device},
+                {
+                    "reader": reader,
+                    "source": source,
+                    "empty_edition": empty_edition,
+                    "device": device,
+                },
             )
         await engine.dispose()
 
@@ -380,6 +396,7 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                             "JOIN book_editions e3 ON e3.id=:successor "
                             "JOIN user_book_preferences p ON p.book_id=b.id AND p.user_id=:reader "
                             "JOIN reading_progresses rp ON rp.user_id=:reader "
+                            "AND rp.edition_id=:source "
                             "JOIN reader_settings rs ON rs.user_id=:reader "
                             "WHERE b.id=:book"
                         ),
@@ -387,6 +404,7 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                             "series": series,
                             "translation": translation,
                             "successor": successor,
+                            "source": source,
                             "reader": reader,
                             "book": book,
                         },
@@ -466,6 +484,13 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                             "p.preferred_edition_id, p.last_opened_edition_id, "
                             "(SELECT count(*) FROM book_editions "
                             "WHERE id IN (:translation, :successor)) AS placeholders, "
+                            "(SELECT count(*) FROM books WHERE id=:empty_book) AS empty_books, "
+                            "(SELECT count(*) FROM book_editions WHERE id=:empty_edition) "
+                            "AS empty_editions, "
+                            "(SELECT count(*) FROM reading_progresses "
+                            "WHERE edition_id=:empty_edition) AS placeholder_progresses, "
+                            "(SELECT count(*) FROM user_book_preferences "
+                            "WHERE book_id=:empty_book) AS placeholder_preferences, "
                             "to_regclass('public.reader_credential_capabilities') "
                             "AS capability_table, "
                             "to_regclass('public.edition_translation_runs') AS run_table "
@@ -482,6 +507,8 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                             "reader": reader,
                             "translation": translation,
                             "successor": successor,
+                            "empty_book": empty_book,
+                            "empty_edition": empty_edition,
                         },
                     )
                 )
@@ -496,6 +523,10 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
         assert v090["preferred_edition_id"] == source
         assert v090["last_opened_edition_id"] is None
         assert v090["placeholders"] == 0
+        assert v090["empty_books"] == 0
+        assert v090["empty_editions"] == 0
+        assert v090["placeholder_progresses"] == 0
+        assert v090["placeholder_preferences"] == 0
         assert v090["capability_table"] == "reader_credential_capabilities"
         assert v090["run_table"] == "edition_translation_runs"
     finally:

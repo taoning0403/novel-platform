@@ -17,6 +17,8 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    networks:
+      - default
 
   server:
     build:
@@ -55,6 +57,14 @@ services:
       MAX_EPUB_ENTRY_COUNT: ${MAX_EPUB_ENTRY_COUNT:-10000}
       MAX_COVER_BYTES: ${MAX_COVER_BYTES:-20971520}
       MAX_COVER_PIXELS: ${MAX_COVER_PIXELS:-40000000}
+      LINGUASPINDLE_ENABLED: ${LINGUASPINDLE_ENABLED:-false}
+      LINGUASPINDLE_BASE_URL: ${LINGUASPINDLE_BASE_URL:-http://linguaspindle:8765}
+      LINGUASPINDLE_VERSION_RANGE: ${LINGUASPINDLE_VERSION_RANGE:->=0.3.1,<0.4.0}
+      LINGUASPINDLE_PROVIDER_ID: ${LINGUASPINDLE_PROVIDER_ID:-openai-compatible}
+      LINGUASPINDLE_PROFILE_ID: ${LINGUASPINDLE_PROFILE_ID:-}
+      LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS: ${LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS:-3}
+      LINGUASPINDLE_READ_TIMEOUT_SECONDS: ${LINGUASPINDLE_READ_TIMEOUT_SECONDS:-30}
+      LINGUASPINDLE_MAX_DOWNLOAD_BYTES: ${LINGUASPINDLE_MAX_DOWNLOAD_BYTES:-104857600}
     ports:
       - "${SERVER_PORT:-8000}:8000"
     volumes:
@@ -69,6 +79,8 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    networks:
+      - default
 
   migrate:
     build:
@@ -80,6 +92,8 @@ services:
         condition: service_healthy
     command: ["alembic", "upgrade", "head"]
     restart: "no"
+    networks:
+      - default
 
   web:
     build:
@@ -93,6 +107,12 @@ services:
       server:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   postgres_data:

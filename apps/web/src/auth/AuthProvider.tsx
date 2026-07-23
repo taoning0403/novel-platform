@@ -73,7 +73,7 @@ function loginDevice(name: string) {
     client_instance_id: clientInstanceId(),
     name,
     platform: "web" as const,
-    app_version: "0.8.0",
+    app_version: "0.9.0",
   };
 }
 

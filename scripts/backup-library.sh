@@ -17,7 +17,7 @@ mkdir -p "$backup_root"
 chmod 700 "$backup_root"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-base_name="novel-platform-v050-${timestamp}"
+base_name="novel-platform-v090-${timestamp}"
 temporary_directory="$backup_root/.${base_name}.tmp"
 backup_directory="$backup_root/$base_name"
 database_file="$temporary_directory/database.dump"
@@ -185,6 +185,15 @@ manifest = {
     "git_commit": git_commit,
     "postgresql_version": postgresql_version,
     "alembic_revision": alembic_revision,
+    "scope": {
+        "included": ["novel_platform_postgresql", "novel_platform_library"],
+        "excluded": [
+            "linguaspindle_sqlite",
+            "linguaspindle_artifacts",
+            "linguaspindle_containers",
+            "linguaspindle_networks",
+        ],
+    },
     "database": {"filename": "database.dump", "sha256": database_sha256},
     "library": {"filename": "library.tar.gz", "sha256": library_sha256},
 }

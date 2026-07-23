@@ -3,7 +3,8 @@
 ```text
 SiteSettings ── library owner ──> User(admin)
 User
-├── ReaderAccessCredential ──> Device ──> AuthSession ──> RefreshToken
+├── ReaderAccessCredential ──> ReaderCredentialCapability
+│                            └── Device ──> AuthSession ──> RefreshToken
 ├── AdminRecoveryCredential ─────────────> AuthSession
 ├── AdminPasskey ────────────────────────> AuthSession
 ├── WebAuthnChallenge
@@ -11,8 +12,9 @@ User
 ├── ReadingProgress ──> BookEdition
 └── UserBookPreference ──> Book / BookEdition
 
-User(admin, content owner)
+User(admin, library owner) + User(actual creator)
 ├── Book ──> BookEdition ──> EditionFile ──> StoredFile
+│              └── EditionTranslationRun ──> optional generated BookEdition
 ├── BookSeries ──> SeriesMembership ──> Book
 └── LibraryImport ──> StoredFile
 
@@ -39,7 +41,7 @@ created through the application.
 
 ## Reader credential and device chain
 
-`reader_access_credentials` separates a durable reader identity from a rotatable secret. It
+`reader_access_credentials` separates a durable invited identity from a rotatable secret. It
 stores only a domain-separated HMAC, a safe hint, lifecycle status (`active`, `suspended`, or
 `revoked`), expiry, `allow_new_devices`, positive `max_devices`, use/lifecycle timestamps,
 administrator attribution, and an optional replacement link. A partial unique index permits at
@@ -53,6 +55,13 @@ reader User 1 ── * credential history
 The effective state is revoked, suspended, expired, or active in that order. Revocation is final.
 Suspension and expiry revoke Sessions but preserve authorized Devices. Reissue revokes the old
 credential, all its Devices and Sessions, then creates a new credential for the same User.
+
+`reader_credential_capabilities` is keyed by `(credential_id, capability)` and permits exactly
+`library.read`, `library.upload`, or `translation.use`. Every credential must include
+`library.read`; create/reissue rejects missing-read, unknown or duplicate input. Rows are an
+immutable issuance snapshot. Capability is not stored on User and is not trusted from JWT. The
+foreign key cascades only with credential history deletion; normal reissue retains revoked
+credential/capability history.
 
 `devices` stores an HttpOnly device-secret HMAC plus the credential that authorized a reader
 device. The browser `client_instance_id`, name, platform, app version, IP fields, and User-Agent
@@ -101,10 +110,21 @@ its own summary event.
 
 ## Shared content ownership and readable visibility
 
-Every `books`, `book_series`, `stored_files`, and `library_imports` row keeps a non-null owner FK.
-After conversion all site content owners equal the unique administrator. This is not replaced by
-an unscoped query: manager paths require that owner; reader paths explicitly build a filtered
-readable projection.
+Every `books`, `book_series`, `stored_files`, `library_imports`, and `edition_translation_runs`
+row keeps a non-null owner FK. All site library owners equal the unique administrator. Creator
+attribution is separate and non-null:
+
+| Table | Actor field | Meaning |
+| --- | --- | --- |
+| `books` | `created_by_user_id` | User whose first file import created the Book |
+| `book_editions` | `created_by_user_id` | User who uploaded or generated the Edition |
+| `stored_files` | `created_by_user_id` | User whose operation introduced the object |
+| `library_imports` | `requested_by_user_id` | User who owns the inspect/commit workflow |
+| `edition_translation_runs` | `created_by_user_id` | User who requested translation/retranslation |
+
+This preserves one library containment boundary without claiming the administrator performed
+every contribution. Credential rotation does not change attribution. API projections expose only
+a safe display-name summary and computed permissions, never these IDs to another invited person.
 
 A reader-visible Book has at least one `ready` BookEdition with a current EditionFile. A visible
 Series contains only visible Books and is omitted when empty. Readers never receive owner IDs,
@@ -120,17 +140,41 @@ Book 1 ── * BookEdition
                └── optional supersedes_edition_id (same Book, not itself)
 ```
 
-A translation may remain valid without a source. Edition identity, Book, role, translation origin,
-creation method, revision, source/supersedes relationships, status, and metadata survive v0.5
-conversion without ID rewrites.
+A historical translation may remain valid without a source. New generated v0.9 translations keep
+the fixed source link and optional valid same-Book supersedes link. Edition identity, Book, role,
+translation origin, creation method, revision, relationships, status and metadata remain stable.
 
-`stored_files` holds owner, random storage key, original filename, media/format/purpose, size,
-SHA-256, and time. `edition_files` is append-only by `(edition_id, revision)` with one current
-revision. Replacement creates a new EditionFile and preserves BookEdition identity and historical
-file rows. Cover/thumbnail references remain protected StoredFiles.
+`stored_files` holds owner and creator, random storage key, original filename,
+media/format/purpose, size, SHA-256, and time. `edition_files` is append-only by
+`(edition_id, revision)` with one current revision. Replacement creates a new EditionFile and
+preserves BookEdition identity and historical file rows. Cover/thumbnail references remain
+protected StoredFiles.
 
-`library_imports` records bounded inspect/commit state and temporary references. Only the
-administrator can access it. It is never included in reader projections.
+`library_imports` records bounded inspect/commit state, actor and temporary references. Admin sees
+all; a current uploader sees only their own row; other actors receive 404. It is never included in
+reader projections.
+
+## Translation Runs
+
+`edition_translation_runs` is durable orchestration state, not a queue or LinguaSpindle mirror.
+It stores:
+
+- library owner, actor, Book, fixed source Edition + EditionFile + revision + SHA-256 + `txt`;
+- target language, requested title, optional same-Book generated Edition to supersede;
+- non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs);
+- actor-scoped `client_request_id` and remote Project/Job/Artifact/request IDs;
+- local/remote status, progress, sanitized error, retry, cleanup and timestamps;
+- optional generated Edition ID (`ON DELETE SET NULL`) so Run history survives Edition deletion.
+
+`(created_by_user_id, client_request_id)` is unique. A partial unique index prevents an equivalent
+active source-file/target/configuration Run; remote Project/Job/Artifact and generated Edition IDs
+are unique when present. Status and cleanup values use checked strings so service changes do not
+silently expand the local state machine.
+
+The source snapshot never follows a later file replacement. Only a verified successful Artifact
+can create one `draft + ai + generated` Edition and file relation. That Edition's creator is the
+Run actor; its owner remains the site owner. Creator/admin may see the draft; only admin changes it
+to `ready`. Partial/failed/corrupt output leaves `generated_edition_id` null.
 
 ## Private reading state
 
@@ -154,7 +198,7 @@ belongs to at most one Series; `(series_id, position)` provides stable append or
 Series removes memberships only. Reader queries filter members through Book readability and hide
 an empty result.
 
-## v0.5 migration
+## v0.5 and v0.9 migrations
 
 Migration `20260715_0005` adds the site/credential/Passkey/challenge schema and expands
 User/Device/Session/audit rows without deleting content or private reading state. The separate
@@ -166,3 +210,12 @@ It never generates reader plaintext credentials.
 After conversion, `auth migration audit` compares database permanent-file references and SHA-256
 values with the library volume, checks referenced temporary files, and reports counts only—never
 storage keys or paths.
+
+Migration `20260723_0006` requires either a pristine database or a completed, unambiguous v0.5
+conversion. Its count-only preflight rejects owner mismatch, active imports, missing/mismatched
+file references and invalid current-file cardinality. It deletes Edition rows with no EditionFile,
+clears their preferences/progress/source/supersedes references, and deletes Books left without an
+Edition. It then backfills all creator fields to the unique owner, inserts only `library.read` for
+every retained credential, and creates Translation Run storage. Notices/reporting contain counts,
+not titles, filenames, paths, IDs or content. Destructive cleanup makes downgrade unsupported;
+restore the matching coordinated PostgreSQL + library backup.

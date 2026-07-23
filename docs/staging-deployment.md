@@ -1,8 +1,8 @@
-# v0.8.0 single-host deployment
+# v0.9.0 single-host deployment
 
 This runbook describes a private single-host deployment, the guarded v0.4.0-to-v0.5.0 data/auth
-upgrade, the historical application-only v0.5.0-to-v0.6.0 foundation and v0.6.0-to-v0.7.0 Quiet
-Trace upgrades, and the current v0.7.0-to-v0.8.0 authentication-hardening upgrade. It is not a
+upgrade, historical v0.6/v0.7/v0.8 application/security upgrades, and the current destructive
+v0.8.0-to-v0.9.0 capability/contributor/private-translation upgrade. It is not a
 production, high-availability, disaster-recovery, or filing-approval claim. No real server is
 changed by repository acceptance.
 
@@ -20,7 +20,11 @@ Host Caddy/Nginx (certificate, HTTP-to-HTTPS redirect)
                          v
                    FastAPI/Uvicorn :8000 (private fixed proxy network)
                          ├── PostgreSQL :5432 (private database network)
-                         └── /data/library (private mode-700 bind mount)
+                         ├── /data/library (private mode-700 bind mount)
+                         └── optional external linguaspindle-private network
+                                  └── LinguaSpindle v0.3.1 :8765 (no host port)
+                                      ├── independent SQLite/Artifact volume
+                                      └── Provider secret (never Novel Platform config)
 ```
 
 The external edge may be a host Nginx/Caddy instance, load balancer, tunnel, or Cloudflare proxy,
@@ -29,7 +33,8 @@ owns public ports 80/443 and forwards to `127.0.0.1:8080`. `compose.staging.yml`
 published service to that loopback address by default; it does not provide a public HTTP login
 entry. The external edge must terminate a valid certificate, redirect HTTP to HTTPS, preserve the
 public Host/scheme, and forward only to the Web container. Do not expose host ports 8080, 8000,
-5432, or `/data/library` publicly.
+5432, LinguaSpindle 8765, or `/data/library` publicly. Only `server` may join
+`linguaspindle-private`; Web, migrate and PostgreSQL must not.
 
 A minimal Caddy virtual host is:
 
@@ -69,7 +74,7 @@ administrator acceptance and must be reported `DEPLOYMENT_PENDING`.
 ├── data/
 │   ├── postgres/        # PostgreSQL bind mount
 │   ├── library/         # mode 700, UID/GID 10001
-│   └── backups/         # mode 700; backup files mode 600
+│   └── backups/         # mode 700; backup files mode 600 (Novel Platform only)
 └── reports/             # sanitized reports and preflight summaries, mode restricted
 ```
 
@@ -108,6 +113,14 @@ OPENAPI_ENABLED=false
 AUTH_COOKIE_SECURE=true
 AUTH_COOKIE_SAMESITE=strict
 STAGING_REAL_IP_PEER=172.30.19.1
+LINGUASPINDLE_ENABLED=false
+LINGUASPINDLE_BASE_URL=http://linguaspindle:8765
+LINGUASPINDLE_VERSION_RANGE='>=0.3.1,<0.4.0'
+LINGUASPINDLE_PROVIDER_ID=openai-compatible
+LINGUASPINDLE_PROFILE_ID=
+LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS=3
+LINGUASPINDLE_READ_TIMEOUT_SECONDS=30
+LINGUASPINDLE_MAX_DOWNLOAD_BYTES=104857600
 ```
 
 Since v0.8.0 the server refuses to boot in staging/production unless authentication Cookies are
@@ -120,12 +133,30 @@ allow-list. The three authentication secrets must be distinct, random, and at le
 Keep `STAGING_HTTP_PORT` on an unused loopback port; 8080 is the documented default and must not be
 opened by the host or cloud firewall.
 
+`LINGUASPINDLE_MAX_DOWNLOAD_BYTES` must not exceed `MAX_UPLOAD_BYTES`. Protected configuration
+accepts only one fixed HTTP(S) origin and the exact compatible version range. No Provider/API key
+variable exists in Novel Platform. Keep `LINGUASPINDLE_ENABLED=false` until the operator has
+verified the exact v0.3.1 image/tag, private DNS, health/system/pipeline/provider responses,
+mandatory `Idempotency-Key`, Artifact persistence and absence of a host port.
+
 Validate without printing the resolved Compose environment:
 
 ```bash
 docker compose --env-file /srv/novel-platform/config/.env.staging \
   -f compose.staging.yml config --quiet
 ```
+
+When translation is enabled, validate the overlay too and first confirm the external network
+already belongs to the reviewed LinguaSpindle deployment:
+
+```bash
+docker network inspect linguaspindle-private >/dev/null
+docker compose --env-file /srv/novel-platform/config/.env.staging \
+  -f compose.staging.yml -f compose.translation.yml config --quiet
+```
+
+Novel Platform scripts automatically add the overlay only when `LINGUASPINDLE_ENABLED=true`; they
+never create, delete or reconfigure the external network or any LinguaSpindle resource.
 
 Never run `docker compose config` with environment expansion into a report. Never paste or export
 CLI-generated credentials into `.env`, shell history, a command line, chat, or an acceptance
@@ -167,6 +198,122 @@ settings, or audit pages before Passkey registration.
 
 Create reader identities in the administrator UI. Deliver each one-time reader credential through
 an appropriate private channel. The UI cannot retrieve it again.
+
+## Upgrade from v0.8.0 to v0.9.0
+
+This upgrade adds destructive Alembic `20260723_0006`, credential capabilities, creator
+attribution, Translation Runs, and an optional Server-only private network. Do not run it merely
+because the repository is checked out. Candidate review, database migration, network change,
+Provider configuration and remote cleanup are separate approvals.
+
+### 1. Candidate and topology baseline
+
+1. Require all local quality gates and `pnpm acceptance:v090` on the exact candidate SHA. Record
+   `artifacts/acceptance-v090.{md,json}`, inherited regression artifacts and
+   `artifacts/visual-v090/` without adding credentials, content or host paths.
+2. Record count-only current Alembic revision, Compose project (`novel-platform-staging`),
+   containers, networks, published ports and the two Novel Platform bind mounts:
+   `/srv/novel-platform/data/postgres` and `/srv/novel-platform/data/library`.
+3. Separately record LinguaSpindle image/tag (annotated v0.3.1), container, private network,
+   SQLite/Artifact volumes, health and absence of a host port. This is comparison evidence only;
+   Novel Platform operations must not mutate those resources.
+4. Merge the new non-secret environment names with `LINGUASPINDLE_ENABLED=false`, keep the file
+   mode 600, and run configuration validation without printing expanded output.
+
+### 2. Read-only migration counts
+
+Start only PostgreSQL from the reviewed checkout, then create the restricted report:
+
+```bash
+./scripts/preflight-v090.sh
+```
+
+The report contains only revision, booleans and counts: Books/Editions/files/Imports/credentials,
+fileless Editions and resulting Books to delete, private-state links to clear, owner mismatches,
+active Imports and file/current-revision anomalies. It contains no title, filename, User ID,
+credential hint, storage key/path/hash or正文. It must report `safe_to_migrate=true`; otherwise
+stop. A pre-v0.5 database must complete the historical v0.5 conversion first.
+
+### 3. Coordinated backup and isolated restore
+
+Stop writers and run the current coordinated backup; database-only backup is not sufficient:
+
+```bash
+./scripts/backup-library.sh
+./scripts/restore-library.sh --test \
+  /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP \
+  /srv/novel-platform/reports/restore-v090-TIMESTAMP.md
+```
+
+Review the manifest checksums, candidate SHA, Alembic revision and explicit scope. Included scope
+is Novel Platform PostgreSQL + library. Excluded scope is LinguaSpindle SQLite, Artifact volume,
+containers and networks. Keep the isolated-restore PASS report path for the guarded deploy.
+
+### 4. Explicit migration approval and deploy
+
+Only after the user approves the exact staging database and count report, set the one-command
+guards in the trusted terminal and deploy:
+
+```bash
+ALLOW_V090_DESTRUCTIVE_MIGRATION=1 \
+V090_CONFIRM_DATABASE=novel_platform \
+V090_RESTORE_TEST_REPORT=/srv/novel-platform/reports/restore-v090-TIMESTAMP.md \
+  ./scripts/deploy-staging.sh
+```
+
+`deploy-staging.sh` reruns preflight and refuses a missing approval flag, mismatched database name
+or non-PASS restore report before Alembic. The migration deletes fileless placeholder Editions,
+their dependent preferences/progress/links and resulting empty Books; it backfills retained
+creator fields to the unique owner, grants retained credentials only `library.read`, and creates
+Run storage. It never performs an implicit reset and has no downgrade.
+
+After migration, compare the actual deletion/backfill counts with preflight, verify zero null
+creator rows/credentials without read/orphan files, reissue dedicated read-only, upload-only,
+translate-only and combined credentials, and confirm the old credential/Devices/Sessions/Refresh
+Tokens are immediately unusable.
+
+### 5. Enable private translation separately
+
+Leave translation disabled until main login/library/upload/Reader health and the four-identity
+capability/resource matrix pass. Then verify the external network/service baseline again, set the
+non-secret `LINGUASPINDLE_*` values and `LINGUASPINDLE_ENABLED=true`, and redeploy. The scripts add
+`compose.translation.yml`; only Server joins the existing external network.
+
+Run a short synthetic TXT against real v0.3.1 + its offline Mock Provider: status, create
+idempotency, sync/control, generated draft, creator preview, administrator publication,
+retranslation preservation, restart/persistence and exact Project cleanup. Mock is not evidence of
+real AI translation. A real OpenAI-compatible call additionally requires a separately configured
+LinguaSpindle key and explicit approval for that paid/content-egress call.
+
+Finally compare topology/ports/volumes, verify main readiness remains healthy with translation
+disabled or Lingua unavailable, and scan logs/reports/Web/OpenAPI for Provider keys, raw
+credentials,正文, storage paths and idempotency values.
+
+### 6. Rollback
+
+For migration/data failure, stop writers and restore the matching candidate code + coordinated
+PostgreSQL/library backup; do not attempt Alembic downgrade. For translation-only failure, set
+`LINGUASPINDLE_ENABLED=false`, remove the overlay on redeploy, and keep capability/library data.
+Already generated Editions are not automatically deleted. A remote Project is cleaned only by a
+Run's persisted exact Project ID.
+
+## Optional disposable staging reset (separate destructive approval)
+
+A reset is unnecessary for the normal migration. Use it only after audit proves all staging data
+is disposable and the user approves these exact targets:
+
+- Compose project: `novel-platform-staging`;
+- PostgreSQL bind mount: `/srv/novel-platform/data/postgres`;
+- library bind mount: `/srv/novel-platform/data/library`.
+
+First create and isolated-restore-test a coordinated backup and inventory all four paths/resources.
+Stop the project, then move the two directories to an explicitly named restricted quarantine
+instead of deleting them immediately; recreate only the two Novel Platform directories with the
+documented ownership/mode. Do not touch `linguaspindle-private`, the LinguaSpindle container/image,
+SQLite or Artifact volume. Deploy the reviewed SHA into the empty directories, initialize the
+administrator through CLI, register a Passkey, create fresh test credentials, run the complete
+v0.9 gate/matrix/persistence checks, and retain the quarantine until the user separately approves
+its deletion. Reset must never be an Alembic/startup side effect.
 
 ## Upgrade from v0.7.0 to v0.8.0
 
@@ -372,16 +519,17 @@ Create regular coordinated backups:
 ./scripts/backup-library.sh
 ```
 
-The v0.5 dump includes site settings, reader credential history, administrator recovery records,
-Passkeys, WebAuthn challenge history, devices, Sessions, refresh rows, audit events, all content,
-file revisions, Series, preferences, settings, and progress. Raw credentials are not present
-because they are never stored.
+The v0.9 dump includes site settings, credential history/capabilities, administrator recovery,
+Passkeys, WebAuthn challenges, Devices, Sessions, refresh rows, audit events, creator attribution,
+Translation Runs, all content/file revisions, Series, preferences, settings and progress. Raw
+credentials and Provider keys are absent because Novel Platform never stores them. The manifest
+states that LinguaSpindle SQLite/Artifacts/containers/networks are outside backup scope.
 
 Restore-test every backup:
 
 ```bash
 ./scripts/restore-library.sh --test \
-  /srv/novel-platform/data/backups/novel-platform-v050-TIMESTAMP
+  /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP
 ```
 
 An intentional live restore is destructive and needs separate authorization:
@@ -397,13 +545,14 @@ references, and starts the app only after all checks pass. It never runs Alembic
 
 ## Rollback
 
-Application-only rollback is valid only when the target code supports the current schema. The
-normal v0.5 response is fix-forward. Returning to v0.4 requires separate destructive approval:
+Application-only rollback is valid only when the target code supports the current schema.
+`20260723_0006` cannot be downgraded. Returning to a pre-v0.9 build requires separate destructive
+approval and the matching coordinated pre-upgrade backup:
 
 1. stop writers;
 2. isolate-test the exact pre-upgrade coordinated backup;
 3. restore its database and library together;
-4. switch to the matching v0.4 code;
+4. switch to the matching pre-v0.9 code;
 5. verify revision, references, health, and authentication behavior.
 
 Do not run an automatic downgrade or restore a database and volume from different backups.
@@ -415,8 +564,9 @@ Do not run an automatic downgrade or restore a database and volume from differen
 ```
 
 The script verifies PostgreSQL/API/Web health, matching Alembic revision availability, and that
-PostgreSQL/FastAPI publish no host ports. Also verify externally that ports 5432, 8000, and 8080
-are closed, that the Web binding is `127.0.0.1:8080`, and that HTTP redirects to HTTPS.
+PostgreSQL/FastAPI publish no host ports. Also verify externally that ports 5432, 8000, 8080 and
+LinguaSpindle 8765 are closed, that the Web binding is `127.0.0.1:8080`, only Server joins
+`linguaspindle-private`, and HTTP redirects to HTTPS. Lingua health must not change main readiness.
 
 Container logs are diagnostic only. Never enable request-body/header logging or include verbose
 environment output in reports. Run the artifact leak scan after generating any deployment report.

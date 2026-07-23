@@ -2,20 +2,20 @@
 
 [English](README.md) · **简体中文**
 
-漫读 v0.8.0（`novel-platform`）是一套私有、自托管的数字阅读与藏书整理站点，产品设计
-面向个人、非商业部署。唯一管理员维护共享的 EPUB/TXT 藏书，少量受邀阅读者可以阅读已
-发布的 Edition，并分别保存自己的进度、阅读设置、偏好、设备和会话。当前 Web 界面使用
-中文。
+漫读 v0.9.0（`novel-platform`）是一套私有、自托管的数字阅读与藏书整理站点，产品设计
+面向个人、非商业部署。唯一管理员拥有共享的 EPUB/TXT 藏书；少量受邀人可以阅读已发布
+Edition，管理员还可按凭证分别授予文件上传或 TXT 小说翻译能力。每个人分别保存自己的
+进度、阅读设置、偏好、设备和会话。当前 Web 界面使用中文。
 
-项目刻意不提供公开注册或目录、阅读者上传、公开原文件下载、用户名/密码登录、评论、
+项目刻意不提供公开注册或目录、公开原文件下载、用户名/密码登录、评论、
 社交、支付、广告及公开发布能力。
 
-v0.8.0 是认证加固里程碑（ADR 0016）：staging 代理只从单一可信宿主边缘恢复真实客户端
-IP，并对公开认证入口限流；刷新轮换绑定会话对应的设备秘密；Cookie 模式刷新必须携带白
-名单 Origin；staging/production 强制认证 Cookie 使用 `SameSite=Strict`。本里程碑不改变
-v0.5.0 已验收的 API、授权、数据、导入、文件修订和 Reader 状态契约。
+v0.9.0 引入不可变的 `library.read`、`library.upload`、`translation.use` 凭证能力、持久贡献者
+归属及按创建者限制的删除规则。小说翻译由 Server 通过私网调用独立部署的 LinguaSpindle
+v0.3.1；Provider 秘密不进入 Novel Platform 或浏览器。校验成功的 TXT Artifact 会成为翻译
+发起人拥有的生成草稿 Edition，只有管理员可以发布。
 
-当前仓库版本为 v0.8.0，仍属于 1.0 之前的软件。将站点暴露到互联网前，请先阅读
+当前仓库版本为 v0.9.0，仍属于 1.0 之前的软件。将站点暴露到互联网前，请先阅读
 [当前项目状态](docs/PROJECT_STATE.md)和[部署手册](docs/staging-deployment.md)。
 
 ## 项目亮点
@@ -23,8 +23,12 @@ v0.5.0 已验收的 API、授权、数据、导入、文件修订和 Reader 状�
 - 通过“检查—预览—提交”工作流导入 EPUB/TXT，保留追加式文件修订，并协调备份数据库与
   私有书库目录。
 - 受邀阅读者通过有边界、已清洗的 Reader Projection 阅读，不直接接触原始源文件。
-- 管理员使用常驻且经过用户验证的 Passkey；阅读者使用高熵、可轮换、仅展示一次的访问
-  凭证。
+- 管理员使用常驻且经过用户验证的 Passkey；受邀人使用高熵、可轮换、仅展示一次且带显式
+  能力快照的访问凭证。
+- 上传或生成的 Book、Edition、文件、Import 与 Translation Run 归属到真实持久 User，同时
+  保持唯一管理员馆藏 owner 与按创建者限制的操作规则。
+- 通过仅 Server 可达的 LinguaSpindle 私网 HTTP 翻译可读 TXT，持久化幂等 Run、限制 Artifact
+  导入，并提供创建者草稿预览和管理员发布。
 - 会话绑定服务器授权设备，刷新令牌单次轮换，每个受保护请求重新验证当前授权状态；安全
   审计事件不记录原始秘密。
 - 在共享管理员藏书的同时，确保每位阅读者的进度、阅读设置、首选 Edition、设备和会话
@@ -42,6 +46,8 @@ Browser
       -> FastAPI 模块化单体
           -> PostgreSQL
           -> 私有本地 EPUB/TXT 书库卷
+          -> 可选私网 HTTP -> LinguaSpindle v0.3.1
+                              -> 独立 SQLite/Artifact Volume/Provider secret
 ```
 
 生产边界不依赖公开目录、公开对象存储、外部身份服务、分析服务、Worker、队列或 Redis。
@@ -105,8 +111,9 @@ docker compose run --rm --no-deps --entrypoint novel-platform server \
 变量中，或让它进入 Shell 历史。打开 `http://localhost:3000/login`，输入凭证并立即注册
 第一个 Passkey。完成注册前，恢复会话无法访问书库或管理页面。
 
-之后管理员日常通过“使用安全设备登录”进入站点。在“管理 → 阅读者与凭证”中创建受邀
-阅读者；每份完整阅读者凭证同样只展示一次。
+之后管理员日常通过“使用安全设备登录”进入站点。在“管理 → 阅读者与凭证”中创建受邀人，
+按需选择上传/翻译能力并立即保存新凭证；每份完整凭证只展示一次。能力变更必须 reissue，
+旧凭证、设备、会话与刷新令牌立即失效。
 
 停止服务但保留 PostgreSQL 和书库数据：
 
@@ -123,6 +130,8 @@ docker compose down --volumes
 ## 认证模型
 
 - 阅读者身份是持久对象；重新签发访问凭证不会重建进度、设置或偏好。
+- 每份受邀凭证强制包含 `library.read`，可选的 `library.upload` 与 `translation.use` 是数据库中
+  不可变的签发快照；JWT 或前端状态都不是授权权威。
 - 阅读者访问凭证和管理员恢复凭证至少包含 256 位随机性；PostgreSQL 仅保存按域隔离的
   HMAC 与安全提示。
 - 设备授权使用服务器生成的 HttpOnly 设备秘密 Cookie；IP 和 `client_instance_id` 均不
@@ -158,7 +167,9 @@ docker compose down --volumes
 
 `compose.staging.yml` 只发布 Nginx，API 与 PostgreSQL 保持在私有网络。Nginx 只信任单一
 宿主边缘对等地址以恢复真实客户端 IP，对公开认证入口限流；Uvicorn 只信任 Nginx 的固定
-内部地址。完整步骤见[部署手册](docs/staging-deployment.md)。
+内部地址。启用翻译时额外叠加 `compose.translation.yml`：只有 `server` 加入既有外部
+`linguaspindle-private` 网络，不增加宿主端口；Provider Key 只保留在 LinguaSpindle。完整
+步骤见[部署手册](docs/staging-deployment.md)。
 
 ## 安全
 
@@ -204,19 +215,22 @@ auth audit cleanup
 `admin credentials reset` 会撤销 Passkey 与全部管理员会话，再输出用于注册新 Passkey 的
 恢复凭证。
 
-## 共享书库与阅读者边界
+## 共享书库与贡献者边界
 
-唯一管理员始终是 Book、Edition、StoredFile、Import 和 Series 的显式所有者。受邀阅读者
-只能看到经过过滤的可读投影：
+唯一管理员始终是 Book、Edition、StoredFile、Import、Translation Run 和 Series 的显式
+馆藏所有者；资源归属另行记录实际创建/发起的持久 User。受邀人只能看到经过过滤的可读
+投影：
 
 - 至少包含一个 `ready` 且有当前文件 Edition 的 Book；
 - `ready` 且有当前文件的 Edition；
 - 至少包含一个可见 Book 的 Series；
 - 受保护封面和安全的 EPUB/TXT Reader section/resource。
 
-阅读者只能更新自己的进度、状态、Reader Settings、首选/最近打开 Edition、设备名称以及
-会话/设备撤销。后端授权会拒绝阅读者导入、Book/Edition/Series 变更、原始 EPUB/TXT 下载、
-阅读者/站点/审计管理及 Passkey 管理；隐藏按钮不是安全控制。
+只读凭证只能更新自己的进度、状态、Reader Settings、首选/最近打开 Edition、设备名称及
+会话/设备撤销。`library.upload` 允许文件型创建/追加并管理本人上传资源；
+`translation.use` 独立允许翻译可读 TXT 并管理本人 Run/生成 Edition。两者都不授予 Series、
+原文件下载、生成译本发布、阅读者/站点/审计或 Passkey 管理。Book 创建者不能删除含他人
+贡献的整本 Book。后端同时检查当前 capability 与资源 creator；隐藏按钮不是安全控制。
 
 v0.4 已验收的 Reader、文件修订、Edition 身份、source/supersedes、进度冲突和 Series 不变量
 保持不变。
@@ -229,6 +243,19 @@ v0.4 已验收的 Reader、文件修订、Edition 身份、source/supersedes、�
 
 FastAPI 对非健康检查响应添加 `X-Robots-Tag: noindex, nofollow, noarchive`，Nginx 对 HTML/
 静态响应应用同样策略。这只是认证的补充，不能代替访问控制。
+
+## v0.8.0 升级到 v0.9.0
+
+v0.9.0 新增 Alembic `20260723_0006`：删除无文件占位 Edition/Book 及其偏好、进度和关系；
+将保留内容的贡献者回填为唯一馆藏 owner；现有受邀凭证只回填 `library.read`；并建立
+Translation Run 表。站点未完成 v0.5 转换、owner 不唯一、存在活动 Import 或文件引用异常时
+迁移会失败关闭。迁移不提供 downgrade；回滚必须恢复同一份协调 PostgreSQL + 书库备份。
+
+迁移前必须记录脱敏统计、停止写入、生成 `scripts/backup-library.sh` 备份，并通过
+`scripts/restore-library.sh --test`。实际服务器迁移或可丢弃环境 reset 仍需针对精确目标另行
+批准。不得删除或重建 LinguaSpindle SQLite、Artifact Volume、容器或网络。数据库升级后再
+配置非秘密的 `LINGUASPINDLE_*`，核对 v0.3.1、私有 DNS、无宿主端口及强制幂等；只有翻译
+环境就绪时才把 `compose.translation.yml` 叠加到 Server 部署。
 
 ## v0.7.0 升级到 v0.8.0
 
@@ -283,18 +310,20 @@ v0.6.0 改变 Web 组件基础与静态 Bundle，不新增 API、数据库、认
 ```
 
 脚本会短暂停止写入，生成 PostgreSQL custom dump、书库归档与 manifest，并在发布备份目录前
-拒绝数据库/文件引用不一致。Dump 包括凭证、Passkey、设备、会话、站点设置、审计、Book、
-Edition、文件修订、Series、偏好、设置和进度。
+拒绝数据库/文件引用不一致。Dump 包括凭证与 capability、Passkey、设备、会话、站点设置、
+审计、Book、Edition、贡献者归属、Translation Run、文件修订、Series、偏好、设置和进度；
+manifest 明确排除 LinguaSpindle 数据及资源。
 
 始终先在隔离资源中测试恢复：
 
 ```bash
 ./scripts/restore-library.sh --test \
-  /srv/novel-platform/data/backups/novel-platform-v050-TIMESTAMP
+  /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP
 ```
 
-测试会校验 manifest 哈希、Alembic revision、永久文件 checksum、临时引用及 v0.5 新表，
-随后只删除临时数据库和卷。真正恢复 staging 还必须设置 `ALLOW_STAGING_RESTORE=1`、传入
+测试会校验 manifest 哈希、Alembic revision、永久文件 checksum、临时引用以及 capability、
+归属和 Translation Run 表，随后只删除临时数据库和卷。真正恢复 staging 还必须设置
+`ALLOW_STAGING_RESTORE=1`、传入
 `--staging` 并精确确认数据库名；脚本不会自动执行 Alembic downgrade。
 
 回滚意味着停止写入，并从同一份已验证升级前备份恢复相互匹配的代码、数据库和书库卷。
@@ -336,32 +365,29 @@ TEST_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost/ISOLATED_TEST_DB 
 
 ## 自动验收
 
-v0.8.0 发布门禁会创建唯一 Compose project、随机端口和相互独立的随机秘密，再使用带虚拟
-WebAuthn authenticator 的真实 Chromium 及至少四个隔离浏览器上下文：
+v0.9.0 发布门禁使用唯一、一次性的 Compose project 与隔离 PostgreSQL，先重放仍适用的
+认证/Reader/代理行为，再验证当前 capability、贡献归属、迁移、翻译、Web、备份和泄漏契约：
 
 ```bash
 pnpm acceptance
 # 等价命令
-pnpm acceptance:v080
+pnpm acceptance:v090
 ```
 
-门禁原样重放 v0.5.0 的 84 项标准，覆盖匿名拒绝/noindex、CLI 初始化与恢复会话限制、
-Passkey 注册/登录、阅读者凭证与四设备限制、直接 RBAC 绕过、Reader Projection/进度冲突、
-重启持久性、完整备份/隔离恢复和泄漏扫描；再增加 9 项加固标准（106–114），验证模拟宿主
-边缘 → Compose Nginx → API 链的真实客户端 IP、伪造 `X-Forwarded-For` 拒绝、不可信对等方
-隔离、登录/Passkey options 的稳定 JSON 429、`Retry-After`、`no-store` 与无下游审计/Challenge
-写入、Cookie 刷新的 Origin 白名单、刷新与设备秘密绑定以及 staging `SameSite=Strict`。
-定向质量门禁还通过 67 个 Python 单元测试、20 个 PostgreSQL 集成测试和 37 个 Web 测试。
+门禁保留 v0.5 的 84 项适用标准和 v0.8 的 9 项代理/认证加固标准，再增加 11 项 v0.9 标准：
+能力生命周期、四身份 actor/resource 策略、legacy API 移除与迁移、私网服务幂等/控制/原子
+导入、重翻与草稿发布、服务隔离、泄漏防护、协调备份/恢复、桌面/320 px 视觉证据及精确
+清理。合成 fake transport 必须通过；真实 v0.3.1 + Mock Provider 与真实 OpenAI-compatible
+Provider 在完成配置前均为 `PENDING_OPERATOR_CONFIG`，门禁不会把 fake/Mock 结果称为真实 AI
+翻译。
 
-脱敏产物为 `artifacts/acceptance-v080.{md,json}` 及继承核心证据
-`artifacts/acceptance-v080-core.json`。真实宿主边缘、真实域名 Passkey 与生产限流验证在获得
-明确部署授权前标为 `DEPLOYMENT_PENDING`。只有诊断失败的隔离环境时才设置
-`KEEP_ACCEPTANCE_ENV=1`。
+脱敏产物为 `artifacts/acceptance-v090.{md,json}`，继承回归证据写入
+`artifacts/acceptance-v090-regression*`，视觉证据位于 `artifacts/visual-v090/`。远端 migration、
+网络、HTTPS/Passkey、Provider、持久化和清理在另行授权前保持 `DEPLOYMENT_PENDING`。只有
+诊断失败的隔离环境时才设置 `KEEP_ACCEPTANCE_ENV=1`。
 
-历史门禁 `acceptance:v010` 至 `acceptance:v070` 仍可运行，但不是 v0.8.0 发布门禁。v0.5
-核心保持可直接运行并通过参数重放，未被弱化或跳过。v0.7.0 历史证据位于
-`artifacts/acceptance-v070.{md,json}`、`artifacts/bundle-v070.{md,json}` 与
-`artifacts/visual-v070/`。
+历史门禁 `acceptance:v010` 至 `acceptance:v080` 及其证据保持可运行、可追溯；v0.9 不会
+改写历史证据来伪装无文件创建仍兼容。
 
 ## 已废止的验收语义
 
@@ -372,6 +398,10 @@ v0.5.0 明确废止依赖以下历史行为的断言：
 - 通过 Web 创建本地用户名/密码用户；
 - 每位普通 member 拥有并上传到隔离的个人书库；
 - 普通 member 下载原始源文件或修改内容。
+
+v0.9.0 还废止公开 metadata-only Book/Edition 创建，以及“受邀凭证永远不能写入”的断言。
+新内容必须来自文件型导入或校验后的生成结果；受邀写入同时依赖当前 capability 与按创建者
+限制的资源策略。
 
 这些行为不会以兼容后门形式保留。仍有效的 BookEdition、文件修订、安全 Reader、私有状态、
 Series、持久性、备份/恢复和泄漏断言均在当前门禁中重放。
@@ -384,8 +414,11 @@ Series、持久性、备份/恢复和泄漏断言均在当前门禁中重放。
 - `/auth`：凭证/Passkey 登录、注册、刷新、身份、登出与会话；
 - `/devices`、`/users/me`：当前阅读者私有控制；
 - `/admin/readers`、`/admin/site`、`/admin/audit`：仅管理员管理；
-- `/books`、嵌套 `/editions`、`/series`：可读查询与管理员变更；
-- `/imports`：仅管理员检查/提交/文件修订；
+- `/books`、嵌套 `/editions`、`/series`：可读查询与 capability/creator 感知的馆藏变更
+  （Series 仍仅管理员）；
+- `/imports`：管理员或 `library.upload` 检查/提交/文件修订，并按 actor 隔离；
+- 嵌套 `/translation-runs` 与 `/translations`：按 actor 隔离的 TXT 翻译创建、列表、控制、
+  同步、草稿预览和管理员发布；
 - `/editions/{id}/file`：仅管理员原始下载；
 - 受保护 Book 封面和 `/editions/{id}/reader/*`：安全可读资源；
 - `/books/{id}/preferences`、`/reader/settings`、`/reader/recent`：当前阅读者私有状态；

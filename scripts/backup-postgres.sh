@@ -16,7 +16,7 @@ mkdir -p "$backup_directory"
 chmod 700 "$backup_directory"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-base_name="novel-platform-v050-${timestamp}"
+base_name="novel-platform-v090-${timestamp}"
 temporary_file="$backup_directory/.${base_name}.dump.tmp"
 backup_file="$backup_directory/${base_name}.dump"
 checksum_file="$backup_file.sha256"

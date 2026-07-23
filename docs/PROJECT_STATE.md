@@ -1,165 +1,137 @@
 # Project state
 
-Last reviewed against the repository on 2026-07-17. The current milestone is v0.8.0, developed
-incrementally from the accepted v0.7.0 Quiet Trace Web release and the v0.5.0 authentication,
-ownership, and private-library release.
+Last reviewed against the repository on 2026-07-23. The current milestone is v0.9.0, developed
+incrementally from the accepted v0.8.0 authentication-hardening and v0.7.0 Quiet Trace releases.
 
 ## Current milestone
 
-v0.8.0 is 漫读, a private, non-commercial digital reading and collection-management site. One
-logical administrator owns and manages the shared collection. A small number of invited readers
-can read only published, file-backed Editions while retaining private progress, settings,
-preferred Editions, devices, and sessions. There is no public registration, public catalogue,
-username or password login, social surface, sales flow, advertising, or reader upload path.
+漫读 remains a private, non-commercial, self-hosted reading and collection-management site with
+one logical administrator and no public registration/catalogue. Invited access is no longer
+equivalent to permanently read-only access: every current reader credential has an immutable
+`library.read` capability and may optionally carry `library.upload` and/or `translation.use`.
+Authorization now requires both the current database-backed credential capability and the
+resource's durable creator policy. The unique administrator remains the library owner.
 
-This milestone is authentication hardening (ADR 0016). It restores the real client IP across the
-two-hop staging proxy chain from a single trusted host-edge peer, adds Nginx entry rate limiting
-for the two unauthenticated authentication endpoints, deletes expired WebAuthn challenges in
-bounded batches, binds refresh rotation to the Session's device secret, requires an allowlisted
-Origin for cookie-mode refresh, and enforces SameSite=Strict authentication Cookies outside
-development. It changes no persistent entity, migration, permission, or library contract.
+v0.9.0 also integrates standalone LinguaSpindle v0.3.1 for TXT novel translation. Only Novel
+Platform Server may call it over private HTTP. The two services share no database, volume,
+identity, credential or domain model. LinguaSpindle retains its own Provider secret, SQLite and
+Artifact volume; Browser/Web never receives its base URL or Provider configuration.
 
 ## Implemented
 
-- A single `/login` accepts high-entropy reader access credentials and one-time administrator
-  initialization/recovery credentials. Administrator daily authentication uses resident,
-  user-verified Passkeys.
-- Reader identity, rotatable access credential, server-authorized device, session, and refresh
-  token are separate persistent concepts. Raw credentials appear only in one successful response;
-  the database stores domain-separated HMACs and safe hints.
-- Device authorization uses an HttpOnly device-secret Cookie. `client_instance_id` is only a hint;
-  IP and User-Agent are audit attributes, not device identity. Credential rows are locked while a
-  new device is counted, so concurrent requests cannot exceed `max_devices`.
-- The staging Compose Nginx restores the real client IP with the realip module, trusting only the
-  measured host-edge bridge peer (build-time default `172.30.19.1`; the build accepts only a
-  single canonical IPv4 address and fails closed otherwise) and resolving `X-Forwarded-For`
-  recursively. Untrusted peers cannot inject a forged source, and Uvicorn keeps trusting only the
-  fixed Nginx peer.
-- Nginx entry rate limiting covers `POST /api/v1/auth/login` and
-  `POST /api/v1/auth/passkeys/authentication/options`, keyed on the restored client address.
-  Excess requests receive a stable JSON `auth_entry_rate_limited` 429 with `Retry-After` and
-  `no-store` and never reach the application, so they write no throttle or audit rows.
-- Refresh is bound to the Session's device secret. The application verifies the presented secret
-  against the Session's Device before any rotation or replay-revocation side effect: a stolen
-  Refresh Token alone can neither rotate nor revoke the victim Session, while replay with the
-  correct device secret still revokes the entire Session. Binding failures use the uniform
-  invalid-token 401 and are audited.
-- Cookie-mode refresh requires a present, allowlisted `Origin`. Staging and production require
-  `SameSite=Strict` authentication Cookies. The device Cookie has an independent configurable
-  lifetime (`AUTH_DEVICE_COOKIE_TTL_DAYS`, default 365 days), is re-issued when a login reuses an
-  authorized Device, and is cleared only on 401 refresh outcomes.
-- Expired WebAuthn challenges are deleted on issuance in set-based batches (default 500) driven by
-  the existing `expires_at` index; valid challenges are untouched and verification remains
-  single-use under concurrency.
-- Credential expiry, suspension, revocation, reissue, device revocation, Session revocation,
-  Passkey revocation, administrator lock, and credential reset take effect before an old JWT
-  naturally expires because every protected request reloads current database state.
-- Recovery credentials are single-use and short-lived. Their Session is restricted to Passkey
-  registration; completing recovery revokes old administrator Sessions and creates a normal
-  Passkey-backed Session.
-- Explicit `manageable` and `readable` boundaries preserve the administrator as Book, Edition,
-  StoredFile, LibraryImport, and Series owner. Readers see only Books with at least one `ready`,
-  current-file-backed Edition and only visible Books inside Series.
-- Readers use the safe EPUB/TXT Reader Projection and protected covers/resources, but the backend
-  rejects raw file downloads, imports, uploads, and Book/Edition/Series mutations. They may write
-  only their own reading progress, settings, preferences, device names, and revocations.
-- The public page exposes configurable site name, purpose, privacy statement, unified login, and
-  only a real configured ICP record. Production can disable OpenAPI and all non-health responses
-  receive `noindex, nofollow, noarchive`.
-- The administrator UI manages invited readers, one-time credential issuance, credential state,
-  devices, Sessions, Passkeys, the limited public site settings, and filtered security events.
-- The server CLI provides administrator initialization/recovery/reset/lock/status, all-Session
-  revocation, migration preflight/conversion, database-volume integrity audit, and audit cleanup.
-- Migration `20260715_0005` adds site settings, reader credentials, administrator recovery
-  credentials, Passkeys, WebAuthn challenges, and expanded device/Session/audit links. Explicit
-  conversion preserves BookEdition IDs, file revisions, source/supersedes links, Series,
-  preferences, settings, and progress while consolidating content ownership and invalidating the
-  old password/session system.
-- Complete backups include every authentication and site table plus the coordinated library
-  archive. Isolated restore validates revision, database-referenced permanent checksums, and
-  referenced temporary files before any live restore can be authorized.
-- The Web application uses one Chinese-localized Ant Design 6 provider and a centralized Quiet
-  Trace token layer: graphite text, cool canvas, white paper, index blue, semantic teal/coral, and
-  a compact three-line reading-trace mark. The formal product name is 漫读.
-- Login is a single centered task surface. `AppShell` owns grouped desktop navigation, a mobile
-  top bar and bottom quick navigation with a More Drawer, account/logout controls,
-  recovery-Session confinement, and the version footer. Reader routes retain a separate
-  full-screen shell.
-- Shared `PageHeader`, `AsyncPanel`, `StatusTag`, and `DestructiveAction` components centralize
-  page hierarchy, accessible async state, status language, and consequence-specific confirmation.
-- All page routes use `React.lazy` and an accessible `Suspense` fallback. CSS Modules now separate
-  layout, account, library, upload, administration, forms, and Reader styles; the former
-  2,252-line global stylesheet has been removed.
-- Upload still uses the existing inspect-preview-commit API state machine. Ant Design Dragger
-  only selects a local File and never starts its own request.
-- The library prioritizes recent reading and cover-led discovery, with search, sorting, a filter
-  Drawer, and removable active filters. Reader administration uses task-focused master-detail
-  presentation while preserving one-time credential and destructive-action safeguards.
-- Reader keeps its safe projection, dedicated typography, three themes, synchronization, and
-  conflict choices while adopting a progress trace, compact table-of-contents rail, and
-  auto-hiding responsive controls.
+### Credential capabilities and contributor library
+
+- `reader_credential_capabilities` stores the immutable capability snapshot for each credential.
+  `library.read` is mandatory; unknown, duplicate or missing-read sets are rejected. Capability
+  changes use reissue, which immediately revokes the old credential, Devices, Sessions and
+  Refresh Tokens while retaining the same durable User and attribution.
+- Every protected request reloads the credential capability rows. JWT claims, cached Web state,
+  role labels and client-submitted fields cannot grant capability. Restricted recovery Sessions
+  receive no library or translation authority.
+- `books.created_by_user_id`, `book_editions.created_by_user_id`,
+  `stored_files.created_by_user_id` and `library_imports.requested_by_user_id` distinguish the
+  actual contributor from the single `owner_user_id`. Safe responses expose only contributor
+  display names plus server-computed permission flags.
+- `library.upload` permits file-backed create/add and management of the actor's own uploaded
+  resources. `translation.use` independently permits readable-TXT translation and management of
+  the actor's own Runs/generated Editions. Series, raw downloads, generated publication and all
+  user/site/security administration remain administrator-only.
+- A contributor cannot delete a Book that contains another User's Edition or retained Run. Source,
+  supersedes, active Import/Run and current file dependencies remain fail-closed. Deleting a ready
+  Edition clears affected preferences/progress and precisely removes only unreferenced files.
+- Public metadata-only Book/Edition creation and the two legacy Web Collapse surfaces are removed.
+  New content comes only from a validated file import or verified generated Artifact.
+
+### Translation orchestration
+
+- `edition_translation_runs` persists actor, fixed source EditionFile/revision/SHA-256, target,
+  non-secret configuration snapshot/fingerprint, deterministic client idempotency, remote
+  correlation IDs, status/progress, retry and cleanup state, and an optional generated Edition.
+- The narrow `LinguaSpindleClient` validates health, version `>=0.3.1,<0.4.0`, mandatory
+  idempotency, `novel_txt_v1`, configured Provider and same-origin fixed endpoints. It disables
+  redirects, bounds streaming downloads, verifies format/size/checksum, maps remote errors to
+  sanitized stable failures, and never accepts an arbitrary download URL.
+- Create/sync/pause/resume/cancel/retry/cleanup are actor-scoped and recoverable. A stable
+  `(actor, client_request_id)` prevents duplicate Runs; active equivalent work, Project, Job,
+  Artifact and generated Edition IDs are also unique. Cleanup targets only the persisted Project.
+- Only a complete verified TXT Artifact is ingested. File compensation plus one database
+  transaction prevents partial/corrupt/failed work from creating a readable Edition or orphan.
+- Successful output is `draft + ai + generated`, linked to the fixed source and creator. The
+  creator may preview the draft, other invited people receive 404, and only the administrator may
+  publish `ready`. Retranslation keeps the old Edition, files, preferences and progress intact.
+- Translation availability is independent of `/health/ready`; disabled/unavailable/incompatible
+  LinguaSpindle disables only translation. Upload, login, library and Reader remain operational.
+
+### Web, API and operations
+
+- Admin reader create/reissue exposes mandatory read plus optional upload/translate choices,
+  capability summaries and one-time credential invalidation consequences.
+- AppShell routes/navigation and Book/Edition actions use server-projected capabilities and
+  permission flags. The Quiet Trace translation workspace provides service status, actor-scoped
+  master-detail Runs, controls, source/config snapshots, redacted errors, creator preview and
+  administrator publication. It polls only the selected visible active Run with single-flight and
+  bounded backoff.
+- The launch modal submits only source/target/title plus one stable client UUID; it cannot choose
+  Provider, model, profile, service URL or download URL. UI copy discloses private external
+  processing and possible Provider cost.
+- OpenAPI and generated TypeScript describe the v0.9 capability/contributor/translation contract.
+  The product and package/API versions are 0.9.0.
+- Alembic `20260723_0006` performs a count-only, fail-closed preflight; deletes fileless placeholder
+  Editions/Books and dependent private state/links; backfills creator fields to the unique owner;
+  grants retained credentials read only; and creates Run storage. Because cleanup is destructive,
+  downgrade is intentionally unsupported—restore the coordinated backup instead.
+- `compose.translation.yml` adds only Server to the external `linguaspindle-private` network and
+  publishes no port. Protected deployment configuration requires explicit non-secret
+  `LINGUASPINDLE_*` values. Provider keys are not Novel Platform configuration.
+- Coordinated backup/restore includes capability, attribution and Translation Run data with the
+  Novel Platform library while explicitly excluding LinguaSpindle resources. Isolated restore
+  verifies revision, database/file checksums, temporary references and v0.9 invariants.
 
 ## Verification state
 
-- The pre-open-source v0.4.0 baseline gate passed: 65 Python unit tests, 14 PostgreSQL
-  integration tests, 28 Web tests, Chromium reader/series acceptance, restart persistence,
-  backup/restore, and leak scans.
-- The v0.8.0 directed checks pass: Ruff, Ruff format, mypy, 67 Python unit tests, 20 PostgreSQL
-  integration tests, ESLint, 37 Web tests, TypeScript, and the Vite production build. New
-  integration coverage proves device-bound refresh (uniform 401, no attacker-triggered revocation,
-  replay-with-secret still revokes), fail-closed cookie Origin, device-Cookie renewal, and bounded
-  challenge cleanup with concurrent single-use verification.
-- `acceptance:v050` passes all 84 criteria with real Chromium virtual WebAuthn, four independent
-  reader browser contexts, direct RBAC checks, credential/admin recovery controls, restart
-  persistence, coordinated backup, isolated database/volume restore, and leak scanning. The
-  sanitized evidence is `artifacts/acceptance-v050.{md,json}`.
-- `acceptance:v070` passes all 105 criteria: the 84 inherited v0.5.0 criteria and 21 UI criteria
-  comprising the 16 retained v0.6.0 checks plus five Quiet Trace task-path checks. It records 30
-  sanitized, capture-only desktop/mobile screenshots in `artifacts/visual-v070/` and reports to
-  `artifacts/acceptance-v070.{md,json}`.
-- `acceptance:v080` replays the 84 v0.5.0 criteria unmodified and adds 9 hardening criteria
-  (106-114): real client IP across a simulated host-edge → staging Nginx → API chain, forged
-  `X-Forwarded-For` rejection, untrusted-peer confinement, login and Passkey-options entry rate
-  limits with stable 429 JSON/`Retry-After`/`no-store` and no downstream audit or challenge
-  writes, fail-closed refresh Origin, device-secret-bound refresh semantics through the chain, and
-  enforced SameSite=Strict cookies. Evidence is `artifacts/acceptance-v080.{md,json}` with the
-  inherited core in `artifacts/acceptance-v080-core.json`.
-- The v0.7.0 production entry is 595,455 bytes raw / 197,625 bytes gzip and passes the unchanged
-  200,000-byte gzip budget. Route chunks are recorded in `artifacts/bundle-v070.{md,json}`.
-- `acceptance:v080` is the v0.8.0 release gate and the default `pnpm acceptance` target.
-  `acceptance:v050` through `acceptance:v070` remain immutable historical commands; their scripts,
-  criteria, and evidence are neither weakened, skipped, nor rewritten by this milestone.
-- Local acceptance never changes real staging or production data. Real-domain HTTPS/RP-ID checks
-  remain deployment actions and must be reported as `DEPLOYMENT_PENDING` until explicitly run.
+- Focused Server unit/PostgreSQL integration coverage passes for capability snapshots and reissue,
+  contributor isolation/deletion, legacy API removal, v0.9 migration, LinguaSpindle HTTP hardening,
+  Translation Run idempotency/control/retry/cleanup, atomic ingestion, draft visibility,
+  administrator publication, retranslation and corrupt/partial failure handling.
+- Web ESLint and production build pass. All 47 Web tests pass, including capability projection,
+  launch-payload narrowing, polling/backoff/single-flight, generated Edition controls and
+  destructive confirmation. The existing >500 kB main-chunk warning remains non-fatal.
+- Headed Chromium visual review passes at 1440 px and 320 px. The 320 px page has no horizontal
+  overflow; the mobile More dialog exposes 小说翻译 with accessible names, while translation stays
+  outside the high-frequency bottom navigation. Evidence is in `artifacts/visual-v090/`.
+- `acceptance:v090` is the current release gate. It preserves applicable v0.5/v0.8 regression,
+  adds 11 v0.9 criteria, uses synthetic/fake transport by default, and records real service/
+  Provider work as `PENDING_OPERATOR_CONFIG`. Final full-gate evidence is written to
+  `artifacts/acceptance-v090.{md,json}`.
+- Historical acceptance scripts and evidence remain intact. v0.9 explicitly supersedes fileless
+  creation; it does not rewrite old evidence to claim compatibility.
 
 ## Deliberately not implemented
 
-- Public registration, email/phone/OAuth login, usernames as credentials, passwords, Web Setup
-  Token, or a second administrator identity.
-- Highlights, annotations, bookmarks, comments, forums, messaging, sharing, ranking, payments,
-  advertising, public publishing, or a download centre.
-- Reader upload, raw EPUB/TXT download, metadata editing, deletion, archiving, or publication.
-- LLM calls, provider credentials, Redis, workers, queues, scheduled jobs, or external analytics.
-- Tauri or other native applications, object storage, public file URLs, Series nesting, or
-  automatic Series inference/reordering.
-- Sliding session renewal, out-of-band security-event notification, and a production kill switch
-  for body-delivery Refresh Tokens remain deferred decisions (ADR 0016 scope), not gaps.
+- Public registration/catalogue, email/phone/OAuth/password login, a second administrator, public
+  publishing/downloads, social/comment/messaging/ranking/payment/advertising features.
+- EPUB, manga or arbitrary-document translation; per-chapter review/editor workflows; browser
+  Provider configuration; Provider keys in Novel Platform; client-supplied model/profile/URL;
+  arbitrary Artifact downloads; Redis, workers, queues or scheduled polling.
+- Real OpenAI-compatible Provider configuration/calls and real user-content egress. A real paid
+  call requires separate key configuration and explicit authorization for that call.
+- Automatic cleanup of unknown LinguaSpindle resources or any ownership of LinguaSpindle SQLite,
+  Artifact volume, schema, image, container or network.
 
 ## Deployment state
 
-The repository supplies HTTPS/WebAuthn configuration and guarded v0.4.0-to-v0.5.0 upgrade,
-backup, isolated restore, and rollback instructions. v0.8.0 adds no database migration, API
-contract, permission, topology, or data-conversion change; application rollback to the accepted
-v0.7.0 build requires no Alembic downgrade or database restore. The single-host staging contract
-reserves public 80/443 for host Caddy/Nginx and binds the Compose Web proxy only to
-`127.0.0.1:8080`. v0.8.0 tightens the staging environment: the configuration validator now
-requires `SameSite=Strict` authentication Cookies in staging/production, and the Compose Web image
-build accepts `STAGING_REAL_IP_PEER` (default `172.30.19.1`) plus `AUTH_DEVICE_COOKIE_TTL_DAYS`
-(default 365). Real host-edge client-IP restoration, real-domain Passkey ceremonies, and
-production rate-limit thresholds remain `DEPLOYMENT_PENDING` until verified under explicit
-deployment authorization. No real server was deployed or migrated by this milestone implementation.
+No remote database was reset or migrated, no remote credential was reinitialized, no Compose
+network was changed, no LinguaSpindle Provider was configured/called, and no application was
+deployed by this implementation. Local work is on `codex/v0.9.0-contributor-translation` and has
+not been pushed.
+
+Deployment requires a reviewed candidate SHA, migration-head and sanitized count preflight,
+coordinated PostgreSQL+library backup with isolated restore, explicit approval for the destructive
+migration/reset target, private network and v0.3.1 checks, capability identity matrix, synthetic
+Mock short-TXT translation, exact cleanup, persistence/restart checks and before/after topology
+comparison. Real HTTPS/Passkey and real Provider verification remain deployment/operator work.
 
 ## Update triggers
 
-Update this file when milestone scope, capability, omission, verification, or deployment state
+Update this file when milestone scope, capability, omissions, verification or deployment state
 changes. Put durable rationale in ADRs and module navigation in `docs/MODULE_MAP.md`.

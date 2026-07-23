@@ -98,7 +98,7 @@ PY
 }
 
 if [[ "$mode" == "--test" ]]; then
-  report_file="${3:-${STAGING_REPORT_DIR:-$STAGING_ROOT/reports}/restore-v050-test-report.md}"
+  report_file="${3:-${STAGING_REPORT_DIR:-$STAGING_ROOT/reports}/restore-v090-test-report.md}"
   temporary_database="novel_restore_$(date -u +%Y%m%d%H%M%S)_$RANDOM"
   temporary_volume="novel_restore_${RANDOM}_$(date -u +%s)"
   expected_files="$(mktemp)"
@@ -219,13 +219,36 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
   audit_events="$(compose exec -T postgres sh -c \
     'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc "SELECT count(*) FROM auth_audit_events"' \
     sh "$temporary_database")"
+  credential_capabilities="$(compose exec -T postgres sh -c \
+    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc "SELECT count(*) FROM reader_credential_capabilities"' \
+    sh "$temporary_database")"
+  translation_runs="$(compose exec -T postgres sh -c \
+    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc "SELECT count(*) FROM edition_translation_runs"' \
+    sh "$temporary_database")"
+  missing_attribution="$(compose exec -T postgres sh -c \
+    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+      "SELECT (SELECT count(*) FROM books WHERE created_by_user_id IS NULL) +
+              (SELECT count(*) FROM book_editions WHERE created_by_user_id IS NULL) +
+              (SELECT count(*) FROM stored_files WHERE created_by_user_id IS NULL) +
+              (SELECT count(*) FROM library_imports WHERE requested_by_user_id IS NULL)"' \
+    sh "$temporary_database")"
+  credentials_without_read="$(compose exec -T postgres sh -c \
+    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+      "SELECT count(*) FROM reader_access_credentials rac
+       WHERE NOT EXISTS (
+         SELECT 1 FROM reader_credential_capabilities rcc
+         WHERE rcc.credential_id = rac.id AND rcc.capability = '\''library.read'\''
+       )"' \
+    sh "$temporary_database")"
+  (( missing_attribution == 0 )) || die "restored v0.9 content contains missing contributor attribution"
+  (( credentials_without_read == 0 )) || die "restored credential is missing library.read"
   stored_files="$(wc -l <"$expected_files" | tr -d ' ')"
   temporary_files="$(wc -l <"$expected_temporary_files" | tr -d ' ')"
   cleanup_test_verified
   trap - EXIT
   mkdir -p "$(dirname "$report_file")"
   cat >"$report_file" <<EOF
-# Novel Platform v0.5.0 isolated restore test
+# Novel Platform v0.9.0 isolated restore test
 
 - Status: **PASS**
 - Completed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -248,6 +271,10 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
 - Authentication sessions present: $sessions
 - Site settings rows present: $site_settings
 - Security audit events present: $audit_events
+- Credential capability rows present: $credential_capabilities
+- Translation runs present: $translation_runs
+- Missing contributor attribution rows: $missing_attribution
+- Credentials missing library.read: $credentials_without_read
 - Stored files verified: $stored_files
 - Referenced temporary files verified: $temporary_files
 

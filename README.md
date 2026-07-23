@@ -2,23 +2,24 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-漫读 v0.8.0 (`novel-platform`) is a private, self-hosted digital reading and
+漫读 v0.9.0 (`novel-platform`) is a private, self-hosted digital reading and
 collection-management site designed for a personal, non-commercial deployment. One administrator
-maintains a shared EPUB/TXT collection. A small number of invited readers can read published
-Editions and keep independent progress, settings, preferences, devices, and Sessions.
+owns a shared EPUB/TXT collection. A small number of invited people can read published Editions;
+selected credentials may also upload file-backed contributions or request TXT novel translation.
+Each person keeps independent progress, settings, preferences, devices, and Sessions.
 The current Web interface is Chinese-localized.
 
-It intentionally has no public registration/catalogue, reader upload, public raw download,
-username/password login, comments, social features, payments, advertising, or public publishing.
+It intentionally has no public registration/catalogue, public raw download, username/password
+login, comments, social features, payments, advertising, or public publishing.
 
-The v0.8.0 milestone is authentication hardening (ADR 0016): the staging proxy restores the real
-client IP from a single trusted host-edge peer and rate-limits the public authentication entries,
-refresh rotation is bound to the Session's device secret, cookie-mode refresh requires an
-allowlisted Origin, and staging/production enforce SameSite=Strict authentication Cookies. It does
-not change the accepted v0.5.0 API, authorization, data, import, file-revision, or Reader-state
-contracts.
+The v0.9.0 milestone adds immutable `library.read`, `library.upload`, and `translation.use`
+credential capabilities, durable creator attribution and creator-aware deletion rules. Novel
+translation is orchestrated by the Server through a separately deployed LinguaSpindle v0.3.1
+service on a private network; Provider secrets never enter Novel Platform or the browser. Verified
+successful TXT artifacts become creator-owned draft generated Editions, and only the administrator
+can publish them.
 
-The current repository version is v0.8.0 and remains pre-1.0 software. Review the
+The current repository version is v0.9.0 and remains pre-1.0 software. Review the
 [current project state](docs/PROJECT_STATE.md) and [deployment runbook](docs/staging-deployment.md)
 before exposing an installation to the Internet.
 
@@ -29,7 +30,11 @@ before exposing an installation to the Internet.
 - Read through a bounded, sanitized Reader Projection instead of exposing raw source files to
   invited readers.
 - Use resident, user-verified Passkeys for administrator login and high-entropy, rotatable,
-  one-time-displayed credentials for invited readers.
+  one-time-displayed credentials with explicit capability snapshots for invited people.
+- Attribute uploaded/generated Books, Editions, files, imports, and Translation Runs to the
+  durable User while retaining one administrator-owned library and creator-aware mutation rules.
+- Translate readable TXT Editions through Server-only private LinguaSpindle HTTP with persisted,
+  idempotent Runs, bounded artifact ingestion, creator draft preview, and administrator publish.
 - Bind Sessions to server-authorized Devices, rotate refresh tokens, revalidate authorization on
   every protected request, and retain structured security audit events without raw secrets.
 - Keep progress, Reader settings, preferred Editions, Devices, and Sessions private to each
@@ -48,6 +53,8 @@ Browser
       -> FastAPI modular monolith
           -> PostgreSQL
           -> private local EPUB/TXT library volume
+          -> optional private HTTP -> LinguaSpindle v0.3.1
+                                      -> its own SQLite/artifact volume/Provider secret
 ```
 
 The production boundary contains no public catalogue, public object store, external identity
@@ -113,8 +120,10 @@ a file, paste it into chat, store it in an environment variable, or include it i
 Open `http://localhost:3000/login`, enter the credential, and immediately register the first
 Passkey. The recovery Session cannot access the library or administration pages before this step.
 
-Afterward, use “使用安全设备登录” for daily administrator access. Create invited readers under
-“管理 → 阅读者与凭证”; each complete reader credential is likewise displayed only once.
+Afterward, use “使用安全设备登录” for daily administrator access. Create invited people under
+“管理 → 阅读者与凭证”, select upload/translation capabilities as needed, and store the new
+credential immediately; each complete value is displayed only once. Capability changes require
+reissue and revoke the old credential, Devices, Sessions, and Refresh Tokens immediately.
 
 Stop without deleting PostgreSQL or library data:
 
@@ -131,6 +140,9 @@ docker compose down --volumes
 ## Authentication model
 
 - Reader identity is durable; credential reissue preserves progress/settings/preferences.
+- Every invited credential always includes `library.read`; optional `library.upload` and
+  `translation.use` are immutable database-backed snapshots. JWT or UI state is never the
+  authorization authority.
 - Reader access credentials and administrator recovery credentials contain at least 256 bits of
   randomness. PostgreSQL stores only domain-separated HMACs and safe hints.
 - Device authorization uses a server-generated HttpOnly device-secret Cookie. IP and
@@ -167,7 +179,9 @@ Production requires:
 `compose.staging.yml` publishes only Nginx. API and PostgreSQL stay on private networks. Nginx
 restores the real client IP from the single trusted host-edge peer, rate-limits the public
 authentication entries, and the Uvicorn process trusts only Nginx's fixed internal address.
-See [the deployment runbook](docs/staging-deployment.md).
+When translation is enabled, add `compose.translation.yml`; it joins only `server` to the existing
+external `linguaspindle-private` network and adds no host port. Provider keys remain exclusively in
+LinguaSpindle. See [the deployment runbook](docs/staging-deployment.md).
 
 ## Security
 
@@ -218,20 +232,25 @@ Use `admin lock` for an immediate administrator stop. It revokes administrator S
 server CLI can unlock. `admin credentials reset` revokes Passkeys and all administrator Sessions,
 then emits a recovery credential for registering a new Passkey.
 
-## Shared library and reader boundary
+## Shared library and contributor boundary
 
 The unique administrator remains the explicit owner of Books, Editions, StoredFiles, imports,
-and Series. Invited readers receive a filtered readable projection:
+Translation Runs, and Series. Resource attribution is separate: every Book, Edition, StoredFile,
+Import, and Run records the durable User that created/requested it. Invited people receive a
+filtered readable projection:
 
 - only Books with a `ready`, current-file-backed Edition;
 - only `ready`, current-file-backed Editions;
 - only Series containing visible Books;
 - protected covers and safe EPUB/TXT Reader sections/resources.
 
-Readers may update only their own progress, status, Reader Settings, preferred/last-opened
-Edition, device names, and Session/device revocations. Backend authorization rejects reader
-imports, Book/Edition/Series mutations, raw EPUB/TXT download, reader/site/audit administration,
-and Passkey management; hiding buttons is not the security control.
+Read-only credentials may update only their own progress, status, Reader Settings,
+preferred/last-opened Edition, device names, and Session/device revocations. `library.upload`
+permits file-backed create/add plus management of that User's own uploaded resources;
+`translation.use` independently permits readable-TXT translation and management of that User's
+own Runs/generated Editions. Neither grants Series, raw download, publish, reader/site/audit, or
+Passkey administration. A Book creator cannot delete a Book containing another User's
+contribution. Backend checks capability and resource creator; hiding buttons is not security.
 
 The accepted v0.4 Reader, file-revision, Edition-identity, source/supersedes, progress-conflict,
 and Series invariants remain unchanged.
@@ -245,6 +264,22 @@ catalogue metadata is embedded in the SPA build or requested anonymously.
 FastAPI applies `X-Robots-Tag: noindex, nofollow, noarchive` to non-health responses. Nginx applies
 the same policy to HTML/static responses. This complements authentication; it is not access
 control.
+
+## v0.8.0 to v0.9.0 capability and translation upgrade
+
+v0.9.0 adds Alembic `20260723_0006`. It deletes fileless placeholder Editions and Books, clears
+their dependent preferences/progress/links, backfills retained content attribution to the unique
+library owner, grants existing invited credentials only `library.read`, and creates Translation
+Run storage. The migration refuses an incomplete v0.5 conversion, ambiguous owner, active Import,
+or inconsistent file references. It has no downgrade; rollback restores the matching coordinated
+PostgreSQL + library backup.
+
+Before migration, record sanitized counts, stop writers, create `scripts/backup-library.sh` output,
+and pass `scripts/restore-library.sh --test`. Actual server migration or a disposable reset requires
+explicit approval for the exact target. Never delete/rebuild LinguaSpindle SQLite, artifact volume,
+container, or network. After the database upgrade, configure the non-secret `LINGUASPINDLE_*`
+values, verify v0.3.1/private DNS/no host port/mandatory idempotency, and add
+`compose.translation.yml` only to the Server deployment when translation is ready.
 
 ## v0.7.0 to v0.8.0 security upgrade
 
@@ -314,18 +349,20 @@ Create a coordinated backup on the configured host:
 
 It briefly stops writers, produces a PostgreSQL custom dump plus library archive and manifest,
 and rejects mismatched database/file references before publishing the backup directory. The dump
-includes credentials, Passkeys, devices, Sessions, site settings, audit rows, Books, Editions,
-file revisions, Series, preferences, settings, and progress.
+includes credentials and capability rows, Passkeys, devices, Sessions, site settings, audit rows,
+Books, Editions, contributor attribution, Translation Runs, file revisions, Series, preferences,
+settings, and progress. The manifest explicitly excludes LinguaSpindle data and resources.
 
 Always restore-test into isolated resources first:
 
 ```bash
 ./scripts/restore-library.sh --test \
-  /srv/novel-platform/data/backups/novel-platform-v050-TIMESTAMP
+  /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP
 ```
 
 The test verifies manifest hashes, Alembic revision, permanent file checksums, temporary
-references, and the new v0.5 tables, then removes only the temporary database and volume. An
+references, capability/attribution/Translation Run tables, then removes only the temporary
+database and volume. An
 intentional live restore additionally requires `ALLOW_STAGING_RESTORE=1`, `--staging`, and exact
 database-name confirmation. It never runs an automatic Alembic downgrade.
 
@@ -369,38 +406,33 @@ Integration tests require PostgreSQL and never use SQLite or live data.
 
 ## Automated acceptance
 
-The v0.8.0 release gate creates a unique Compose project, random ports and independent random
-secrets, then uses real Chromium with a virtual WebAuthn authenticator and at least four isolated
-browser contexts:
+The v0.9.0 release gate uses unique, disposable Compose projects and an isolated PostgreSQL
+database. It replays applicable authentication/Reader/proxy behavior, then exercises the current
+capability, contributor, migration, translation, Web, backup and leak contracts:
 
 ```bash
 pnpm acceptance
 # equivalent
-pnpm acceptance:v080
+pnpm acceptance:v090
 ```
 
-It replays all 84 v0.5.0 criteria covering public denial/noindex, CLI initialization and recovery
-confinement, Passkey registration/login, reader credentials and four-device limits, direct RBAC
-bypass attempts, Reader Projection/progress conflict, restart persistence, complete
-backup/isolated restore, and leak scanning. It adds 9 hardening criteria (106-114): a simulated
-host-edge → Compose Nginx → API chain proves the application sees the real client IP, forged
-`X-Forwarded-For` is rejected, untrusted peers cannot inject a source, the login and Passkey
-options entry rate limits return a stable JSON 429 with `Retry-After` and `no-store` without
-writing audit or challenge rows, cookie-mode refresh requires an allowlisted Origin, refresh
-rotation is bound to the device secret, and staging enforces SameSite=Strict cookies. Directed
-quality gates also pass 67 Python unit tests, 20 PostgreSQL integration tests, and 37 Web tests.
+The gate preserves the 84 applicable v0.5 core criteria and 9 v0.8 proxy/auth-hardening criteria,
+then adds 11 v0.9 criteria: capability lifecycle, four-identity actor/resource policy, legacy API
+removal and migration, private-service idempotency/control/atomic ingestion, retranslation and
+draft publication, service isolation, leak resistance, coordinated backup/restore, desktop/320 px
+visual evidence, and exact cleanup. Synthetic fake transport is mandatory. Real v0.3.1 + Mock
+Provider and real OpenAI-compatible Provider remain `PENDING_OPERATOR_CONFIG` until configured;
+the gate never presents fake/Mock output as a real AI translation.
 
-Sanitized outputs are `artifacts/acceptance-v080.{md,json}` and the inherited core evidence in
-`artifacts/acceptance-v080-core.json`. Real host-edge, real-domain Passkey, and production
-rate-limit verification are reported as `DEPLOYMENT_PENDING` until run under explicit deployment
-authorization. Set `KEEP_ACCEPTANCE_ENV=1` only when preserving a failed isolated environment for
-local diagnosis.
+Sanitized outputs are `artifacts/acceptance-v090.{md,json}`, inherited replay evidence is written
+under `artifacts/acceptance-v090-regression*`, and visual evidence is under
+`artifacts/visual-v090/`. Remote migration, network changes, HTTPS/Passkey, Provider, persistence,
+and cleanup checks remain `DEPLOYMENT_PENDING` until separately authorized. Set
+`KEEP_ACCEPTANCE_ENV=1` only when preserving a failed isolated environment for local diagnosis.
 
-Historical gates remain available as `acceptance:v010` through `acceptance:v070`; they are not
-the v0.8.0 release gate. The v0.5 core remains directly runnable and is parameterized for replay
-rather than weakened or skipped. Historical v0.7.0 evidence remains at
-`artifacts/acceptance-v070.{md,json}`, `artifacts/bundle-v070.{md,json}`, and
-`artifacts/visual-v070/`.
+Historical gates `acceptance:v010` through `acceptance:v080` remain directly runnable with their
+historical evidence and contracts. v0.9 does not rewrite them to claim fileless creation remains
+supported.
 
 ## Superseded acceptance
 
@@ -411,6 +443,10 @@ v0.5.0 intentionally supersedes historical assertions that depended on:
 - Web creation of local username/password Users;
 - each ordinary member owning and uploading to an isolated personal library;
 - ordinary members downloading raw source files or mutating content.
+
+v0.9.0 additionally supersedes public metadata-only Book/Edition creation and any assertion that
+an invited credential can never write. New content must be file-backed or verified generated
+output, and invited writes require both a current capability and creator-aware resource policy.
 
 Those behaviors are not retained as compatibility backdoors. Still-valid BookEdition, file
 revision, safe Reader, private-state, Series, persistence, backup/restore, and leak assertions are
@@ -424,8 +460,11 @@ All API endpoints use `/api/v1`:
 - `/auth`: credential/Passkey login, registration, refresh, identity, logout, and Sessions;
 - `/devices`, `/users/me`: viewer-private controls;
 - `/admin/readers`, `/admin/site`, `/admin/audit`: administrator-only management;
-- `/books`, nested `/editions`, `/series`: readable queries plus administrator mutations;
-- `/imports`: administrator-only inspect/commit/revision operations;
+- `/books`, nested `/editions`, `/series`: readable queries plus capability/creator-aware library
+  mutations (Series remains administrator-only);
+- `/imports`: administrator or `library.upload` inspect/commit/revision operations, actor-isolated;
+- nested `/translation-runs` and `/translations`: actor-scoped TXT translation creation, listing,
+  controls, synchronization, draft preview, and administrator publication;
 - `/editions/{id}/file`: administrator-only raw download;
 - protected Book cover endpoints and `/editions/{id}/reader/*`: safe readable assets;
 - `/books/{id}/preferences`, `/reader/settings`, `/reader/recent`: viewer-private state;

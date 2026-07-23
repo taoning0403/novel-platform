@@ -1,8 +1,10 @@
 # Architecture
 
-漫读 (`novel-platform`) v0.8.0 remains a modular monolith: one React client, one FastAPI process,
-PostgreSQL, and a private local library volume. The public product is a personal non-commercial
-reading and collection-management site, not a public platform or book distribution service.
+漫读 (`novel-platform`) v0.9.0 remains a modular monolith: one React client, one FastAPI process,
+PostgreSQL, and a private local library volume. Optional novel translation crosses one explicit
+boundary to a separately deployed LinguaSpindle v0.3.1 service. The product remains a personal
+non-commercial reading and collection-management site, not a public platform or distribution
+service.
 
 ```text
 Browser
@@ -12,22 +14,28 @@ Nginx (static SPA, bounded upload proxy, header hardening)
   │ controlled proxy network
   v
 FastAPI modular monolith
-  ├── authentication / WebAuthn / reader administration / site / audit
-  ├── Books / Editions / imports / files / Series
+  ├── authentication / credential capabilities / WebAuthn / administration / audit
+  ├── contributor-attributed Books / Editions / imports / files / Series
+  ├── actor-scoped Translation Run orchestration
   ├── safe Reader Projection / progress / settings / preferences
   ├── PostgreSQL
-  └── private library volume
+  ├── private Novel Platform library volume
+  └── private HTTP (Server only)
+       └── LinguaSpindle v0.3.1
+            ├── independent SQLite + Artifact volume
+            └── Provider configuration and secret
 ```
 
-There is no Redis, worker, queue, public object store, external identity provider, analytics
-service, mail/SMS dependency, or Cloudflare requirement. Cloudflare Access may be an optional
-outer layer, but application authentication and authorization stand alone.
+Novel Platform and LinguaSpindle share no identity, database, volume or domain model. Browser,
+Web, migrate and PostgreSQL never join the translation network. There is no Redis, worker, queue,
+public object store, external identity provider, analytics service, mail/SMS dependency, or
+Cloudflare requirement. Cloudflare Access may be an optional outer layer, but application
+authentication and authorization stand alone.
 
 ## Web component and route boundary
 
-The v0.7.0 Web client applies the 漫读 Quiet Trace system without changing the HTTP,
-authentication, or authorization architecture. It retains the v0.6.0 Ant Design component
-foundation and route boundaries:
+The Web client retains the v0.7.0 漫读 Quiet Trace system and v0.6.0 Ant Design component
+foundation. v0.9 navigation/routes project server-returned capabilities and permission flags:
 
 ```text
 AppProviders
@@ -37,11 +45,12 @@ AppProviders
             ├── AppShell (non-Reader routes)
             │    ├── grouped desktop sidebar + account actions
             │    ├── mobile top bar + frequent bottom navigation
-            │    ├── role-aware full-navigation More Drawer
+            │    ├── capability-aware full-navigation More Drawer
             │    └── logout, recovery confinement, version footer
             └── lazy page routes + accessible Suspense fallback
                  ├── BrandMark / InterfaceIcon / shared interaction components
-                 ├── task-oriented Login / Library / administration layouts
+                 ├── Login / Library / contribution / administration layouts
+                 ├── Translation launch modal + actor-scoped master-detail workspace
                  ├── page and feature CSS Modules
                  └── Reader full-screen shell
                       ├── dedicated theme and publication typography
@@ -154,30 +163,37 @@ Local automated acceptance uses `localhost` and Chromium's virtual WebAuthn auth
 
 ## Authorization and library visibility
 
-The application separates two subjects:
+The application separates three subjects:
 
-- `library_owner_user_id`: the unique administrator used by manageable content queries;
+- `library_owner_user_id`: the unique administrator used for site-library containment, Series,
+  storage integrity and backup;
+- `actor_user_id`: the durable User attributed to uploaded/generated resources and Runs;
 - `viewer_user_id`: the authenticated identity used for progress, settings, preferences, devices,
   and Sessions.
 
-This avoids replacing historical owner scope with “any logged-in User.” Administrator mutations
-and raw file access require manager context in both route dependency and application service.
-Reader queries explicitly require a Book with a `ready`, current-file-backed Edition; Edition and
-Series results are filtered to the same readable set.
+Invited authority is stored on the current credential, not the User or JWT. `library.read` is
+mandatory; `library.upload` and `translation.use` are optional immutable snapshots. Every
+protected request reloads Session, credential and capability rows. Route dependencies first check
+administrator/capability/recovery confinement; application services then check the actor, library
+owner, resource creator, state and dependencies. Admin cannot bypass integrity constraints.
 
 ```text
-administrator                         invited reader
--------------                         --------------
-all content states                    ready + current-file Editions only
-Book/Edition/Series CRUD              no content mutation
-inspect/commit/replace imports        no import visibility or API access
-protected raw EPUB/TXT download       safe Reader Projection only
-own reading state                     own reading state
-reader/site/audit/Passkey admin       no administration
+administrator          read-only            library.upload             translation.use
+-------------          ---------            --------------             ---------------
+all content states     ready/current-file   ready/current-file         ready/current-file
+all library resources  no content mutation  own uploaded resources     own Runs/generated Editions
+Series/publish/raw      none                 none                       none
+all Runs/control       none                 none                       own Runs/control
+own reading state      own reading state    own reading state          own reading state
+security/site admin    none                 none                       none
 ```
 
-Cross-identity private resources retain 404 hiding. Role-forbidden management endpoints use stable
-403 responses. UI visibility is only presentation; direct API tests enforce every boundary.
+Upload and translation do not imply each other. A combined credential receives the union but
+never another actor's resource authority. A contributor-created Book containing another User's
+Edition/Run returns `409 book_contains_other_contributions` for contributor Book deletion. Active
+Import/Run and source/supersedes/file dependencies remain blocking. Cross-identity private
+Import/Run/draft resources retain 404 hiding; visible-but-forbidden writes use stable 403. UI
+visibility remains presentation only.
 
 ## Reader projection and private state
 
@@ -196,20 +212,50 @@ viewer-private. The administrator participates as a viewer with state independen
 
 ## Import, file revision, and Series boundaries
 
-Only the administrator runs the existing inspect-preview-commit import flow. Upload bytes are
-bounded and validated before a single commit transaction creates or changes Book/Edition/file
-relations. Edition-file replacement appends a new revision and preserves Edition identity.
-Storage cleanup is compensating and idempotent; database rollback does not leave a published
-partially committed domain graph.
+The administrator or a current `library.upload` credential runs inspect-preview-commit. Imports are
+isolated by `requested_by_user_id`; the administrator sees all, while another actor receives 404.
+Upload bytes are bounded and validated before one transaction creates/changes Book/Edition/file
+relations. `owner_user_id` remains the administrator; creator columns record the actor. An invited
+uploader may replace only a self-created Edition. Replacement appends a revision and preserves
+Edition identity. Compensation is idempotent and precisely deletes only unreferenced objects.
 
 Series remains an administrator-owned ordered grouping. A Book belongs to at most one Series;
 deleting a Series retains Books, Editions, files, preferences, and progress. Reader Series
 responses filter invisible Books and omit empty shells.
 
+## Private translation boundary
+
+Translation is synchronous HTTP orchestration from Server with persisted recovery state; React
+never performs remote multi-step calls and the HTTP client never creates an Edition.
+
+```text
+actor + fixed readable TXT EditionFile
+  -> create Run (actor/client UUID idempotency + source revision/SHA snapshot)
+  -> Lingua status/version/pipeline/provider/idempotency checks
+  -> deterministic Project + Job requests and stored correlation IDs
+  -> on-demand selected-Run sync/control (no worker or scheduler)
+  -> terminal successful Artifact metadata
+  -> same-origin bounded streaming download + size/SHA/format validation
+  -> shared generated-ingestion kernel + one DB transaction + file compensation
+  -> draft/ai/generated Edition owned by library owner, attributed to actor
+  -> creator-only preview -> administrator-only ready publication
+```
+
+Base URL, compatible version, Provider/Profile identity, timeouts and maximum download size are
+operator configuration. Provider keys exist only inside LinguaSpindle. The browser submits no
+Provider/model/profile/URL/download choice. The client follows no redirects, accepts only fixed
+same-origin endpoints, does not propagate remote response bodies, and sanitizes error details.
+
+The Run stores exact Project/Job/Artifact IDs. Retry recovers with deterministic idempotency;
+cleanup may delete only that stored Project. A cleanup failure never rolls back an already
+ingested Edition. Lingua availability is deliberately absent from main readiness, so disabling the
+feature/network affects only translation.
+
 ## Auditing and retention
 
-Authentication, credential, device, Session, Passkey, recovery, administrator-control, site
-setting, and important permission events use bounded structured audit rows. Metadata never
+Authentication, credential/capability, device, Session, Passkey, recovery, contributor mutation,
+translation control/publication, administrator-control, site setting, and important permission
+events use bounded structured audit rows. Metadata never
 contains raw credentials, tokens, Cookies, challenges, secrets, storage paths, or book content.
 The configured default retention is 90 days. There is no scheduler; an operator runs
 `auth audit cleanup`, which records a summary event after deletion.
@@ -221,31 +267,36 @@ Device-limit errors are the one explicit non-enumerating operational response.
 
 ## Migration, backup, and failure posture
 
-Alembic `20260715_0005` only adds/extends schema. The separate read-only preflight reports current
-revision, administrators, owners, private-state counts, and active authentication rows. Formal
-conversion refuses ambiguity unless the operator selects the target administrator and maps every
-other administrator to a reader. It then consolidates all content-owner FKs, clears password
-hashes, revokes legacy Device/Session/Refresh state, and marks migration complete without creating
-plaintext reader credentials.
+Alembic `20260723_0006` follows the completed v0.5 identity/owner conversion. Its internal
+count-only preflight refuses a missing conversion, non-unique owner/admin, owner mismatch, active
+Import, missing/mismatched file reference or invalid current-file set. It then clears private
+state/links pointing at fileless placeholders, deletes those Editions and resulting empty Books,
+backfills creator columns, grants every retained credential only `library.read`, and creates Run
+storage. It cannot be downgraded because placeholder deletion is destructive.
 
 Deployment order is:
 
 ```text
-validate HTTPS/secrets -> stop writers -> coordinated database+library backup
--> Alembic -> preflight -> explicit conversion -> volume integrity audit
--> API/Web health -> administrator recovery/Passkey verification
+validate candidate/config/topology -> stop writers -> sanitized count preflight
+-> coordinated database+library backup -> isolated restore
+-> explicit approval for destructive migration/reset -> Alembic 20260723_0006
+-> volume integrity audit -> API/Web health + credential capability matrix
+-> optional Server-only translation network -> v0.3.1 Mock short TXT/retranslation/cleanup
+-> restart persistence + before/after topology comparison
 ```
 
 The library audit compares database permanent references/checksums and temporary references with
-the mounted volume but reports only counts. A coordinated backup captures PostgreSQL and the
-library while writers are stopped. Restore must first succeed against a temporary database and
-temporary volume. Rollback restores matching code + database + volume from that backup; deploy
-automation never guesses an Alembic downgrade and leaves the application stopped after a failed
-migration or integrity check.
+the mounted volume but reports only counts. A coordinated backup captures Novel Platform
+PostgreSQL and library while writers are stopped, including capability/creator/Run state. Its
+manifest excludes LinguaSpindle SQLite/Artifacts/containers/networks. Restore must first succeed
+against a temporary database and temporary volume. Rollback restores matching code + database +
+volume; a translation-only failure disables the feature/network without deleting generated
+Editions. Remote Projects are never cleaned by pattern or inventory guess.
 
 ## Deliberate omissions
 
-v0.8.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
-public registration/catalogue, payments, advertising, reader downloads/uploads, LLM workflows,
-native clients, scheduled jobs, object storage, or Series nesting/reordering. Adding any durable
-boundary requires a new explicit milestone and ADR.
+v0.9.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
+public registration/catalogue, payments, advertising, public/raw downloads, native clients,
+scheduled jobs, object storage, Series nesting/reordering, EPUB/manga translation, per-chapter
+review, browser Provider configuration, client-supplied credentials or arbitrary Artifact URLs.
+Adding any durable boundary requires a new explicit milestone and ADR.

@@ -6,10 +6,14 @@ import path from "node:path";
 
 const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
-const markdownPath = path.join(artifacts, "acceptance-v080.md");
-const jsonPath = path.join(artifacts, "acceptance-v080.json");
-const actionLogPath = path.join(artifacts, "acceptance-v080-actions.log");
-const coreJsonPath = path.join(artifacts, "acceptance-v080-core.json");
+const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.8.0";
+const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v080";
+const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v080";
+const coreTag = `${acceptanceTag}-core`;
+const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
+const jsonPath = path.join(artifacts, `acceptance-${acceptanceTag}.json`);
+const actionLogPath = path.join(artifacts, `acceptance-${acceptanceTag}-actions.log`);
+const coreJsonPath = path.join(artifacts, `acceptance-${coreTag}.json`);
 const chainComposeFile = "scripts/acceptance-v080.chain.yml";
 const started = new Date();
 const actions = [];
@@ -127,7 +131,7 @@ async function waitFor(url, timeoutMs = 240_000) {
   throw new Error(`${url} did not become ready`);
 }
 
-const chainProject = `novel-v080-chain-${process.pid}-${Date.now()}`;
+const chainProject = `novel-${acceptanceTag}-chain-${process.pid}-${Date.now()}`;
 const chainEnvironment = { ...process.env };
 const dockerChain = (label, args) =>
   run(label, "docker", ["compose", "-p", chainProject, "-f", chainComposeFile, ...args], {
@@ -148,7 +152,7 @@ function bogusLoginPayload() {
       client_instance_id: randomUUID(),
       name: "链路探测设备",
       platform: "web",
-      app_version: "0.8.0-acceptance",
+      app_version: `${acceptanceVersion}-acceptance`,
     },
   };
 }
@@ -205,7 +209,7 @@ async function cookieLogin(jarPath, credential) {
       client_instance_id: randomUUID(),
       name: "链路验收浏览器",
       platform: "web",
-      app_version: "0.8.0-acceptance",
+      app_version: `${acceptanceVersion}-acceptance`,
     },
   };
   const code = (
@@ -229,7 +233,7 @@ async function readJarValue(jarPath, name) {
 
 async function writeReports(status, core, criteria, failure) {
   const report = {
-    version: "0.8.0",
+    version: acceptanceVersion,
     status,
     deployment_status: "DEPLOYMENT_PENDING",
     started_at: started.toISOString(),
@@ -238,7 +242,7 @@ async function writeReports(status, core, criteria, failure) {
     inherited_v050: {
       status: core?.status ?? "NOT_RUN",
       criteria_count: core?.criteria?.length ?? 0,
-      artifact: "artifacts/acceptance-v080-core.json",
+      artifact: `artifacts/acceptance-${coreTag}.json`,
     },
     hardening: {
       criteria,
@@ -251,7 +255,7 @@ async function writeReports(status, core, criteria, failure) {
   await mkdir(artifacts, { recursive: true });
   await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
   const markdown = [
-    "# Novel Platform v0.8.0 authentication hardening acceptance",
+    `# Novel Platform v${acceptanceVersion} authentication hardening acceptance`,
     "",
     `- Status: **${status}**`,
     "- Real-domain verification: **DEPLOYMENT_PENDING**",
@@ -259,9 +263,9 @@ async function writeReports(status, core, criteria, failure) {
     `- Completed: ${report.completed_at}`,
     `- Git commit: ${report.git_commit}`,
     `- Inherited v0.5.0 criteria: ${report.inherited_v050.criteria_count} (${report.inherited_v050.status})`,
-    `- v0.8.0 hardening criteria: ${criteria.length}`,
+    `- v${acceptanceVersion} hardening criteria: ${criteria.length}`,
     "",
-    "## v0.8.0 hardening criteria",
+    `## v${acceptanceVersion} hardening criteria`,
     "",
     "| # | Status | Criterion |",
     "| ---: | --- | --- |",
@@ -286,7 +290,7 @@ async function writeReports(status, core, criteria, failure) {
   await writeFile(
     actionLogPath,
     [
-      "Novel Platform v0.8.0 sanitized acceptance action log",
+      `Novel Platform v${acceptanceVersion} sanitized acceptance action log`,
       "No command arguments, command output, credentials, tokens, Cookies, request bodies, or host paths are recorded.",
       "",
       ...actions.map((label) => `[ACTION] ${label}`),
@@ -336,15 +340,15 @@ async function main() {
   };
 
   try {
-    await step("Replay all 84 v0.5.0 criteria against v0.8.0", async () => {
+    await step(`Replay all 84 v0.5.0 criteria against v${acceptanceVersion}`, async () => {
       run("run inherited v0.5.0 acceptance core", process.execPath, [
         "scripts/acceptance-v050.mjs",
       ], {
         env: {
           ...process.env,
-          ACCEPTANCE_VERSION: "0.8.0",
-          ACCEPTANCE_TAG: "v080-core",
-          ACCEPTANCE_COMMAND: "acceptance:v080",
+          ACCEPTANCE_VERSION: acceptanceVersion,
+          ACCEPTANCE_TAG: coreTag,
+          ACCEPTANCE_COMMAND: acceptanceCommand,
           // The current Web UI is the v0.7 Quiet Trace generation; the v0.5 core
           // uses this profile only to pick the current labels and task paths.
           ACCEPTANCE_PROFILE: "v070",
@@ -477,7 +481,7 @@ async function main() {
       run("check Docker", "docker", ["--version"]);
       run("check Docker Compose", "docker", ["compose", "version"]);
       chainStarted = true;
-      dockerChain("build and start v0.8.0 proxy chain stack", ["up", "--build", "--detach"]);
+      dockerChain(`build and start v${acceptanceVersion} proxy chain stack`, ["up", "--build", "--detach"]);
       await waitFor(`http://127.0.0.1:${edgePort}/healthz`);
       dockerChain("validate built staging Nginx configuration", ["exec", "-T", "web", "nginx", "-t"]);
       const revision = (
@@ -777,7 +781,7 @@ async function main() {
   } finally {
     if (chainStarted && process.env.KEEP_ACCEPTANCE_ENV !== "1") {
       try {
-        dockerChain("remove v0.8.0 proxy chain stack", ["down", "--volumes", "--remove-orphans"]);
+        dockerChain(`remove v${acceptanceVersion} proxy chain stack`, ["down", "--volumes", "--remove-orphans"]);
       } catch (cleanupError) {
         console.error(redact(cleanupError instanceof Error ? cleanupError.message : cleanupError));
       }

@@ -119,7 +119,10 @@ class Settings(BaseSettings):
             raise ValueError("LIBRARY_STORAGE_ROOT cannot be a filesystem root")
         if self.max_epub_uncompressed_bytes < self.max_upload_bytes:
             raise ValueError("MAX_EPUB_UNCOMPRESSED_BYTES must be at least MAX_UPLOAD_BYTES")
-        if self.linguaspindle_max_download_bytes > self.max_upload_bytes:
+        if (
+            self.linguaspindle_enabled
+            and self.linguaspindle_max_download_bytes > self.max_upload_bytes
+        ):
             raise ValueError("LINGUASPINDLE_MAX_DOWNLOAD_BYTES cannot exceed MAX_UPLOAD_BYTES")
         if self.linguaspindle_version_range != ">=0.3.1,<0.4.0":
             raise ValueError("unsupported LINGUASPINDLE_VERSION_RANGE")

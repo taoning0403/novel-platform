@@ -21,23 +21,31 @@
   desktop/mobile navigation, cover-led library and filter workflow, reader-management
   master-detail, restrained responsive Reader chrome, and v0.7 acceptance with preserved
   authentication, authorization, API, and data contracts.
+- v0.8.0: trusted-edge real client IP restoration, public authentication-entry rate limiting,
+  device-secret-bound refresh, allowlisted cookie-refresh Origin, bounded WebAuthn challenge
+  cleanup and SameSite=Strict staging/production Cookies.
+- v0.9.0: immutable invited credential capabilities, durable contributor attribution,
+  creator-aware upload/delete policy, removal of fileless creation, and actor-scoped private
+  LinguaSpindle v0.3.1 TXT translation into creator-preview/admin-publish generated Editions.
 
 ## Committed boundary
 
-There is no committed post-v0.7.0 milestone. New durable behavior requires an explicit task,
+There is no committed post-v0.9.0 milestone. New durable behavior requires an explicit task,
 incremental acceptance criteria, and any necessary ADR before implementation.
 
 ## Reserved future increments
 
 Candidate later work, not committed:
 
-1. Consider annotations/export and traceable editing/retranslation in a later milestone.
+1. Consider annotations/export and per-chapter translation review/editing in a later milestone.
 2. Consider optional source comparison without making normal reading depend on a source link.
 3. Evaluate object storage, a worker, and a queue only when measured workloads justify them.
-4. Add client-supplied LLM credentials only after a reviewed security model.
+4. Consider EPUB/manga translation or alternative Provider workflows only after explicit scope,
+   threat-model and cost/data-egress review; keep Provider secrets outside Novel Platform.
 5. Evaluate native clients only after their secure credential and offline synchronization model is
    designed.
 
-Every increment must preserve the unique administrator owner, invited-reader isolation,
-independent translations, and normal use of a translation without a source link. Do not begin
-another milestone without an explicit task and the necessary ADRs.
+Every increment must preserve the unique administrator owner, database-backed capability plus
+resource-creator checks, invited-user/private-state isolation, independent Editions, and the
+Server-only private service boundary. Do not begin another milestone without an explicit task and
+the necessary ADRs.

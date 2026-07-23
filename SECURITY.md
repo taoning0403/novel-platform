@@ -15,7 +15,7 @@ only the newest release line is supported unless the project states otherwise.
 
 | Version | Supported |
 | --- | --- |
-| Current `main` (currently `0.8.x`) | Yes |
+| Current `main` (currently `0.9.x`) | Yes |
 | Other branches and earlier commits | Best effort only |
 | Older release lines | No |
 

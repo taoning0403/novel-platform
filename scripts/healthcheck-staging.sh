@@ -8,6 +8,7 @@ source "$SCRIPT_DIRECTORY/staging-lib.sh"
 
 require_command curl
 require_command docker
+require_command grep
 load_staging_environment
 validate_staging_environment
 
@@ -38,6 +39,24 @@ for private_service in postgres server; do
   [[ "$published" == "null" || "$published" == "{}" ]] || die "$private_service publishes a host port"
 done
 
+translation_network="linguaspindle-private"
+server_networks="$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$(compose ps -q server)")"
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  docker network inspect "$translation_network" >/dev/null
+  grep -Fq "\"$translation_network\"" <<<"$server_networks" \
+    || die "enabled Server is not attached to linguaspindle-private"
+  for excluded_service in postgres web; do
+    excluded_networks="$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$(compose ps -q "$excluded_service")")"
+    if grep -Fq "\"$translation_network\"" <<<"$excluded_networks"; then
+      die "$excluded_service must not join linguaspindle-private"
+    fi
+  done
+else
+  if grep -Fq "\"$translation_network\"" <<<"$server_networks"; then
+    die "disabled Server unexpectedly remains attached to linguaspindle-private"
+  fi
+fi
+
 revision="$(database_revision)"
 [[ -n "$revision" ]] || die "Alembic revision is unavailable"
 
@@ -48,3 +67,4 @@ printf 'server_probe_url=%s\n' "$healthcheck_base_url"
 printf 'alembic_revision=%s\n' "$revision"
 printf 'public_services=web\n'
 printf 'private_services=server,postgres\n'
+printf 'translation_enabled=%s\n' "$LINGUASPINDLE_ENABLED"

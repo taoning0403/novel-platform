@@ -499,6 +499,11 @@ async function main() {
     OPENAPI_ENABLED: "false",
     TRUST_PROXY_HEADERS: "false",
     MAX_UPLOAD_BYTES: String(1024 * 1024),
+    LINGUASPINDLE_ENABLED: "false",
+    LINGUASPINDLE_BASE_URL: "http://linguaspindle:8765",
+    LINGUASPINDLE_VERSION_RANGE: ">=0.3.1,<0.4.0",
+    LINGUASPINDLE_PROVIDER_ID: "mock",
+    LINGUASPINDLE_MAX_DOWNLOAD_BYTES: String(1024 * 1024),
   };
   const environment = {
     compose_project: project,
@@ -1187,6 +1192,11 @@ async function main() {
         `SERVER_PORT=${serverPort}`,
         `WEB_PORT=${webPort}`,
         `MAX_UPLOAD_BYTES=${1024 * 1024}`,
+        "LINGUASPINDLE_ENABLED=false",
+        "LINGUASPINDLE_BASE_URL=http://linguaspindle:8765",
+        "LINGUASPINDLE_VERSION_RANGE='>=0.3.1,<0.4.0'",
+        "LINGUASPINDLE_PROVIDER_ID=mock",
+        `LINGUASPINDLE_MAX_DOWNLOAD_BYTES=${1024 * 1024}`,
       ];
       await writeFile(environmentFile, `${envLines.join("\n")}\n`);
       await chmod(environmentFile, 0o600);

@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from novel_platform.config import Settings
 from novel_platform.infrastructure.integrations.linguaspindle import (
@@ -41,6 +42,22 @@ def status_handler(request: httpx.Request, *, version: str = "0.3.1") -> httpx.R
         ],
     }
     return httpx.Response(200, json=payloads[request.url.path])
+
+
+def test_download_limit_is_fail_closed_only_when_translation_is_enabled() -> None:
+    disabled = Settings(
+        max_upload_bytes=1024,
+        linguaspindle_enabled=False,
+        linguaspindle_max_download_bytes=2048,
+    )
+    assert disabled.linguaspindle_enabled is False
+
+    with pytest.raises(ValidationError, match="cannot exceed MAX_UPLOAD_BYTES"):
+        Settings(
+            max_upload_bytes=1024,
+            linguaspindle_enabled=True,
+            linguaspindle_max_download_bytes=2048,
+        )
 
 
 @pytest.mark.asyncio

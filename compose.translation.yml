@@ -1,0 +1,9 @@
+services:
+  server:
+    networks:
+      translation: {}
+
+networks:
+  translation:
+    external: true
+    name: linguaspindle-private

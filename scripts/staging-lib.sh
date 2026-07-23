@@ -7,6 +7,7 @@ REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIRECTORY/.." && pwd)"
 STAGING_ROOT="${STAGING_ROOT:-/srv/novel-platform}"
 STAGING_ENV_FILE="${STAGING_ENV_FILE:-$STAGING_ROOT/config/.env.staging}"
 STAGING_COMPOSE_FILE="${STAGING_COMPOSE_FILE:-$REPOSITORY_ROOT/compose.staging.yml}"
+STAGING_TRANSLATION_COMPOSE_FILE="${STAGING_TRANSLATION_COMPOSE_FILE:-$REPOSITORY_ROOT/compose.translation.yml}"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -49,7 +50,9 @@ validate_staging_environment() {
   local name
   for name in PUBLIC_BASE_URL POSTGRES_DB POSTGRES_USER CORS_ORIGINS TRUSTED_HOSTS \
     AUTH_COOKIE_SECURE AUTH_CREDENTIAL_HASH_SECRET WEBAUTHN_RP_ID WEBAUTHN_ORIGINS \
-    OPENAPI_ENABLED; do
+    OPENAPI_ENABLED LINGUASPINDLE_ENABLED LINGUASPINDLE_BASE_URL \
+    LINGUASPINDLE_VERSION_RANGE LINGUASPINDLE_PROVIDER_ID \
+    LINGUASPINDLE_MAX_DOWNLOAD_BYTES MAX_UPLOAD_BYTES; do
     require_environment_value "$name"
   done
   if [[ "${NOVEL_ACCEPTANCE_LOCAL:-0}" == "1" ]]; then
@@ -83,10 +86,35 @@ validate_staging_environment() {
     [[ "$AUTH_COOKIE_SECURE" == "true" ]] || die "v0.5.0 staging requires Secure cookies"
   fi
   [[ "$OPENAPI_ENABLED" == "false" ]] || die "staging must disable anonymous OpenAPI UI"
+  [[ "$LINGUASPINDLE_ENABLED" == "true" || "$LINGUASPINDLE_ENABLED" == "false" ]] \
+    || die "LINGUASPINDLE_ENABLED must be true or false"
+  [[ "$LINGUASPINDLE_VERSION_RANGE" == ">=0.3.1,<0.4.0" ]] \
+    || die "LINGUASPINDLE_VERSION_RANGE must be >=0.3.1,<0.4.0"
+  [[ "$LINGUASPINDLE_BASE_URL" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]+)?$ ]] \
+    || die "LINGUASPINDLE_BASE_URL must be one fixed HTTP(S) origin"
+  [[ "$LINGUASPINDLE_MAX_DOWNLOAD_BYTES" =~ ^[0-9]+$ ]] \
+    || die "LINGUASPINDLE_MAX_DOWNLOAD_BYTES must be a positive integer"
+  [[ "$MAX_UPLOAD_BYTES" =~ ^[0-9]+$ ]] || die "MAX_UPLOAD_BYTES must be a positive integer"
+  (( LINGUASPINDLE_MAX_DOWNLOAD_BYTES > 0 )) \
+    || die "LINGUASPINDLE_MAX_DOWNLOAD_BYTES must be positive"
+  (( LINGUASPINDLE_MAX_DOWNLOAD_BYTES <= MAX_UPLOAD_BYTES )) \
+    || die "LINGUASPINDLE_MAX_DOWNLOAD_BYTES cannot exceed MAX_UPLOAD_BYTES"
+  if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+    [[ "$LINGUASPINDLE_BASE_URL" != "http://localhost:"* \
+      && "$LINGUASPINDLE_BASE_URL" != "http://127.0.0.1:"* \
+      && "$LINGUASPINDLE_BASE_URL" != "http://[::1]:"* ]] \
+      || die "enabled LinguaSpindle cannot use a loopback origin"
+  fi
 }
 
 compose() {
-  docker compose --env-file "$STAGING_ENV_FILE" -f "$STAGING_COMPOSE_FILE" "$@"
+  local compose_files=(-f "$STAGING_COMPOSE_FILE")
+  if [[ "${LINGUASPINDLE_ENABLED:-false}" == "true" ]]; then
+    [[ -f "$STAGING_TRANSLATION_COMPOSE_FILE" ]] \
+      || die "translation Compose overlay not found: $STAGING_TRANSLATION_COMPOSE_FILE"
+    compose_files+=(-f "$STAGING_TRANSLATION_COMPOSE_FILE")
+  fi
+  docker compose --env-file "$STAGING_ENV_FILE" "${compose_files[@]}" "$@"
 }
 
 wait_for_postgres() {

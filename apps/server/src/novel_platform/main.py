@@ -20,7 +20,7 @@ logging.basicConfig(level=settings.log_level.upper())
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.8.0",
+    version="0.9.0",
     docs_url="/api/docs" if settings.openapi_enabled else None,
     redoc_url=None,
     openapi_url="/openapi.json" if settings.openapi_enabled else None,

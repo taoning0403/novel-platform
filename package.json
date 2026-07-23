@@ -1,6 +1,6 @@
 {
   "name": "novel-platform",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "engines": {
@@ -10,7 +10,7 @@
     "api:schema": "cd apps/server && uv run python scripts/export_openapi.py ../../packages/api-client/openapi.json",
     "api:generate": "pnpm api:schema && openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/schema.d.ts",
     "api:check": "pnpm api:generate && git diff --exit-code -- packages/api-client/openapi.json packages/api-client/src/schema.d.ts",
-    "acceptance": "node scripts/acceptance-v080.mjs",
+    "acceptance": "node scripts/acceptance-v090.mjs",
     "acceptance:staging": "node scripts/acceptance-staging-v020.mjs",
     "acceptance:v010": "node scripts/acceptance-v010.mjs",
     "acceptance:v020": "node scripts/acceptance-v020.mjs",
@@ -20,6 +20,7 @@
     "acceptance:v060": "node scripts/acceptance-v060.mjs",
     "acceptance:v070": "node scripts/acceptance-v070.mjs",
     "acceptance:v080": "node scripts/acceptance-v080.mjs",
+    "acceptance:v090": "node scripts/acceptance-v090.mjs",
     "bundle:report": "node scripts/report-web-bundle.mjs",
     "build": "pnpm --filter @novel-platform/web build",
     "dev": "pnpm --filter @novel-platform/web dev",

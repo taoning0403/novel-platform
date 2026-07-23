@@ -17,6 +17,7 @@ fi
 require_command curl
 require_command docker
 require_command git
+require_command grep
 load_staging_environment
 validate_staging_environment
 
@@ -60,6 +61,20 @@ compose run --rm --no-deps --entrypoint python server -c \
 
 before_revision="$(database_revision)"
 printf 'Database revision before migration: %s\n' "${before_revision:-base}"
+if [[ "$before_revision" == "20260715_0005" ]]; then
+  "$SCRIPT_DIRECTORY/preflight-v090.sh"
+  [[ "${ALLOW_V090_DESTRUCTIVE_MIGRATION:-0}" == "1" ]] \
+    || die "set ALLOW_V090_DESTRUCTIVE_MIGRATION=1 after approving the exact target"
+  [[ "${V090_CONFIRM_DATABASE:-}" == "$POSTGRES_DB" ]] \
+    || die "set V090_CONFIRM_DATABASE to the exact POSTGRES_DB value"
+  [[ -n "${V090_RESTORE_TEST_REPORT:-}" && -f "$V090_RESTORE_TEST_REPORT" ]] \
+    || die "set V090_RESTORE_TEST_REPORT to the reviewed isolated-restore PASS report"
+  grep -Fq 'Status: **PASS**' "$V090_RESTORE_TEST_REPORT" \
+    || die "the supplied isolated-restore report is not PASS"
+elif [[ -n "$before_revision" \
+  && "$before_revision" != "20260723_0006" ]]; then
+  die "existing pre-v0.5 database must complete the historical v0.5 conversion before v0.9"
+fi
 printf 'Applying Alembic migrations...\n'
 compose up --no-deps --abort-on-container-exit --exit-code-from migrate migrate
 
@@ -75,7 +90,7 @@ initialized_users="$(compose exec -T postgres sh -c \
 migration_completed="$(compose exec -T postgres sh -c \
   'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
     "SELECT migration_completed_at IS NOT NULL FROM site_settings WHERE id=1"')"
-preflight_file="${STAGING_REPORT_DIR:-$STAGING_ROOT/reports}/v050-migration-preflight-$(date -u +%Y%m%dT%H%M%SZ).json"
+preflight_file="${STAGING_REPORT_DIR:-$STAGING_ROOT/reports}/auth-migration-preflight-$(date -u +%Y%m%dT%H%M%SZ).json"
 compose run --rm --no-deps --entrypoint novel-platform server auth migration preflight \
   >"$preflight_file"
 chmod 600 "$preflight_file"
@@ -115,7 +130,8 @@ cat >"$release_file" <<EOF
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "git_commit": "$git_commit",
   "alembic_revision": "$after_revision",
-  "base_url": "$PUBLIC_BASE_URL"
+  "base_url": "$PUBLIC_BASE_URL",
+  "translation_enabled": $LINGUASPINDLE_ENABLED
 }
 EOF
 chmod 600 "$release_file"

@@ -77,7 +77,7 @@ if [[ "$mode" == "--test" ]]; then
   [[ "$revision" == "$expected_head" ]] || die "restored revision does not match code head"
   mkdir -p "$(dirname "$report_file")"
   cat >"$report_file" <<EOF
-# Novel Platform v0.5.0 temporary restore test
+# Novel Platform v0.9.0 temporary restore test
 
 - Status: **PASS**
 - Completed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
