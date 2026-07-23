@@ -246,6 +246,7 @@ async function main() {
   const databasePort = await freePort();
   const databaseEnvironment = {
     ...process.env,
+    COMPOSE_PROJECT_NAME: databaseProject,
     V090_POSTGRES_PORT: String(databasePort),
   };
   const dockerDatabase = (label, args) => run(
