@@ -18,6 +18,9 @@ const acceptanceExpectedRevision =
 const acceptanceReaderCapabilities = process.env.ACCEPTANCE_READER_CAPABILITIES
   ?.split(",")
   .filter(Boolean);
+const acceptanceLegacyBookPostStatus = Number(
+  process.env.ACCEPTANCE_LEGACY_BOOK_POST_STATUS ?? "403",
+);
 const quietTraceProfile = acceptanceProfile === "v070";
 const releaseLabel = `v${acceptanceVersion}`;
 const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
@@ -892,17 +895,17 @@ async function main() {
       const book = await apiRequest(apiUrl, "GET", `/api/v1/books/${bookId}`, { token: readerToken });
       assert(!/(owner_user_id|storage_key|sha256|\/data\/library)/.test(book.raw), "reader projection leaked storage or owner data");
       assert(book.body.editions[0].current_file.download_url === null, "reader received a raw download URL");
-      for (const [method, route, body] of [
-        ["GET", `/api/v1/editions/${editionId}/file`, undefined],
-        ["POST", "/api/v1/books", { canonical_title: "越权" }],
-        ["PATCH", `/api/v1/books/${bookId}`, { canonical_title: "越权" }],
-        ["POST", "/api/v1/series", { name: "越权" }],
-        ["GET", "/api/v1/admin/site", undefined],
-        ["GET", "/api/v1/admin/readers", undefined],
-        ["GET", "/api/v1/admin/audit", undefined],
-        ["GET", "/api/v1/auth/passkeys", undefined],
+      for (const [method, route, body, expected] of [
+        ["GET", `/api/v1/editions/${editionId}/file`, undefined, 403],
+        ["POST", "/api/v1/books", { canonical_title: "越权" }, acceptanceLegacyBookPostStatus],
+        ["PATCH", `/api/v1/books/${bookId}`, { canonical_title: "越权" }, 403],
+        ["POST", "/api/v1/series", { name: "越权" }, 403],
+        ["GET", "/api/v1/admin/site", undefined, 403],
+        ["GET", "/api/v1/admin/readers", undefined, 403],
+        ["GET", "/api/v1/admin/audit", undefined, 403],
+        ["GET", "/api/v1/auth/passkeys", undefined, 403],
       ]) {
-        await apiRequest(apiUrl, method, route, { token: readerToken, body, expected: 403 });
+        await apiRequest(apiUrl, method, route, { token: readerToken, body, expected });
       }
       const deniedForm = new FormData();
       deniedForm.set("operation", "create_book");

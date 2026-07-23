@@ -267,6 +267,7 @@ async function main() {
           ACCEPTANCE_COMMAND: "acceptance:v090",
           ACCEPTANCE_EXPECTED_REVISION: "20260723_0006",
           ACCEPTANCE_READER_CAPABILITIES: "library.read",
+          ACCEPTANCE_LEGACY_BOOK_POST_STATUS: "405",
         },
       });
       const regression = JSON.parse(
