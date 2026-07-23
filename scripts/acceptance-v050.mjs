@@ -13,6 +13,8 @@ const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.5.0";
 const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v050";
 const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v050";
 const acceptanceProfile = process.env.ACCEPTANCE_PROFILE ?? "v050";
+const acceptanceExpectedRevision =
+  process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260715_0005";
 const quietTraceProfile = acceptanceProfile === "v070";
 const releaseLabel = `v${acceptanceVersion}`;
 const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
@@ -552,7 +554,7 @@ async function main() {
       await waitFor(`${apiUrl}/api/v1/health/ready`);
       await waitFor(webUrl);
       const revision = psql("read Alembic revision", "SELECT version_num FROM alembic_version").trim();
-      assert(revision === "20260715_0005", `unexpected migration revision ${revision}`);
+      assert(revision === acceptanceExpectedRevision, `unexpected migration revision ${revision}`);
       results.empty_database_migration = "PASS";
     });
 
@@ -1157,7 +1159,7 @@ async function main() {
       ]);
       const preflightBody = JSON.parse(preflight);
       assert(
-        preflightBody.alembic_revision === "20260715_0005"
+        preflightBody.alembic_revision === acceptanceExpectedRevision
           && preflightBody.requires_target_admin === false
           && preflightBody.requires_admin_mapping === false,
         "migration preflight did not report the expected single-admin v0.5 state",

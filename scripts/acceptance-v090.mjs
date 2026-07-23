@@ -265,6 +265,7 @@ async function main() {
           ACCEPTANCE_VERSION: "0.9.0",
           ACCEPTANCE_TAG: "v090-regression",
           ACCEPTANCE_COMMAND: "acceptance:v090",
+          ACCEPTANCE_EXPECTED_REVISION: "20260723_0006",
         },
       });
       const regression = JSON.parse(
