@@ -41,6 +41,7 @@ async def create_edition(
             revision=payload.revision,
             metadata=payload.metadata,
         ),
+        created_by_user_id=current.user.id,
     )
     return edition_response(edition)
 

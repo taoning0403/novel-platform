@@ -45,10 +45,11 @@ async def create_reader(
         expires_at=payload.expires_at,
         max_devices=payload.max_devices,
         allow_new_devices=payload.allow_new_devices,
+        capabilities=payload.capabilities,
     )
     response.headers["Cache-Control"] = "no-store"
     return IssuedReaderCredentialResponse(
-        reader=reader_response(issued.user, issued.credential, 0),
+        reader=reader_response(issued.user, issued.credential, 0, issued.capabilities),
         access_credential=issued.raw_credential,
     )
 
@@ -113,10 +114,11 @@ async def reissue_credential(
         expires_at=payload.expires_at,
         max_devices=payload.max_devices,
         allow_new_devices=payload.allow_new_devices,
+        capabilities=payload.capabilities,
     )
     response.headers["Cache-Control"] = "no-store"
     return IssuedReaderCredentialResponse(
-        reader=reader_response(issued.user, issued.credential, 0),
+        reader=reader_response(issued.user, issued.credential, 0, issued.capabilities),
         access_credential=issued.raw_credential,
     )
 

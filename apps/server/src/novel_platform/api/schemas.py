@@ -4,6 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from novel_platform.domain.auth.capabilities import (
+    CredentialCapability,
+    sorted_capabilities,
+    validate_credential_capabilities,
+)
 from novel_platform.domain.auth.models import (
     AccessCredentialStatus,
     DevicePlatform,
@@ -25,6 +30,16 @@ from novel_platform.domain.reader.models import ReaderFontFamily, ReaderTheme, R
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def validate_capability_list(
+    values: list[CredentialCapability],
+) -> list[CredentialCapability]:
+    try:
+        capabilities = validate_credential_capabilities(values)
+    except ValueError as error:
+        raise ValueError(str(error)) from error
+    return sorted_capabilities(capabilities)
 
 
 class ErrorDetail(BaseModel):
@@ -405,6 +420,7 @@ class UserResponse(BaseModel):
     id: UUID
     display_name: str
     role: Literal["admin", "reader"]
+    capabilities: list[CredentialCapability]
     status: UserStatus
     last_login_at: datetime | None
     created_at: datetime
@@ -542,6 +558,7 @@ class ReaderCredentialResponse(BaseModel):
     expires_at: datetime
     allow_new_devices: bool
     max_devices: int
+    capabilities: list[CredentialCapability]
     active_device_count: int
     last_used_at: datetime | None
     suspended_at: datetime | None
@@ -566,6 +583,9 @@ class ReaderCreate(StrictModel):
     expires_at: datetime
     max_devices: int | None = Field(default=None, ge=1, le=100)
     allow_new_devices: bool = True
+    capabilities: list[CredentialCapability]
+
+    _validate_capabilities = field_validator("capabilities")(validate_capability_list)
 
     @field_validator("expires_at")
     @classmethod
@@ -603,6 +623,9 @@ class CredentialReissueRequest(StrictModel):
     expires_at: datetime
     max_devices: int | None = Field(default=None, ge=1, le=100)
     allow_new_devices: bool = True
+    capabilities: list[CredentialCapability]
+
+    _validate_capabilities = field_validator("capabilities")(validate_capability_list)
 
     @field_validator("expires_at")
     @classmethod

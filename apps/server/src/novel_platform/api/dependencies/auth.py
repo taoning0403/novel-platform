@@ -79,7 +79,12 @@ async def get_logout_auth(
         raise authentication_required()
     if auth_session.user_id != user.id or auth_session.device_id != device.id:
         raise authentication_required()
-    return AuthContext(user=user, device=device, session=auth_session)
+    return AuthContext(
+        user=user,
+        device=device,
+        session=auth_session,
+        capabilities=frozenset(),
+    )
 
 
 async def get_current_admin(

@@ -19,10 +19,16 @@ class BookService:
         self.repository = BookRepository(session)
 
     async def create(
-        self, command: CreateBook, owner_user_id: UUID, *, commit: bool = True
+        self,
+        command: CreateBook,
+        owner_user_id: UUID,
+        *,
+        created_by_user_id: UUID,
+        commit: bool = True,
     ) -> BookModel:
         book = BookModel(
             owner_user_id=owner_user_id,
+            created_by_user_id=created_by_user_id,
             canonical_title=normalise_book_title(command.canonical_title),
             canonical_author=command.canonical_author,
             description=command.description,

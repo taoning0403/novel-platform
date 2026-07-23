@@ -68,9 +68,11 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                 for name in (
                     "site_settings",
                     "reader_access_credentials",
+                    "reader_credential_capabilities",
                     "admin_recovery_credentials",
                     "admin_passkeys",
                     "webauthn_challenges",
+                    "edition_translation_runs",
                 )
             }
             site = (
@@ -86,7 +88,7 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                 .mappings()
                 .one()
             )
-        assert revision == "20260715_0005"
+        assert revision == "20260723_0006"
         assert all(value is not None for value in tables.values())
         assert site["site_name"] == "个人数字阅读与藏书整理"
         assert site["icp_registration_number"] is None
@@ -131,9 +133,10 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
             await session.execute(
                 text(
                     "INSERT INTO stored_files "
-                    "(id, owner_user_id, storage_key, original_filename, media_type, "
+                    "(id, owner_user_id, created_by_user_id, storage_key, "
+                    "original_filename, media_type, "
                     "file_format, purpose, size_bytes, sha256) VALUES "
-                    "('70000000-0000-0000-0000-000000000050', :owner, :key, "
+                    "('70000000-0000-0000-0000-000000000050', :owner, :owner, :key, "
                     "'audit.txt', 'text/plain', 'txt', 'edition_source', :size, :sha)"
                 ),
                 {
@@ -331,7 +334,7 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
             )
         await engine.dispose()
 
-        run_alembic(database_url, "upgrade", "head")
+        run_alembic(database_url, "upgrade", "20260715_0005")
         engine = create_async_engine(database_url)
         factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
         async with factory() as session:
@@ -448,5 +451,149 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
         assert auth_state["library_owner_user_id"] == target_admin
         assert auth_state["migration_completed_at"] is not None
         assert auth_state["credentials"] == 0
+
+        run_alembic(database_url, "upgrade", "head")
+        engine = create_async_engine(database_url)
+        async with engine.connect() as connection:
+            v090 = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT (SELECT version_num FROM alembic_version) AS revision, "
+                            "b.created_by_user_id AS book_creator, "
+                            "e.created_by_user_id AS edition_creator, "
+                            "sf.created_by_user_id AS file_creator, "
+                            "p.preferred_edition_id, p.last_opened_edition_id, "
+                            "(SELECT count(*) FROM book_editions "
+                            "WHERE id IN (:translation, :successor)) AS placeholders, "
+                            "to_regclass('public.reader_credential_capabilities') "
+                            "AS capability_table, "
+                            "to_regclass('public.edition_translation_runs') AS run_table "
+                            "FROM books b "
+                            "JOIN book_editions e ON e.id=:source "
+                            "JOIN stored_files sf ON sf.id="
+                            "'70000000-0000-0000-0000-000000000001' "
+                            "JOIN user_book_preferences p ON p.book_id=b.id AND p.user_id=:reader "
+                            "WHERE b.id=:book"
+                        ),
+                        {
+                            "book": book,
+                            "source": source,
+                            "reader": reader,
+                            "translation": translation,
+                            "successor": successor,
+                        },
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        await engine.dispose()
+        assert v090["revision"] == "20260723_0006"
+        assert v090["book_creator"] == target_admin
+        assert v090["edition_creator"] == target_admin
+        assert v090["file_creator"] == target_admin
+        assert v090["preferred_edition_id"] == source
+        assert v090["last_opened_edition_id"] is None
+        assert v090["placeholders"] == 0
+        assert v090["capability_table"] == "reader_credential_capabilities"
+        assert v090["run_table"] == "edition_translation_runs"
+    finally:
+        await drop_migration_database(database_name, admin_url)
+
+
+@pytest.mark.integration
+async def test_v090_migration_blocks_active_import_and_backfills_read_capability() -> None:
+    base_url = os.getenv("TEST_DATABASE_URL")
+    if not base_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    database_name, admin_url, database_url = await create_migration_database(base_url)
+    reader_id = UUID("10000000-0000-0000-0000-000000000090")
+    credential_id = UUID("20000000-0000-0000-0000-000000000090")
+    import_id = UUID("30000000-0000-0000-0000-000000000090")
+    try:
+        run_alembic(database_url, "upgrade", "20260715_0005")
+        engine = create_async_engine(database_url)
+        settings = Settings(database_url=database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as session:
+            await AdminService(session, settings).initialize("迁移管理员")
+            admin_id = await session.scalar(
+                text("SELECT library_owner_user_id FROM site_settings WHERE id=1")
+            )
+            assert admin_id is not None
+            await session.execute(
+                text(
+                    "INSERT INTO users "
+                    "(id, username, normalized_username, display_name, role, status) "
+                    "VALUES (:reader, 'migration-reader', 'migration-reader', "
+                    "'Migration Reader', 'member', 'active')"
+                ),
+                {"reader": reader_id},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO reader_access_credentials "
+                    "(id, user_id, token_hash, credential_hint, status, expires_at, "
+                    "allow_new_devices, max_devices, created_by_admin_id, updated_by_admin_id) "
+                    "VALUES (:credential, :reader, :token_hash, 'npa_...0090', 'active', "
+                    "now() + interval '30 days', true, 3, :admin, :admin)"
+                ),
+                {
+                    "credential": credential_id,
+                    "reader": reader_id,
+                    "token_hash": "9" * 64,
+                    "admin": admin_id,
+                },
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO library_imports "
+                    "(id, owner_user_id, status, operation, original_filename, "
+                    "metadata_preview, warnings) "
+                    "VALUES (:import_id, :admin, 'ready', 'create_book', 'pending.txt', "
+                    "'{}'::jsonb, '[]'::jsonb)"
+                ),
+                {"import_id": import_id, "admin": admin_id},
+            )
+            await session.commit()
+        await engine.dispose()
+
+        with pytest.raises(subprocess.CalledProcessError):
+            run_alembic(database_url, "upgrade", "head")
+
+        engine = create_async_engine(database_url)
+        async with engine.begin() as connection:
+            revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
+            assert revision == "20260715_0005"
+            await connection.execute(
+                text("UPDATE library_imports SET status='failed' WHERE id=:import_id"),
+                {"import_id": import_id},
+            )
+        await engine.dispose()
+
+        run_alembic(database_url, "upgrade", "head")
+        engine = create_async_engine(database_url)
+        async with engine.connect() as connection:
+            migrated = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT av.version_num, ric.capability, li.requested_by_user_id "
+                            "FROM alembic_version av "
+                            "JOIN reader_credential_capabilities ric "
+                            "ON ric.credential_id=:credential "
+                            "JOIN library_imports li ON li.id=:import_id"
+                        ),
+                        {"credential": credential_id, "import_id": import_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        await engine.dispose()
+        assert migrated["version_num"] == "20260723_0006"
+        assert migrated["capability"] == "library.read"
+        assert migrated["requested_by_user_id"] == admin_id
     finally:
         await drop_migration_database(database_name, admin_url)

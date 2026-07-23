@@ -87,6 +87,7 @@ class EditionService:
         owner_user_id: UUID,
         command: CreateEdition,
         *,
+        created_by_user_id: UUID,
         commit: bool = True,
     ) -> BookEditionModel:
         await self._require_book(book_id, owner_user_id)
@@ -110,6 +111,7 @@ class EditionService:
         edition = BookEditionModel(
             id=edition_id,
             book_id=book_id,
+            created_by_user_id=created_by_user_id,
             title=title,
             language=language,
             content_role=command.content_role,

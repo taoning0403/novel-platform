@@ -69,6 +69,7 @@ class ImportCommitService:
         self,
         *,
         owner_user_id: UUID,
+        actor_user_id: UUID,
         import_id: UUID,
         command: CommitImport,
     ) -> CommittedImport:
@@ -108,6 +109,7 @@ class ImportCommitService:
             for asset, storage_key in moved:
                 stored_file = StoredFileModel(
                     owner_user_id=owner_user_id,
+                    created_by_user_id=actor_user_id,
                     storage_key=storage_key,
                     original_filename=asset.original_filename,
                     media_type=asset.media_type,
@@ -121,6 +123,7 @@ class ImportCommitService:
 
             book, edition = await self._apply_operation(
                 owner_user_id=owner_user_id,
+                actor_user_id=actor_user_id,
                 library_import=library_import,
                 command=command,
                 stored_files=stored_files,
@@ -311,6 +314,7 @@ class ImportCommitService:
         self,
         *,
         owner_user_id: UUID,
+        actor_user_id: UUID,
         library_import: LibraryImportModel,
         command: CommitImport,
         stored_files: dict[StoredFilePurpose, StoredFileModel],
@@ -344,6 +348,7 @@ class ImportCommitService:
                         },
                     ),
                     owner_user_id,
+                    created_by_user_id=actor_user_id,
                     commit=False,
                 )
                 if command.series_id is not None:
@@ -374,6 +379,7 @@ class ImportCommitService:
                         **command.edition_metadata,
                     },
                 ),
+                created_by_user_id=actor_user_id,
                 commit=False,
             )
             file_revision = 1

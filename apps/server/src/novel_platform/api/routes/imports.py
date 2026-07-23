@@ -42,6 +42,7 @@ async def inspect_import(
             get_settings(),
         ).inspect(
             owner_user_id=owner_user_id,
+            requested_by_user_id=current.user.id,
             command=InspectImport(
                 operation=operation,
                 filename=file.filename,
@@ -70,6 +71,7 @@ async def commit_import(
     try:
         result = await service.commit(
             owner_user_id=owner_user_id,
+            actor_user_id=current.user.id,
             import_id=import_id,
             command=CommitImport(**payload.model_dump()),
         )

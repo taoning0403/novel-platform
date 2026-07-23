@@ -47,6 +47,7 @@ class ImportInspectionService:
         self,
         *,
         owner_user_id: UUID,
+        requested_by_user_id: UUID,
         command: InspectImport,
         stream: BinaryIO,
     ) -> LibraryImportModel:
@@ -57,6 +58,7 @@ class ImportInspectionService:
         filename = sanitize_filename(command.filename)
         library_import = LibraryImportModel(
             owner_user_id=owner_user_id,
+            requested_by_user_id=requested_by_user_id,
             status=ImportStatus.PENDING,
             operation=command.operation,
             original_filename=filename,

@@ -25,6 +25,7 @@ from novel_platform.api.schemas import (
     UserResponse,
 )
 from novel_platform.application.auth.context import AuthContext, TokenResult
+from novel_platform.domain.auth.capabilities import CredentialCapability, sorted_capabilities
 from novel_platform.domain.auth.models import AccessCredentialStatus, UserRole
 from novel_platform.domain.library.models import FileFormat
 from novel_platform.domain.reader.models import ReadingStatus
@@ -48,11 +49,15 @@ from novel_platform.infrastructure.repositories.library import (
 )
 
 
-def user_response(user: UserModel) -> UserResponse:
+def user_response(
+    user: UserModel,
+    capabilities: frozenset[CredentialCapability],
+) -> UserResponse:
     return UserResponse(
         id=user.id,
         display_name=user.display_name,
         role="admin" if user.role == UserRole.ADMIN else "reader",
+        capabilities=sorted_capabilities(capabilities),
         status=user.status,
         last_login_at=user.last_login_at,
         created_at=user.created_at,
@@ -75,7 +80,7 @@ def login_session_response(auth_session: AuthSessionModel) -> LoginSessionRespon
 
 def me_response(context: AuthContext) -> MeResponse:
     return MeResponse(
-        user=user_response(context.user),
+        user=user_response(context.user, context.capabilities),
         device=login_device_response(context.device),
         session=login_session_response(context.session),
     )
@@ -87,7 +92,7 @@ def token_response(result: TokenResult, *, include_refresh: bool) -> TokenRespon
         access_token=result.access_token,
         expires_in=result.expires_in,
         refresh_token=result.refresh_token if include_refresh else None,
-        user=user_response(context.user),
+        user=user_response(context.user, context.capabilities),
         device=login_device_response(context.device),
         session=login_session_response(context.session),
     )
@@ -136,6 +141,7 @@ def site_settings_response(settings: SiteSettingsModel) -> SiteSettingsResponse:
 def reader_credential_response(
     credential: ReaderAccessCredentialModel,
     active_device_count: int,
+    capabilities: frozenset[CredentialCapability],
     *,
     now: datetime | None = None,
 ) -> ReaderCredentialResponse:
@@ -157,6 +163,7 @@ def reader_credential_response(
         expires_at=credential.expires_at,
         allow_new_devices=credential.allow_new_devices,
         max_devices=credential.max_devices,
+        capabilities=sorted_capabilities(capabilities),
         active_device_count=active_device_count,
         last_used_at=credential.last_used_at,
         suspended_at=credential.suspended_at,
@@ -170,6 +177,7 @@ def reader_response(
     user: UserModel,
     credential: ReaderAccessCredentialModel | None,
     active_device_count: int,
+    capabilities: frozenset[CredentialCapability],
 ) -> ReaderResponse:
     return ReaderResponse(
         id=user.id,
@@ -177,7 +185,7 @@ def reader_response(
         admin_note=user.admin_note,
         status=user.status,
         credential=(
-            reader_credential_response(credential, active_device_count)
+            reader_credential_response(credential, active_device_count, capabilities)
             if credential is not None
             else None
         ),

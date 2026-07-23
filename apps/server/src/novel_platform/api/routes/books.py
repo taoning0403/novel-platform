@@ -41,6 +41,7 @@ async def create_book(
             metadata=payload.metadata,
         ),
         owner_user_id,
+        created_by_user_id=current.user.id,
     )
     return book_response(book)
 
