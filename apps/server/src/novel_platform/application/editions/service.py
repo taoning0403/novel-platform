@@ -167,6 +167,26 @@ class EditionService:
             )
         return edition
 
+    async def get_visible_for_reader(
+        self,
+        book_id: UUID,
+        owner_user_id: UUID,
+        viewer_user_id: UUID,
+        edition_id: UUID,
+    ) -> BookEditionModel:
+        edition = await self.editions.get_visible_for_reader(
+            owner_user_id,
+            viewer_user_id,
+            edition_id,
+        )
+        if edition is None or edition.book_id != book_id:
+            raise ApplicationError(
+                "edition_not_found",
+                "The requested edition does not exist for this book.",
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return edition
+
     async def update(
         self,
         book_id: UUID,

@@ -9,6 +9,7 @@ dependencies = [
   "charset-normalizer>=3.4,<4",
   "defusedxml>=0.7,<1",
   "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
   "pillow>=11,<12",
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.7,<3",
@@ -24,7 +25,6 @@ novel-platform = "novel_platform.cli:main"
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1",
   "mypy>=1.14,<2",
   "pytest>=8.3,<9",
   "pytest-asyncio>=0.25,<1",

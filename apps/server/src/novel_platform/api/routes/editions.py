@@ -30,7 +30,11 @@ async def list_editions(
     if scope.can_manage:
         _, editions = await books.detail(book_id, scope.owner_user_id)
     else:
-        _, editions = await books.readable_detail(book_id, scope.owner_user_id)
+        _, editions = await books.visible_detail(
+            book_id,
+            scope.owner_user_id,
+            scope.viewer_user_id,
+        )
     library = LibraryRepository(session)
     progresses = await ReaderRepository(session).progress_for_editions(
         scope.viewer_user_id,
@@ -59,7 +63,12 @@ async def get_edition(
     if scope.can_manage:
         edition = await service.get(book_id, scope.owner_user_id, edition_id)
     else:
-        edition = await service.get_readable(book_id, scope.owner_user_id, edition_id)
+        edition = await service.get_visible_for_reader(
+            book_id,
+            scope.owner_user_id,
+            scope.viewer_user_id,
+            edition_id,
+        )
     file_record = await LibraryRepository(session).get_current_edition_file_for_owner(
         scope.owner_user_id,
         edition.id,

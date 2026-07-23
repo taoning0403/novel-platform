@@ -115,6 +115,25 @@ class BookService:
             )
         return book, await self.repository.readable_editions(book_id, owner_user_id)
 
+    async def visible_detail(
+        self,
+        book_id: UUID,
+        owner_user_id: UUID,
+        viewer_user_id: UUID,
+    ) -> tuple[BookModel, list[BookEditionModel]]:
+        book = await self.repository.get_readable(book_id, owner_user_id)
+        if book is None:
+            raise ApplicationError(
+                "book_not_found",
+                "The requested book does not exist.",
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return book, await self.repository.visible_editions(
+            book_id,
+            owner_user_id,
+            viewer_user_id,
+        )
+
     async def update(
         self,
         book_id: UUID,

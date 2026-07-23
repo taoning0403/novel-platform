@@ -88,7 +88,11 @@ async def get_book(
     if scope.can_manage:
         book, editions = await book_service.detail(book_id, scope.owner_user_id)
     else:
-        book, editions = await book_service.readable_detail(book_id, scope.owner_user_id)
+        book, editions = await book_service.visible_detail(
+            book_id,
+            scope.owner_user_id,
+            scope.viewer_user_id,
+        )
     library = LibraryRepository(session)
     files = {
         edition.id: record

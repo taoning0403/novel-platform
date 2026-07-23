@@ -26,6 +26,10 @@ from novel_platform.domain.library.models import (
     ImportStatus,
 )
 from novel_platform.domain.reader.models import ReaderFontFamily, ReaderTheme, ReadingStatus
+from novel_platform.domain.translations.models import (
+    TranslationCleanupStatus,
+    TranslationRunStatus,
+)
 
 
 class StrictModel(BaseModel):
@@ -382,6 +386,75 @@ class RecentReadingResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class TranslationServiceStatusResponse(BaseModel):
+    enabled: bool
+    available: bool
+    version: str | None
+    pipeline_key: str
+    pipeline_version: str | None
+    provider_id: str
+    provider_name: str | None
+    provider_model: str | None
+    provider_offline: bool
+    idempotency_required: bool | None
+    error_code: str | None
+    error_message: str | None
+
+
+class TranslationRunCreate(StrictModel):
+    target_language: str = Field(min_length=1, max_length=100)
+    edition_title: str = Field(min_length=1, max_length=500)
+    client_request_id: UUID
+    supersedes_edition_id: UUID | None = None
+
+    @field_validator("target_language", "edition_title")
+    @classmethod
+    def strip_translation_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class TranslationRunResponse(BaseModel):
+    id: UUID
+    book_id: UUID
+    book_title: str
+    source_edition_id: UUID
+    source_edition_title: str
+    source_revision: int
+    source_sha256: str
+    source_format: FileFormat
+    target_language: str
+    edition_title: str
+    supersedes_edition_id: UUID | None
+    configuration: dict[str, Any]
+    creator: ContributorSummary
+    status: TranslationRunStatus
+    progress: float
+    generated_edition_id: UUID | None
+    generated_edition_title: str | None
+    remote_project_id: str | None
+    remote_job_id: str | None
+    remote_artifact_id: str | None
+    remote_request_id: str | None
+    remote_status: str | None
+    error_code: str | None
+    error_message: str | None
+    error_details: dict[str, Any]
+    retry_count: int
+    cleanup_status: TranslationCleanupStatus
+    cleanup_error: str | None
+    available_actions: list[Literal["pause", "resume", "cancel", "retry", "sync", "cleanup"]]
+    can_preview_draft: bool
+    can_publish: bool
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    last_synced_at: datetime | None
 
 
 class BookPreferencePatch(StrictModel):

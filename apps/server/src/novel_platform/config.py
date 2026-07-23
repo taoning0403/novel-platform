@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +39,17 @@ class Settings(BaseSettings):
     max_cover_bytes: int = Field(default=20_971_520, ge=1)
     max_cover_pixels: int = Field(default=40_000_000, ge=1)
     library_temporary_ttl_hours: int = Field(default=24, ge=1, le=24 * 30)
+
+    linguaspindle_enabled: bool = False
+    linguaspindle_base_url: str = "http://linguaspindle:8765"
+    linguaspindle_version_range: str = ">=0.3.1,<0.4.0"
+    linguaspindle_provider_id: str = Field(
+        default="openai-compatible", min_length=1, max_length=120
+    )
+    linguaspindle_profile_id: str | None = Field(default=None, max_length=128)
+    linguaspindle_connect_timeout_seconds: float = Field(default=3, gt=0, le=60)
+    linguaspindle_read_timeout_seconds: float = Field(default=30, gt=0, le=600)
+    linguaspindle_max_download_bytes: int = Field(default=104_857_600, ge=1, le=2_147_483_647)
 
     auth_jwt_secret: SecretStr = SecretStr(DEVELOPMENT_JWT_SECRET)
     auth_hash_secret: SecretStr = SecretStr(DEVELOPMENT_HASH_SECRET)
@@ -107,6 +119,35 @@ class Settings(BaseSettings):
             raise ValueError("LIBRARY_STORAGE_ROOT cannot be a filesystem root")
         if self.max_epub_uncompressed_bytes < self.max_upload_bytes:
             raise ValueError("MAX_EPUB_UNCOMPRESSED_BYTES must be at least MAX_UPLOAD_BYTES")
+        if self.linguaspindle_max_download_bytes > self.max_upload_bytes:
+            raise ValueError("LINGUASPINDLE_MAX_DOWNLOAD_BYTES cannot exceed MAX_UPLOAD_BYTES")
+        if self.linguaspindle_version_range != ">=0.3.1,<0.4.0":
+            raise ValueError("unsupported LINGUASPINDLE_VERSION_RANGE")
+        parsed_lingua_url = urlsplit(self.linguaspindle_base_url)
+        if (
+            parsed_lingua_url.scheme not in {"http", "https"}
+            or not parsed_lingua_url.hostname
+            or parsed_lingua_url.username is not None
+            or parsed_lingua_url.password is not None
+            or parsed_lingua_url.query
+            or parsed_lingua_url.fragment
+            or parsed_lingua_url.path not in {"", "/"}
+        ):
+            raise ValueError("LINGUASPINDLE_BASE_URL must be one fixed HTTP(S) origin")
+        if (
+            protected_environment
+            and self.linguaspindle_enabled
+            and parsed_lingua_url.hostname
+            in {
+                "localhost",
+                "127.0.0.1",
+                "::1",
+            }
+        ):
+            raise ValueError("staging/production LinguaSpindle URL cannot use loopback")
+        self.linguaspindle_base_url = self.linguaspindle_base_url.rstrip("/")
+        if self.linguaspindle_profile_id == "":
+            self.linguaspindle_profile_id = None
         return self
 
 

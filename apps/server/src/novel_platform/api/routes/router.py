@@ -14,6 +14,7 @@ from novel_platform.api.routes import (
     readers,
     series,
     site,
+    translation_runs,
     users,
 )
 
@@ -32,3 +33,4 @@ api_router.include_router(series.router)
 api_router.include_router(readers.router)
 api_router.include_router(site.router)
 api_router.include_router(audit.router)
+api_router.include_router(translation_runs.router)

@@ -117,6 +117,32 @@ class LibraryRepository:
         edition_file, stored_file, normalized_file = row
         return EditionFileRecord(edition_file, stored_file, normalized_file)
 
+    async def get_edition_file_for_owner(
+        self,
+        owner_user_id: UUID,
+        edition_id: UUID,
+        edition_file_id: UUID,
+    ) -> EditionFileRecord | None:
+        normalized = aliased(StoredFileModel)
+        statement = (
+            select(EditionFileModel, StoredFileModel, normalized)
+            .join(BookEditionModel, BookEditionModel.id == EditionFileModel.edition_id)
+            .join(BookModel, BookModel.id == BookEditionModel.book_id)
+            .join(StoredFileModel, StoredFileModel.id == EditionFileModel.stored_file_id)
+            .outerjoin(normalized, normalized.id == EditionFileModel.normalized_stored_file_id)
+            .where(
+                BookModel.owner_user_id == owner_user_id,
+                StoredFileModel.owner_user_id == owner_user_id,
+                EditionFileModel.edition_id == edition_id,
+                EditionFileModel.id == edition_file_id,
+            )
+        )
+        row = (await self.session.execute(statement)).one_or_none()
+        if row is None:
+            return None
+        edition_file, stored_file, normalized_file = row
+        return EditionFileRecord(edition_file, stored_file, normalized_file)
+
     async def book_summaries(
         self,
         *,

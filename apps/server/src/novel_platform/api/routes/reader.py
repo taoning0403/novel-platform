@@ -134,6 +134,7 @@ async def get_reader_section(
     scope = await LibraryAccessService(session).scope(current)
     content = await ReaderService(session, storage, get_settings()).section(
         owner_user_id=scope.owner_user_id,
+        viewer_user_id=scope.viewer_user_id,
         edition_id=edition_id,
         section_id=section_id,
         readable_only=not scope.can_manage,
@@ -158,6 +159,7 @@ async def get_reader_resource(
     scope = await LibraryAccessService(session).scope(current)
     resource = await ReaderService(session, storage, get_settings()).resource(
         owner_user_id=scope.owner_user_id,
+        viewer_user_id=scope.viewer_user_id,
         edition_id=edition_id,
         resource_id=resource_id,
         readable_only=not scope.can_manage,
