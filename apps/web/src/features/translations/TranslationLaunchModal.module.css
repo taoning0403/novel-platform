@@ -1,0 +1,84 @@
+.modal {
+  max-width: calc(100vw - 24px);
+}
+
+.form {
+  display: grid;
+  gap: 18px;
+  padding-top: 4px;
+}
+
+.intro {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.snapshot {
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.service {
+  display: grid;
+  gap: 7px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--brand);
+  border-radius: 8px;
+  background: rgb(49 94 244 / 5%);
+}
+
+.service > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 650;
+}
+
+.service small {
+  color: var(--muted);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.42fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.actions button {
+  min-height: 44px;
+}
+
+@media (max-width: 520px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .actions button {
+    width: 100%;
+    min-height: 46px;
+  }
+}

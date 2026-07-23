@@ -49,6 +49,28 @@ const humanEdition: Edition = {
   translation_origin: "human",
 };
 
+const sourceEdition: Edition = {
+  ...independentTranslation,
+  id: "ae2a8a22-61f3-482f-b910-d715c652d3a5",
+  title: "可翻译 TXT 原文",
+  language: "zh-CN",
+  content_role: "source",
+  translation_origin: null,
+  can_translate: true,
+  current_file: {
+    revision: 1,
+    file_format: "txt",
+    original_filename: "source.txt",
+    media_type: "text/plain",
+    size_bytes: 100,
+    text_encoding: "utf-8",
+    content_item_count: 1,
+    uploaded_at: "2026-07-10T08:00:00Z",
+    download_url: null,
+  },
+  reader_available: true,
+};
+
 afterEach(() => vi.restoreAllMocks());
 
 describe("EditionCard", () => {
@@ -158,5 +180,39 @@ describe("EditionCard", () => {
       },
     ));
     expect(onUpdated).toHaveBeenCalledWith(updated);
+  });
+
+  it("projects translation and retranslation actions from server permission flags", () => {
+    const onTranslate = vi.fn();
+    const generatedDraft: Edition = {
+      ...aiEdition,
+      current_file: sourceEdition.current_file,
+      reader_available: true,
+      status: "draft",
+      can_translate: true,
+    };
+    render(
+      <MemoryRouter>
+        <EditionCard
+          edition={sourceEdition}
+          allEditions={[sourceEdition]}
+          onUpdated={vi.fn()}
+          onTranslate={onTranslate}
+        />
+        <EditionCard
+          edition={generatedDraft}
+          allEditions={[sourceEdition, generatedDraft]}
+          onUpdated={vi.fn()}
+          onTranslate={onTranslate}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "翻译小说" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新翻译" }));
+    expect(onTranslate).toHaveBeenNthCalledWith(1, sourceEdition);
+    expect(onTranslate).toHaveBeenNthCalledWith(2, generatedDraft);
+    expect(screen.getByText("仅创建者预览")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "设为首选" })).toHaveLength(1);
   });
 });

@@ -24,6 +24,7 @@ const SeriesPage = lazy(() => import("./pages/SeriesPage").then((module) => ({ d
 const SeriesUploadPage = lazy(() => import("./pages/SeriesUploadPage").then((module) => ({ default: module.SeriesUploadPage })));
 const SessionsPage = lazy(() => import("./pages/SessionsPage").then((module) => ({ default: module.SessionsPage })));
 const StatusPage = lazy(() => import("./pages/StatusPage").then((module) => ({ default: module.StatusPage })));
+const TranslationsPage = lazy(() => import("./pages/TranslationsPage").then((module) => ({ default: module.TranslationsPage })));
 const UploadPage = lazy(() => import("./pages/UploadPage").then((module) => ({ default: module.UploadPage })));
 
 function Protected({
@@ -67,6 +68,10 @@ export function App() {
           <Route
             path="/upload"
             element={<Protected capability="library.upload"><UploadPage /></Protected>}
+          />
+          <Route
+            path="/translations"
+            element={<Protected capability="translation.use"><TranslationsPage /></Protected>}
           />
           <Route path="/settings/profile" element={<Protected><ProfilePage /></Protected>} />
           <Route path="/settings/devices" element={<Protected><DevicesPage /></Protected>} />

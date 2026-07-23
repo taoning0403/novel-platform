@@ -21,6 +21,7 @@ interface EditionCardProps {
   isPreferred?: boolean;
   onSetPreferred?: (edition: Edition) => void | Promise<void>;
   onDeleted?: () => void | Promise<void>;
+  onTranslate?: (edition: Edition) => void;
   canManage?: boolean;
 }
 
@@ -43,6 +44,7 @@ export function EditionCard({
   isPreferred = false,
   onSetPreferred,
   onDeleted,
+  onTranslate,
   canManage = false,
 }: EditionCardProps) {
   const [title, setTitle] = useState(edition.title);
@@ -189,6 +191,11 @@ export function EditionCard({
       {edition.current_file ? (
         <div className={styles.actions}>
           {edition.reader_available ? <Link className={styles.primaryLink} to={`/read/${edition.id}`}>{edition.reading_status === "not_started" ? "开始阅读" : "继续阅读"}</Link> : null}
+          {edition.can_translate && onTranslate ? (
+            <Button onClick={() => onTranslate(edition)}>
+              {edition.creation_method === "generated" ? "重新翻译" : "翻译小说"}
+            </Button>
+          ) : null}
           {canManage && edition.current_file.download_url ? <Button loading={isDownloading} onClick={() => void downloadFile()}>
             {`下载 ${edition.current_file.original_filename}`}
           </Button> : null}
@@ -209,12 +216,19 @@ export function EditionCard({
       ) : null}
       {source ? <p className={styles.relationship}>关联原文：<strong>{source.title}</strong></p> : null}
       {superseded ? <p className={styles.relationship}>替代版本：<strong>{superseded.title}</strong></p> : null}
-      <div className={styles.preference}>
-        <p>首选只影响打开顺序，不会覆盖、归档或删除其他版本。</p>
-        <Button disabled={isPreferred} loading={isSelecting} onClick={() => void selectPreferred()}>
-          {isPreferred ? "当前首选" : "设为首选"}
-        </Button>
-      </div>
+      {edition.status === "ready" ? (
+        <div className={styles.preference}>
+          <p>首选只影响打开顺序，不会覆盖、归档或删除其他版本。</p>
+          <Button disabled={isPreferred} loading={isSelecting} onClick={() => void selectPreferred()}>
+            {isPreferred ? "当前首选" : "设为首选"}
+          </Button>
+        </div>
+      ) : edition.creation_method === "generated" ? (
+        <div className={styles.note}>
+          <strong>仅创建者预览</strong>
+          <span>生成草稿不会自动成为首选；管理员审核发布后，其他阅读者才可看到。</span>
+        </div>
+      ) : null}
 
       {edition.can_edit ? <form className={styles.form} onSubmit={(event) => void submit(event)} aria-busy={isSubmitting}>
         <label className={styles.field} htmlFor={`edition-title-${edition.id}`}>

@@ -3,9 +3,10 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api, userFacingError } from "../api/client";
-import type { BookDetail, BookPreference, Edition } from "../api/types";
+import type { BookDetail, BookPreference, Edition, TranslationRun } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { EditionCard } from "../features/editions/EditionCard";
+import { TranslationLaunchModal } from "../features/translations/TranslationLaunchModal";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { ProtectedImage } from "../shared/ProtectedImage";
 import { DestructiveAction } from "../ui/components/DestructiveAction";
@@ -27,6 +28,7 @@ export function BookDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [translationEdition, setTranslationEdition] = useState<Edition | null>(null);
   const loadedRef = useRef(false);
 
   const loadBook = useCallback(async () => {
@@ -97,6 +99,11 @@ export function BookDetailPage() {
   async function handleEditionDeleted() {
     setMessage("已删除该版本。");
     await loadBook();
+  }
+
+  function handleTranslationCreated(run: TranslationRun) {
+    setTranslationEdition(null);
+    navigate(`/translations?run=${run.id}`);
   }
 
   useEffect(() => {
@@ -212,6 +219,7 @@ export function BookDetailPage() {
                   isPreferred={preference?.preferred_edition_id === edition.id}
                   onSetPreferred={setPreferred}
                   onDeleted={handleEditionDeleted}
+                  onTranslate={setTranslationEdition}
                   canManage={isAdmin}
                 />
               ))}
@@ -219,6 +227,13 @@ export function BookDetailPage() {
           )}
         </section>
       </div>
+      <TranslationLaunchModal
+        book={book}
+        edition={translationEdition}
+        open={translationEdition !== null}
+        onClose={() => setTranslationEdition(null)}
+        onCreated={handleTranslationCreated}
+      />
     </main>
   );
 }

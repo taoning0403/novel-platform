@@ -41,6 +41,10 @@ import type {
   SeriesDetail,
   SeriesPatchPayload,
   TokenResponse,
+  TranslationAction,
+  TranslationRun,
+  TranslationRunCreatePayload,
+  TranslationServiceStatus,
   User,
   WebAuthnOptions,
 } from "./types";
@@ -446,6 +450,28 @@ export const api = {
     }),
   recentReading: (limit = 12) =>
     request<RecentReading[]>(`/api/v1/reader/recent?limit=${limit}`),
+  translationServiceStatus: () =>
+    request<TranslationServiceStatus>("/api/v1/translation-service/status"),
+  createTranslationRun: (
+    bookId: string,
+    sourceEditionId: string,
+    payload: TranslationRunCreatePayload,
+  ) => request<TranslationRun>(
+    `/api/v1/books/${bookId}/editions/${sourceEditionId}/translation-runs`,
+    { method: "POST", body: JSON.stringify(payload) },
+  ),
+  listTranslationRuns: (bookId?: string) => {
+    const search = new URLSearchParams();
+    if (bookId) search.set("book_id", bookId);
+    const query = search.size > 0 ? `?${search}` : "";
+    return request<TranslationRun[]>(`/api/v1/translation-runs${query}`);
+  },
+  getTranslationRun: (runId: string) =>
+    request<TranslationRun>(`/api/v1/translation-runs/${runId}`),
+  runTranslationAction: (runId: string, action: TranslationAction) =>
+    request<TranslationRun>(`/api/v1/translation-runs/${runId}/${action}`, {
+      method: "POST",
+    }),
   getAdminSite: () => request<SiteSettings>("/api/v1/admin/site"),
   patchAdminSite: (payload: SiteSettingsPatch) =>
     request<SiteSettings>("/api/v1/admin/site", {

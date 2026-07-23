@@ -75,11 +75,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             { label: "系列", to: "/series", icon: "series" },
           ],
         },
-        ...(isAdmin || canUpload ? [{
-          label: "馆藏管理",
+        ...(isAdmin || canUpload || canTranslate ? [{
+          label: "贡献与管理",
           items: [
             ...(canUpload
               ? [{ label: "上传", to: "/upload", icon: "upload" as const }]
+              : []),
+            ...(canTranslate
+              ? [{ label: "小说翻译", to: "/translations", icon: "translation" as const }]
               : []),
             ...(isAdmin
               ? [

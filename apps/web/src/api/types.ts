@@ -48,6 +48,11 @@ export type TokenResponse = Schemas["TokenResponse"];
 export type TranslationOrigin = NonNullable<
   Schemas["EditionResponse"]["translation_origin"]
 >;
+export type TranslationRun = Schemas["TranslationRunResponse"];
+export type TranslationRunCreatePayload = Schemas["TranslationRunCreate"];
+export type TranslationRunStatus = Schemas["TranslationRunStatus"];
+export type TranslationServiceStatus = Schemas["TranslationServiceStatusResponse"];
+export type TranslationAction = TranslationRun["available_actions"][number];
 export type User = Schemas["UserResponse"];
 export type UserRole = Schemas["UserResponse"]["role"];
 export type UserStatus = Schemas["UserResponse"]["status"];
