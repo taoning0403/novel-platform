@@ -57,50 +57,24 @@
         "title": "Body_inspect_import_api_v1_imports_inspect_post",
         "type": "object"
       },
-      "BookCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "canonical_author": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Canonical Author"
-          },
-          "canonical_title": {
-            "minLength": 1,
-            "title": "Canonical Title",
-            "type": "string"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "canonical_title"
-        ],
-        "title": "BookCreate",
-        "type": "object"
-      },
       "BookDetailResponse": {
         "properties": {
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_translate": {
+            "title": "Can Translate",
+            "type": "boolean"
+          },
+          "can_upload_edition": {
+            "title": "Can Upload Edition",
+            "type": "boolean"
+          },
           "canonical_author": {
             "anyOf": [
               {
@@ -115,6 +89,9 @@
           "canonical_title": {
             "title": "Canonical Title",
             "type": "string"
+          },
+          "contributor": {
+            "$ref": "#/components/schemas/ContributorSummary"
           },
           "cover_thumbnail_url": {
             "anyOf": [
@@ -182,11 +159,16 @@
           }
         },
         "required": [
+          "can_edit",
+          "can_delete",
+          "can_upload_edition",
+          "can_translate",
           "id",
           "canonical_title",
           "canonical_author",
           "description",
           "metadata",
+          "contributor",
           "cover_url",
           "cover_thumbnail_url",
           "created_at",
@@ -199,6 +181,22 @@
       },
       "BookListItem": {
         "properties": {
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_translate": {
+            "title": "Can Translate",
+            "type": "boolean"
+          },
+          "can_upload_edition": {
+            "title": "Can Upload Edition",
+            "type": "boolean"
+          },
           "canonical_author": {
             "anyOf": [
               {
@@ -247,6 +245,9 @@
               }
             ],
             "title": "Continue Url"
+          },
+          "contributor": {
+            "$ref": "#/components/schemas/ContributorSummary"
           },
           "cover_thumbnail_url": {
             "anyOf": [
@@ -383,10 +384,15 @@
           }
         },
         "required": [
+          "can_edit",
+          "can_delete",
+          "can_upload_edition",
+          "can_translate",
           "id",
           "canonical_title",
           "canonical_author",
           "description",
+          "contributor",
           "edition_count",
           "languages",
           "file_formats",
@@ -518,6 +524,22 @@
       },
       "BookResponse": {
         "properties": {
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_translate": {
+            "title": "Can Translate",
+            "type": "boolean"
+          },
+          "can_upload_edition": {
+            "title": "Can Upload Edition",
+            "type": "boolean"
+          },
           "canonical_author": {
             "anyOf": [
               {
@@ -532,6 +554,9 @@
           "canonical_title": {
             "title": "Canonical Title",
             "type": "string"
+          },
+          "contributor": {
+            "$ref": "#/components/schemas/ContributorSummary"
           },
           "cover_thumbnail_url": {
             "anyOf": [
@@ -588,11 +613,16 @@
           }
         },
         "required": [
+          "can_edit",
+          "can_delete",
+          "can_upload_edition",
+          "can_translate",
           "id",
           "canonical_title",
           "canonical_author",
           "description",
           "metadata",
+          "contributor",
           "cover_url",
           "cover_thumbnail_url",
           "created_at",
@@ -609,6 +639,19 @@
         "title": "ContentRole",
         "type": "string"
       },
+      "ContributorSummary": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "ContributorSummary",
+        "type": "object"
+      },
       "CreationMethod": {
         "enum": [
           "uploaded",
@@ -617,6 +660,15 @@
           "converted"
         ],
         "title": "CreationMethod",
+        "type": "string"
+      },
+      "CredentialCapability": {
+        "enum": [
+          "library.read",
+          "library.upload",
+          "translation.use"
+        ],
+        "title": "CredentialCapability",
         "type": "string"
       },
       "CredentialLoginRequest": {
@@ -657,6 +709,13 @@
             "title": "Allow New Devices",
             "type": "boolean"
           },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",
@@ -677,7 +736,8 @@
           }
         },
         "required": [
-          "expires_at"
+          "expires_at",
+          "capabilities"
         ],
         "title": "CredentialReissueRequest",
         "type": "object"
@@ -779,83 +839,6 @@
           "active_session_count"
         ],
         "title": "DeviceResponse",
-        "type": "object"
-      },
-      "EditionCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "content_role": {
-            "$ref": "#/components/schemas/ContentRole"
-          },
-          "creation_method": {
-            "$ref": "#/components/schemas/CreationMethod"
-          },
-          "language": {
-            "minLength": 1,
-            "title": "Language",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "revision": {
-            "default": 1,
-            "title": "Revision",
-            "type": "integer"
-          },
-          "source_edition_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Edition Id"
-          },
-          "status": {
-            "$ref": "#/components/schemas/EditionStatus",
-            "default": "draft"
-          },
-          "supersedes_edition_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Supersedes Edition Id"
-          },
-          "title": {
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "translation_origin": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TranslationOrigin"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "title",
-          "language",
-          "content_role",
-          "creation_method"
-        ],
-        "title": "EditionCreate",
         "type": "object"
       },
       "EditionFileResponse": {
@@ -1003,8 +986,27 @@
             "title": "Book Id",
             "type": "string"
           },
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_translate": {
+            "title": "Can Translate",
+            "type": "boolean"
+          },
+          "can_upload_edition": {
+            "title": "Can Upload Edition",
+            "type": "boolean"
+          },
           "content_role": {
             "$ref": "#/components/schemas/ContentRole"
+          },
+          "contributor": {
+            "$ref": "#/components/schemas/ContributorSummary"
           },
           "created_at": {
             "format": "date-time",
@@ -1113,6 +1115,10 @@
           }
         },
         "required": [
+          "can_edit",
+          "can_delete",
+          "can_upload_edition",
+          "can_translate",
           "id",
           "book_id",
           "title",
@@ -1125,6 +1131,7 @@
           "status",
           "revision",
           "metadata",
+          "contributor",
           "current_file",
           "reader_available",
           "reading_status",
@@ -1961,6 +1968,13 @@
             "title": "Allow New Devices",
             "type": "boolean"
           },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "display_name": {
             "maxLength": 100,
             "minLength": 1,
@@ -1988,7 +2002,8 @@
         },
         "required": [
           "display_name",
-          "expires_at"
+          "expires_at",
+          "capabilities"
         ],
         "title": "ReaderCreate",
         "type": "object"
@@ -2002,6 +2017,13 @@
           "allow_new_devices": {
             "title": "Allow New Devices",
             "type": "boolean"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
           },
           "created_at": {
             "format": "date-time",
@@ -2096,6 +2118,7 @@
           "expires_at",
           "allow_new_devices",
           "max_devices",
+          "capabilities",
           "active_device_count",
           "last_used_at",
           "suspended_at",
@@ -3441,6 +3464,13 @@
       },
       "UserResponse": {
         "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -3488,6 +3518,7 @@
           "id",
           "display_name",
           "role",
+          "capabilities",
           "status",
           "last_login_at",
           "created_at",
@@ -7480,130 +7511,6 @@
         "tags": [
           "books"
         ]
-      },
-      "post": {
-        "operationId": "create_book_api_v1_books_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BookCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BookResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Content Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Create Book",
-        "tags": [
-          "books"
-        ]
       }
     },
     "/api/v1/books/{book_id}": {
@@ -8252,142 +8159,6 @@
           }
         ],
         "summary": "List Editions",
-        "tags": [
-          "editions"
-        ]
-      },
-      "post": {
-        "operationId": "create_edition_api_v1_books__book_id__editions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EditionCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EditionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Content Too Large"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too Many Requests"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Create Edition",
         "tags": [
           "editions"
         ]

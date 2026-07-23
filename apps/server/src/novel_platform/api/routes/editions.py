@@ -5,45 +5,18 @@ from fastapi import APIRouter, Response, status
 from novel_platform.api.dependencies.auth import CurrentAuth
 from novel_platform.api.dependencies.database import DatabaseSession
 from novel_platform.api.dependencies.storage import FileStorageDependency
-from novel_platform.api.schemas import EditionCreate, EditionPatch, EditionResponse
-from novel_platform.api.serializers import edition_response
+from novel_platform.api.library_responses import LibraryResponseBuilder
+from novel_platform.api.schemas import EditionPatch, EditionResponse
 from novel_platform.application.access import LibraryAccessService
 from novel_platform.application.books.service import BookService
-from novel_platform.application.editions.commands import CreateEdition, UpdateEdition
+from novel_platform.application.editions.commands import UpdateEdition
 from novel_platform.application.editions.service import EditionService
 from novel_platform.application.library.file_service import LibraryFileService
+from novel_platform.domain.auth.capabilities import CredentialCapability
 from novel_platform.infrastructure.repositories.library import LibraryRepository
 from novel_platform.infrastructure.repositories.reader import ReaderRepository
 
 router = APIRouter(prefix="/books/{book_id}/editions", tags=["editions"])
-
-
-@router.post("", response_model=EditionResponse, status_code=status.HTTP_201_CREATED)
-async def create_edition(
-    book_id: UUID,
-    payload: EditionCreate,
-    session: DatabaseSession,
-    current: CurrentAuth,
-) -> EditionResponse:
-    owner_user_id = await LibraryAccessService(session).require_manager(current)
-    edition = await EditionService(session).create(
-        book_id,
-        owner_user_id,
-        CreateEdition(
-            title=payload.title,
-            language=payload.language,
-            content_role=payload.content_role,
-            translation_origin=payload.translation_origin,
-            creation_method=payload.creation_method,
-            source_edition_id=payload.source_edition_id,
-            supersedes_edition_id=payload.supersedes_edition_id,
-            status=payload.status,
-            revision=payload.revision,
-            metadata=payload.metadata,
-        ),
-        created_by_user_id=current.user.id,
-    )
-    return edition_response(edition)
 
 
 @router.get("", response_model=list[EditionResponse])
@@ -63,12 +36,12 @@ async def list_editions(
         scope.viewer_user_id,
         [edition.id for edition in editions],
     )
+    responses = LibraryResponseBuilder(session, scope)
     return [
-        edition_response(
+        await responses.edition(
             edition,
             await library.get_current_edition_file_for_owner(scope.owner_user_id, edition.id),
             progresses.get(edition.id),
-            include_download=scope.can_manage,
         )
         for edition in editions
     ]
@@ -92,11 +65,10 @@ async def get_edition(
         edition.id,
     )
     progress = await ReaderRepository(session).get_progress(scope.viewer_user_id, edition.id)
-    return edition_response(
+    return await LibraryResponseBuilder(session, scope).edition(
         edition,
         file_record,
         progress,
-        include_download=scope.can_manage,
     )
 
 
@@ -108,19 +80,20 @@ async def update_edition(
     session: DatabaseSession,
     current: CurrentAuth,
 ) -> EditionResponse:
-    owner_user_id = await LibraryAccessService(session).require_manager(current)
+    scope = await LibraryAccessService(session).require_upload(current)
     edition = await EditionService(session).update(
         book_id,
-        owner_user_id,
+        scope.owner_user_id,
         edition_id,
         UpdateEdition(changes=payload.model_dump(exclude_unset=True)),
+        scope=scope,
     )
     file_record = await LibraryRepository(session).get_current_edition_file_for_owner(
-        owner_user_id,
+        scope.owner_user_id,
         edition.id,
     )
     progress = await ReaderRepository(session).get_progress(current.user.id, edition.id)
-    return edition_response(edition, file_record, progress)
+    return await LibraryResponseBuilder(session, scope).edition(edition, file_record, progress)
 
 
 @router.delete("/{edition_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -131,9 +104,13 @@ async def delete_edition(
     current: CurrentAuth,
     storage: FileStorageDependency,
 ) -> Response:
-    owner_user_id = await LibraryAccessService(session).require_manager(current)
+    scope = await LibraryAccessService(session).require_any_capability(
+        current,
+        CredentialCapability.LIBRARY_UPLOAD,
+        CredentialCapability.TRANSLATION_USE,
+    )
     await LibraryFileService(session, storage).delete_edition(
-        owner_user_id=owner_user_id,
+        scope=scope,
         book_id=book_id,
         edition_id=edition_id,
     )

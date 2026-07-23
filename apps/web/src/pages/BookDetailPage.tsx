@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Collapse, Input } from "antd";
+import { Alert, Button, Card, Input } from "antd";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -6,7 +6,6 @@ import { api, userFacingError } from "../api/client";
 import type { BookDetail, BookPreference, Edition } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { EditionCard } from "../features/editions/EditionCard";
-import { EditionCreateForm } from "../features/editions/EditionCreateForm";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { ProtectedImage } from "../shared/ProtectedImage";
 import { DestructiveAction } from "../ui/components/DestructiveAction";
@@ -15,7 +14,7 @@ import styles from "./LibraryPages.module.css";
 
 export function BookDetailPage() {
   const auth = useAuth();
-  const canManage = auth.user?.role === "admin";
+  const isAdmin = auth.user?.role === "admin";
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
   const [book, setBook] = useState<BookDetail | null>(null);
@@ -28,7 +27,6 @@ export function BookDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [legacyCreateOpen, setLegacyCreateOpen] = useState(false);
   const loadedRef = useRef(false);
 
   const loadBook = useCallback(async () => {
@@ -96,11 +94,6 @@ export function BookDetailPage() {
     }
   }
 
-  async function handleEditionCreated() {
-    setMessage("新版本已创建。");
-    await loadBook();
-  }
-
   async function handleEditionDeleted() {
     setMessage("已删除该版本。");
     await loadBook();
@@ -121,6 +114,7 @@ export function BookDetailPage() {
       </main>
     );
   }
+  const hasManagement = book.can_edit || book.can_delete || book.can_upload_edition;
 
   return (
     <main className={styles.page}>
@@ -137,34 +131,46 @@ export function BookDetailPage() {
             eyebrow={`作品详情 · ${book.edition_count} 个版本`}
             title={book.canonical_title}
             description={book.canonical_author ?? "作者未填写"}
-            primaryAction={canManage ? (
+            primaryAction={book.can_upload_edition ? (
               <Link className={styles.primaryLink} to={`/upload?mode=add_edition&bookId=${book.id}`}>
                 上传新版本
               </Link>
             ) : undefined}
           />
           <p className={styles.detailDescription}>{book.description ?? "暂无简介"}</p>
+          <p className={styles.detailDescription}>上传人：{book.contributor.display_name}</p>
           <p className={styles.detailDescription}>每个 Edition 独立保存阅读状态和位置；切换版本不会覆盖其他版本的进度。</p>
         </div>
       </div>
 
       {message ? <Alert type="success" showIcon title={message} role="status" /> : null}
 
-      <div className={`${styles.contentGrid}${canManage ? "" : ` ${styles.contentGridSingle}`}`}>
-        {canManage ? <aside className={`${styles.sidebar} ${styles.sidebarStack}`}>
+      <div className={`${styles.contentGrid}${hasManagement ? "" : ` ${styles.contentGridSingle}`}`}>
+        {hasManagement ? <aside className={`${styles.sidebar} ${styles.sidebarStack}`}>
           <Card className={styles.surface} title={<h2 className={styles.cardTitle}>馆藏操作</h2>}>
             <div className={styles.actions}>
-              <Link className={styles.primaryLink} to={`/upload?mode=add_edition&bookId=${book.id}`}>上传新版本</Link>
-              <DestructiveAction
-                label="删除整本图书"
-                title={`删除《${book.canonical_title}》？`}
-                description="Book、全部 Edition 与不再被引用的文件会被永久删除，此操作不可撤销。"
-                onConfirm={deleteBook}
-              />
+              {book.can_upload_edition ? (
+                <Link className={styles.primaryLink} to={`/upload?mode=add_edition&bookId=${book.id}`}>
+                  上传新版本
+                </Link>
+              ) : null}
+              {book.can_delete ? (
+                <DestructiveAction
+                  label="删除整本图书"
+                  title={`删除《${book.canonical_title}》？`}
+                  description="全部版本、未引用物理文件，以及所有人的首选版本与阅读进度会被永久清理；此操作不可撤销。"
+                  onConfirm={deleteBook}
+                />
+              ) : null}
             </div>
+            {!book.can_delete ? (
+              <p className={styles.detailDescription}>
+                当前不能整本删除。请先处理其他贡献者版本、依赖、上传或翻译任务，或联系管理员。
+              </p>
+            ) : null}
             {actionError ? <Alert type="error" showIcon title={actionError} /> : null}
           </Card>
-          <Card className={styles.surface} title={<h2 className={styles.cardTitle}>图书元数据</h2>}>
+          {book.can_edit ? <Card className={styles.surface} title={<h2 className={styles.cardTitle}>图书元数据</h2>}>
             <form className={styles.form} onSubmit={(event) => void saveBook(event)}>
               <label className={styles.field} htmlFor="book-title">
                 书名
@@ -180,16 +186,7 @@ export function BookDetailPage() {
               </label>
               <Button type="primary" htmlType="submit" loading={isSaving}>保存图书信息</Button>
             </form>
-          </Card>
-          <Collapse
-            activeKey={legacyCreateOpen ? ["legacy-edition"] : []}
-            onChange={(keys) => setLegacyCreateOpen(keys.includes("legacy-edition"))}
-            items={[{
-              key: "legacy-edition",
-              label: "仅添加无文件 Edition（兼容旧流程）",
-              children: <EditionCreateForm book={book} onCreated={handleEditionCreated} />,
-            }]}
-          />
+          </Card> : null}
         </aside> : null}
         <section aria-labelledby="editions-title">
           <div className={styles.sectionHeader}>
@@ -202,7 +199,7 @@ export function BookDetailPage() {
           {book.editions.length === 0 ? (
             <EmptyState
               title="还没有版本"
-              detail={canManage ? "使用左侧表单添加原文或一份可独立存在的译文。" : "这部作品暂时没有可阅读的版本。"}
+              detail={book.can_upload_edition ? "上传 EPUB 或 TXT，为作品添加可阅读版本。" : "这部作品暂时没有可阅读的版本。"}
             />
           ) : (
             <div className={styles.editionList}>
@@ -215,7 +212,7 @@ export function BookDetailPage() {
                   isPreferred={preference?.preferred_edition_id === edition.id}
                   onSetPreferred={setPreferred}
                   onDeleted={handleEditionDeleted}
-                  canManage={canManage}
+                  canManage={isAdmin}
                 />
               ))}
             </div>

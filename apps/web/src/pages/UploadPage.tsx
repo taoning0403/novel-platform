@@ -108,7 +108,9 @@ export function UploadPage() {
     () => book?.editions.filter((edition) => edition.content_role === "source") ?? [],
     [book],
   );
-  const replaceableEditions = book?.editions ?? [];
+  const replaceableEditions = book?.editions.filter(
+    (edition) => edition.can_edit && edition.current_file !== null,
+  ) ?? [];
   const replacementTarget = replaceableEditions.find((edition) => edition.id === editionId);
   const replacementFormatChanged = Boolean(
     mode === "replace_edition_file"
@@ -336,10 +338,20 @@ export function UploadPage() {
                 value={bookId}
                 onChange={chooseTargetBook}
                 options={[
-                  { value: "", label: "请选择自己的图书" },
-                  ...books.map((item) => ({ value: item.id, label: item.canonical_title })),
+                  { value: "", label: "请选择可见图书" },
+                  ...books
+                    .filter((item) => item.can_upload_edition)
+                    .map((item) => ({ value: item.id, label: item.canonical_title })),
                 ]}
               />
+              {book ? (
+                <span className={styles.fieldHint}>
+                  作品上传人：{book.contributor.display_name}；
+                  {mode === "replace_edition_file"
+                    ? "替换只更新物理文件，不改变版本上传人。"
+                    : "提交后，你将记录为新版本上传人。"}
+                </span>
+              ) : null}
             </label>
           ) : null}
           {mode === "replace_edition_file" ? (
@@ -353,7 +365,7 @@ export function UploadPage() {
                   { value: "", label: "请选择目标 Edition" },
                   ...replaceableEditions.map((edition) => ({
                     value: edition.id,
-                    label: `${edition.title} · ${edition.current_file?.file_format ?? "尚无文件"}`,
+                    label: `${edition.title} · ${edition.current_file?.file_format.toUpperCase() ?? "文件不可用"}`,
                   })),
                 ]}
               />
@@ -524,7 +536,7 @@ export function UploadPage() {
                       格式将从 {replacementTarget?.current_file?.file_format.toUpperCase()} 改为 {inspection.file_format?.toUpperCase()}；新文件元数据已经重新提取，但不会覆盖用户编辑过的 Book 信息。
                     </span>
                   ) : null}
-                  <span>Edition ID、source/supersedes 关系和首选状态保持不变；失败时旧文件继续可用。旧版无文件 Edition 将建立首个文件修订。</span>
+                  <span>Edition ID、source/supersedes 关系和首选状态保持不变；失败时旧文件继续可用。</span>
                 </div>
               )}
               <Button className={styles.commit} type="primary" block loading={isCommitting} onClick={() => void commit()}>

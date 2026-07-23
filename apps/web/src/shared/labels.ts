@@ -1,9 +1,16 @@
 import type {
   CreationMethod,
+  CredentialCapability,
   Edition,
   EditionStatus,
   TranslationOrigin,
 } from "../api/types";
+
+export const credentialCapabilityLabels: Record<CredentialCapability, string> = {
+  "library.read": "阅读馆藏",
+  "library.upload": "上传作品与版本",
+  "translation.use": "使用小说翻译",
+};
 
 export const translationOriginLabels: Record<TranslationOrigin, string> = {
   ai: "AI 译文",
@@ -33,4 +40,3 @@ export function editionRoleLabel(edition: Pick<Edition, "content_role" | "transl
     ? translationOriginLabels[edition.translation_origin]
     : "译文";
 }
-

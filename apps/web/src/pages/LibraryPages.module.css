@@ -926,10 +926,6 @@
   text-decoration: none;
 }
 
-.legacyCreate {
-  margin-top: 28px;
-}
-
 .filterDrawer {
   display: grid;
   gap: 22px;

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { LoadingBlock } from "../shared/AsyncState";
+import type { CredentialCapability } from "../api/types";
 import { useAuth } from "./AuthProvider";
 import styles from "./ProtectedRoute.module.css";
 
@@ -9,10 +10,12 @@ export function ProtectedRoute({
   children,
   admin = false,
   recovery = false,
+  capability,
 }: {
   children: ReactNode;
   admin?: boolean;
   recovery?: boolean;
+  capability?: CredentialCapability;
 }) {
   const auth = useAuth();
   const location = useLocation();
@@ -27,6 +30,9 @@ export function ProtectedRoute({
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
   if (admin && auth.user.role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
+  if (capability && !auth.user.capabilities.includes(capability)) {
     return <Navigate to="/" replace />;
   }
   if (auth.session?.recovery_mode && !recovery) {

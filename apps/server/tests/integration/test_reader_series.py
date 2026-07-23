@@ -64,6 +64,7 @@ async def import_book(
     content: bytes,
     title: str,
     series_id: str | None = None,
+    edition_status: str = "ready",
 ) -> dict[str, Any]:
     inspected = await client.post(
         "/api/v1/imports/inspect",
@@ -81,7 +82,44 @@ async def import_book(
             "edition_title": title,
             "language": "zh-CN",
             "content_role": "source",
-            "set_preferred": True,
+            "edition_status": edition_status,
+            "set_preferred": edition_status == "ready",
+        },
+    )
+    assert committed.status_code == 200, committed.text
+    return cast(dict[str, Any], committed.json())
+
+
+async def import_edition(
+    client: httpx.AsyncClient,
+    auth: dict[str, str],
+    *,
+    book_id: str,
+    filename: str,
+    content: bytes,
+    title: str,
+    status: str,
+) -> dict[str, Any]:
+    inspected = await client.post(
+        "/api/v1/imports/inspect",
+        headers=auth,
+        data={
+            "operation": "add_edition",
+            "target_book_id": book_id,
+            "text_encoding": "auto",
+        },
+        files={"file": (filename, content, "text/plain")},
+    )
+    assert inspected.status_code == 201, inspected.text
+    committed = await client.post(
+        f"/api/v1/imports/{inspected.json()['id']}/commit",
+        headers=auth,
+        json={
+            "edition_title": title,
+            "language": "zh-CN",
+            "content_role": "translation",
+            "translation_origin": "human",
+            "edition_status": status,
         },
     )
     assert committed.status_code == 200, committed.text
@@ -187,44 +225,29 @@ async def test_shared_library_reader_projection_private_state_and_rbac(app_harne
             series_id=series["id"],
         )
 
-        hidden_book = await client.post(
-            "/api/v1/books",
-            headers=admin_headers,
-            json={"canonical_title": "仅草稿图书"},
-        )
-        assert hidden_book.status_code == 201
-        hidden_edition = await client.post(
-            f"/api/v1/books/{hidden_book.json()['id']}/editions",
-            headers=admin_headers,
-            json={
-                "title": "未发布草稿",
-                "language": "zh-CN",
-                "content_role": "source",
-                "creation_method": "uploaded",
-                "status": "draft",
-            },
-        )
-        assert hidden_edition.status_code == 201
         hidden_series = await client.post(
             "/api/v1/series", headers=admin_headers, json={"name": "空白系列"}
         )
-        await client.post(
-            f"/api/v1/series/{hidden_series.json()['id']}/books/{hidden_book.json()['id']}",
-            headers=admin_headers,
+        hidden = await import_book(
+            client,
+            admin_headers,
+            filename="未发布草稿.txt",
+            content="草稿正文".encode(),
+            title="仅草稿图书",
+            series_id=hidden_series.json()["id"],
+            edition_status="draft",
         )
-        draft_on_visible_book = await client.post(
-            f"/api/v1/books/{first['book']['id']}/editions",
-            headers=admin_headers,
-            json={
-                "title": "内部草稿",
-                "language": "zh-CN",
-                "content_role": "translation",
-                "translation_origin": "human",
-                "creation_method": "edited",
-                "status": "draft",
-            },
+        assert hidden["edition"]["status"] == "draft"
+        draft_on_visible_book = await import_edition(
+            client,
+            admin_headers,
+            book_id=first["book"]["id"],
+            filename="内部草稿.txt",
+            content="内部草稿正文".encode(),
+            title="内部草稿",
+            status="draft",
         )
-        assert draft_on_visible_book.status_code == 201
+        assert draft_on_visible_book["edition"]["status"] == "draft"
         pending_import = await client.post(
             "/api/v1/imports/inspect",
             headers=admin_headers,
@@ -399,7 +422,8 @@ async def test_shared_library_reader_projection_private_state_and_rbac(app_harne
             reader_a_client.get("/api/v1/auth/passkeys", headers=reader_a_headers),
         ]
         forbidden = await asyncio.gather(*forbidden_requests)
-        assert all(response.status_code == 403 for response in forbidden)
+        assert forbidden[0].status_code == 405
+        assert all(response.status_code == 403 for response in forbidden[1:])
 
         inspect_denied = await reader_a_client.post(
             "/api/v1/imports/inspect",
@@ -409,4 +433,4 @@ async def test_shared_library_reader_projection_private_state_and_rbac(app_harne
         )
         assert inspect_denied.status_code == 403
         assert reader_a["id"] != reader_b["id"]
-        assert second["book"]["id"] != hidden_book.json()["id"]
+        assert second["book"]["id"] != hidden["book"]["id"]

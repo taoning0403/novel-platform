@@ -52,38 +52,36 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
-class BookCreate(StrictModel):
-    canonical_title: str = Field(min_length=1)
-    canonical_author: str | None = None
-    description: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("canonical_title")
-    @classmethod
-    def strip_title(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("must not be blank")
-        return value
+class ContributorSummary(BaseModel):
+    display_name: str
 
 
-class BookResponse(BaseModel):
+class ResourcePermissionsResponse(BaseModel):
+    can_edit: bool
+    can_delete: bool
+    can_upload_edition: bool
+    can_translate: bool
+
+
+class BookResponse(ResourcePermissionsResponse):
     id: UUID
     canonical_title: str
     canonical_author: str | None
     description: str | None
     metadata: dict[str, Any]
+    contributor: ContributorSummary
     cover_url: str | None
     cover_thumbnail_url: str | None
     created_at: datetime
     updated_at: datetime
 
 
-class BookListItem(BaseModel):
+class BookListItem(ResourcePermissionsResponse):
     id: UUID
     canonical_title: str
     canonical_author: str | None
     description: str | None
+    contributor: ContributorSummary
     edition_count: int
     languages: list[str]
     file_formats: list[FileFormat]
@@ -163,27 +161,6 @@ class SeriesDetailResponse(SeriesResponse):
     books: list[BookListItem]
 
 
-class EditionCreate(StrictModel):
-    title: str = Field(min_length=1)
-    language: str = Field(min_length=1)
-    content_role: ContentRole
-    translation_origin: TranslationOrigin | None = None
-    creation_method: CreationMethod
-    source_edition_id: UUID | None = None
-    supersedes_edition_id: UUID | None = None
-    status: EditionStatus = EditionStatus.DRAFT
-    revision: int = 1
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("title", "language")
-    @classmethod
-    def strip_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("must not be blank")
-        return value
-
-
 class EditionPatch(StrictModel):
     title: str | None = None
     status: EditionStatus | None = None
@@ -209,7 +186,7 @@ class EditionPatch(StrictModel):
         return self
 
 
-class EditionResponse(BaseModel):
+class EditionResponse(ResourcePermissionsResponse):
     id: UUID
     book_id: UUID
     title: str
@@ -222,6 +199,7 @@ class EditionResponse(BaseModel):
     status: EditionStatus
     revision: int
     metadata: dict[str, Any]
+    contributor: ContributorSummary
     current_file: "EditionFileResponse | None"
     reader_available: bool
     reading_status: ReadingStatus

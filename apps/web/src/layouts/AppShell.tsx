@@ -44,6 +44,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const authenticated = auth.phase === "authenticated" && auth.user !== null;
   const isAdmin = auth.user?.role === "admin";
+  const canUpload = auth.user?.capabilities.includes("library.upload") ?? false;
+  const canTranslate = auth.user?.capabilities.includes("translation.use") ?? false;
   const recoveryMode = auth.session?.recovery_mode === true;
   const readerRoute = location.pathname.startsWith("/read/");
   const loginRoute = location.pathname === "/login";
@@ -73,15 +75,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             { label: "系列", to: "/series", icon: "series" },
           ],
         },
-        ...(isAdmin ? [{
+        ...(isAdmin || canUpload ? [{
           label: "馆藏管理",
           items: [
-            { label: "上传", to: "/upload", icon: "upload" as const },
-            { label: "管理", to: "/admin", icon: "manage" as const, end: true },
-            { label: "阅读者", to: "/admin/readers", icon: "readers" as const },
-            { label: "安全", to: "/admin/security", icon: "security" as const },
-            { label: "站点", to: "/admin/site", icon: "site" as const },
-            { label: "审计", to: "/admin/audit", icon: "audit" as const },
+            ...(canUpload
+              ? [{ label: "上传", to: "/upload", icon: "upload" as const }]
+              : []),
+            ...(isAdmin
+              ? [
+                  { label: "管理", to: "/admin", icon: "manage" as const, end: true },
+                  { label: "阅读者", to: "/admin/readers", icon: "readers" as const },
+                  { label: "安全", to: "/admin/security", icon: "security" as const },
+                  { label: "站点", to: "/admin/site", icon: "site" as const },
+                  { label: "审计", to: "/admin/audit", icon: "audit" as const },
+                ]
+              : []),
           ],
         }] : []),
         {
@@ -98,13 +106,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const quickItems = recoveryMode
     ? allItems
     : isAdmin
-      ? allItems.filter((item) => ["/", "/series", "/upload", "/admin"].includes(item.to))
+      ? allItems.filter((item) => ["/", "/series", "/admin"].includes(item.to))
       : allItems.filter((item) => ["/", "/series", "/settings/profile"].includes(item.to));
   const identityLabel = recoveryMode
     ? "恢复会话"
     : isAdmin
       ? "站点管理员"
-      : "受邀阅读者";
+      : canUpload || canTranslate
+        ? "受邀贡献者"
+        : "受邀阅读者";
 
   return (
     <div className={styles.shell}>
@@ -140,7 +150,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </span>
             </div>
             <Button type="text" size="small" onClick={() => void logout()}>退出</Button>
-            <span className={styles.version}>漫读 v0.7.0</span>
+            <span className={styles.version}>漫读 v0.9.0</span>
           </div>
         </aside>
       ) : null}

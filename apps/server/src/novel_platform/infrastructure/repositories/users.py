@@ -27,6 +27,17 @@ class UserRepository:
         )
         return (await self.session.scalars(statement)).one_or_none()
 
+    async def display_names(self, user_ids: set[UUID]) -> dict[UUID, str]:
+        if not user_ids:
+            return {}
+        statement = select(UserModel.id, UserModel.display_name).where(
+            UserModel.id.in_(user_ids),
+            UserModel.status != UserStatus.PENDING_SETUP,
+        )
+        return {
+            user_id: display_name for user_id, display_name in await self.session.execute(statement)
+        }
+
     async def get_by_normalized_username(self, normalized_username: str) -> UserModel | None:
         statement = select(UserModel).where(UserModel.normalized_username == normalized_username)
         return (await self.session.scalars(statement)).one_or_none()

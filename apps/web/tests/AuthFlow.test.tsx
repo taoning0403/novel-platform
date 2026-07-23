@@ -32,6 +32,11 @@ const admin = {
   id: "00000000-0000-0000-0000-000000000001",
   display_name: "管理员",
   role: "admin",
+  capabilities: [
+    "library.read",
+    "library.upload",
+    "translation.use",
+  ],
   status: "active",
   last_login_at: "2026-07-15T00:00:00Z",
   created_at: "2026-07-15T00:00:00Z",
@@ -43,6 +48,7 @@ const reader = {
   id: "00000000-0000-0000-0000-000000000002",
   display_name: "受邀读者",
   role: "reader",
+  capabilities: ["library.read"],
 };
 
 function tokenResponse(user = admin, recoveryMode = false) {

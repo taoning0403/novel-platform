@@ -443,8 +443,7 @@ export interface paths {
         /** List Books */
         get: operations["list_books_api_v1_books_get"];
         put?: never;
-        /** Create Book */
-        post: operations["create_book_api_v1_books_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -497,8 +496,7 @@ export interface paths {
         /** List Editions */
         get: operations["list_editions_api_v1_books__book_id__editions_get"];
         put?: never;
-        /** Create Edition */
-        post: operations["create_edition_api_v1_books__book_id__editions_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -929,25 +927,21 @@ export interface components {
              */
             text_encoding: string;
         };
-        /** BookCreate */
-        BookCreate: {
-            /** Canonical Author */
-            canonical_author?: string | null;
-            /** Canonical Title */
-            canonical_title: string;
-            /** Description */
-            description?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-        };
         /** BookDetailResponse */
         BookDetailResponse: {
+            /** Can Delete */
+            can_delete: boolean;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Translate */
+            can_translate: boolean;
+            /** Can Upload Edition */
+            can_upload_edition: boolean;
             /** Canonical Author */
             canonical_author: string | null;
             /** Canonical Title */
             canonical_title: string;
+            contributor: components["schemas"]["ContributorSummary"];
             /** Cover Thumbnail Url */
             cover_thumbnail_url: string | null;
             /** Cover Url */
@@ -980,6 +974,14 @@ export interface components {
         };
         /** BookListItem */
         BookListItem: {
+            /** Can Delete */
+            can_delete: boolean;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Translate */
+            can_translate: boolean;
+            /** Can Upload Edition */
+            can_upload_edition: boolean;
             /** Canonical Author */
             canonical_author: string | null;
             /** Canonical Title */
@@ -990,6 +992,7 @@ export interface components {
             continue_edition_title?: string | null;
             /** Continue Url */
             continue_url?: string | null;
+            contributor: components["schemas"]["ContributorSummary"];
             /** Cover Thumbnail Url */
             cover_thumbnail_url: string | null;
             /**
@@ -1064,10 +1067,19 @@ export interface components {
         };
         /** BookResponse */
         BookResponse: {
+            /** Can Delete */
+            can_delete: boolean;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Translate */
+            can_translate: boolean;
+            /** Can Upload Edition */
+            can_upload_edition: boolean;
             /** Canonical Author */
             canonical_author: string | null;
             /** Canonical Title */
             canonical_title: string;
+            contributor: components["schemas"]["ContributorSummary"];
             /** Cover Thumbnail Url */
             cover_thumbnail_url: string | null;
             /** Cover Url */
@@ -1099,11 +1111,21 @@ export interface components {
          * @enum {string}
          */
         ContentRole: "source" | "translation";
+        /** ContributorSummary */
+        ContributorSummary: {
+            /** Display Name */
+            display_name: string;
+        };
         /**
          * CreationMethod
          * @enum {string}
          */
         CreationMethod: "uploaded" | "generated" | "edited" | "converted";
+        /**
+         * CredentialCapability
+         * @enum {string}
+         */
+        CredentialCapability: "library.read" | "library.upload" | "translation.use";
         /** CredentialLoginRequest */
         CredentialLoginRequest: {
             /**
@@ -1126,6 +1148,8 @@ export interface components {
              * @default true
              */
             allow_new_devices: boolean;
+            /** Capabilities */
+            capabilities: components["schemas"]["CredentialCapability"][];
             /**
              * Expires At
              * Format: date-time
@@ -1173,31 +1197,6 @@ export interface components {
             /** Revoked At */
             revoked_at: string | null;
         };
-        /** EditionCreate */
-        EditionCreate: {
-            content_role: components["schemas"]["ContentRole"];
-            creation_method: components["schemas"]["CreationMethod"];
-            /** Language */
-            language: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Revision
-             * @default 1
-             */
-            revision: number;
-            /** Source Edition Id */
-            source_edition_id?: string | null;
-            /** @default draft */
-            status: components["schemas"]["EditionStatus"];
-            /** Supersedes Edition Id */
-            supersedes_edition_id?: string | null;
-            /** Title */
-            title: string;
-            translation_origin?: components["schemas"]["TranslationOrigin"] | null;
-        };
         /** EditionFileResponse */
         EditionFileResponse: {
             /** Content Item Count */
@@ -1242,7 +1241,16 @@ export interface components {
              * Format: uuid
              */
             book_id: string;
+            /** Can Delete */
+            can_delete: boolean;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Can Translate */
+            can_translate: boolean;
+            /** Can Upload Edition */
+            can_upload_edition: boolean;
             content_role: components["schemas"]["ContentRole"];
+            contributor: components["schemas"]["ContributorSummary"];
             /**
              * Created At
              * Format: date-time
@@ -1563,6 +1571,8 @@ export interface components {
              * @default true
              */
             allow_new_devices: boolean;
+            /** Capabilities */
+            capabilities: components["schemas"]["CredentialCapability"][];
             /** Display Name */
             display_name: string;
             /**
@@ -1579,6 +1589,8 @@ export interface components {
             active_device_count: number;
             /** Allow New Devices */
             allow_new_devices: boolean;
+            /** Capabilities */
+            capabilities: components["schemas"]["CredentialCapability"][];
             /**
              * Created At
              * Format: date-time
@@ -2057,6 +2069,8 @@ export interface components {
         TranslationOrigin: "ai" | "human" | "mixed" | "unknown";
         /** UserResponse */
         UserResponse: {
+            /** Capabilities */
+            capabilities: components["schemas"]["CredentialCapability"][];
             /**
              * Created At
              * Format: date-time
@@ -5206,111 +5220,6 @@ export interface operations {
             };
         };
     };
-    create_book_api_v1_books_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BookCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BookResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Content Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     get_book_api_v1_books__book_id__get: {
         parameters: {
             query?: never;
@@ -5745,113 +5654,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditionResponse"][];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Content Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too Many Requests */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_edition_api_v1_books__book_id__editions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                book_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EditionCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EditionResponse"];
                 };
             };
             /** @description Bad Request */

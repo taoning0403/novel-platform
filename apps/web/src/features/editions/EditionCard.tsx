@@ -72,12 +72,18 @@ export function EditionCard({
     setError(null);
     setMessage(null);
     try {
-      const updated = await api.patchEdition(edition.book_id, edition.id, {
-        title,
-        source_edition_id: sourceId || null,
-        supersedes_edition_id: supersedesId || null,
-        status,
-      });
+      const updated = await api.patchEdition(
+        edition.book_id,
+        edition.id,
+        canManage
+          ? {
+              title,
+              source_edition_id: sourceId || null,
+              supersedes_edition_id: supersedesId || null,
+              status,
+            }
+          : { title },
+      );
       setMessage("版本信息已保存。");
       await onUpdated(updated);
     } catch (caught) {
@@ -156,9 +162,14 @@ export function EditionCard({
           { key: "role", label: "版本角色", children: edition.content_role === "source" ? "原文" : "翻译" },
           { key: "origin", label: "翻译来源", children: edition.translation_origin ? editionRoleLabel(edition) : "不适用" },
           { key: "method", label: "创建方式", children: creationMethodLabels[edition.creation_method] },
+          {
+            key: "contributor",
+            label: edition.creation_method === "generated" ? "翻译发起人" : "上传人",
+            children: edition.contributor.display_name,
+          },
           { key: "revision", label: "修订号", children: `r${edition.revision}` },
           { key: "created", label: "创建时间", children: formatDate(edition.created_at) },
-          { key: "format", label: "文件格式", children: edition.current_file?.file_format.toUpperCase() ?? "尚无文件" },
+          { key: "format", label: "文件格式", children: edition.current_file?.file_format.toUpperCase() ?? "文件不可用" },
           { key: "size", label: "文件大小", children: edition.current_file ? formatFileSize(edition.current_file.size_bytes) : "—" },
           { key: "file-revision", label: "文件修订", children: edition.current_file ? `f${edition.current_file.revision}` : "—" },
           { key: "encoding", label: "采用编码", children: edition.current_file?.text_encoding ?? "不适用" },
@@ -181,14 +192,13 @@ export function EditionCard({
           {canManage && edition.current_file.download_url ? <Button loading={isDownloading} onClick={() => void downloadFile()}>
             {`下载 ${edition.current_file.original_filename}`}
           </Button> : null}
-          {canManage ? <Link className={styles.defaultLink} to={`/upload?mode=replace_edition_file&bookId=${edition.book_id}&editionId=${edition.id}`}>替换文件</Link> : null}
+          {edition.can_edit ? <Link className={styles.defaultLink} to={`/upload?mode=replace_edition_file&bookId=${edition.book_id}&editionId=${edition.id}`}>替换文件</Link> : null}
         </div>
       ) : (
-        canManage ? <div className={styles.note}>
-          <strong>旧版无文件 Edition</strong>
-          <span>这是兼容保留的既有记录，可通过“替换文件”流程为它建立首个文件修订。</span>
-          <Link className={styles.textLink} to={`/upload?mode=replace_edition_file&bookId=${edition.book_id}&editionId=${edition.id}`}>上传首个文件 →</Link>
-        </div> : null
+        <div className={styles.note}>
+          <strong>文件不可用</strong>
+          <span>该版本当前无法阅读，请联系管理员检查馆藏完整性。</span>
+        </div>
       )}
 
       {edition.content_role === "translation" && !source ? (
@@ -206,12 +216,12 @@ export function EditionCard({
         </Button>
       </div>
 
-      {canManage ? <form className={styles.form} onSubmit={(event) => void submit(event)} aria-busy={isSubmitting}>
+      {edition.can_edit ? <form className={styles.form} onSubmit={(event) => void submit(event)} aria-busy={isSubmitting}>
         <label className={styles.field} htmlFor={`edition-title-${edition.id}`}>
           Edition 名称
           <Input id={`edition-title-${edition.id}`} required value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
-        {edition.content_role === "translation" ? (
+        {canManage && edition.content_role === "translation" ? (
           <label className={styles.field}>
             原文关联
             <Select
@@ -225,7 +235,7 @@ export function EditionCard({
             />
           </label>
         ) : null}
-        <label className={styles.field}>
+        {canManage ? <label className={styles.field}>
           替代关系
           <Select
             aria-label="替代关系"
@@ -239,8 +249,8 @@ export function EditionCard({
               })),
             ]}
           />
-        </label>
-        <label className={styles.field}>
+        </label> : null}
+        {canManage ? <label className={styles.field}>
           状态
           <Select
             aria-label="状态"
@@ -252,20 +262,35 @@ export function EditionCard({
               { value: "archived", label: "已归档" },
             ]}
           />
-        </label>
+        </label> : null}
         {error ? <Alert className={styles.full} type="error" showIcon title={error} /> : null}
         {message ? <Alert className={styles.full} type="success" showIcon title={message} role="status" /> : null}
         <div className={styles.formActions}>
-          <Button type="primary" htmlType="submit" loading={isSubmitting}>保存关系与状态</Button>
-          <DestructiveAction
+          <Button type="primary" htmlType="submit" loading={isSubmitting}>
+            {canManage ? "保存关系与状态" : "保存版本信息"}
+          </Button>
+          {edition.can_delete ? <DestructiveAction
             label="删除 Edition"
             title={`删除 Edition“${edition.title}”？`}
-            description="该 Edition 及其不再被引用的文件会被删除；若它是首选会明确清除首选。存在依赖关系时服务器会拒绝。"
+            description="该版本和未引用文件会被删除，并清除所有人指向它的首选版本与阅读进度；存在依赖或活动任务时服务器会拒绝。"
             loading={isDeleting}
             onConfirm={deleteEdition}
-          />
+          /> : null}
         </div>
-      </form> : error ? <Alert type="error" showIcon title={error} /> : null}
+      </form> : edition.can_delete ? (
+        <>
+          {error ? <Alert type="error" showIcon title={error} /> : null}
+          <div className={styles.actions}>
+            <DestructiveAction
+              label="删除 Edition"
+              title={`删除 Edition“${edition.title}”？`}
+              description="该版本和未引用文件会被删除，并清除所有人指向它的首选版本与阅读进度；存在依赖或活动任务时服务器会拒绝。"
+              loading={isDeleting}
+              onConfirm={deleteEdition}
+            />
+          </div>
+        </>
+      ) : error ? <Alert type="error" showIcon title={error} /> : null}
       </article>
     </Card>
   );

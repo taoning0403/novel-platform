@@ -6,6 +6,7 @@ from novel_platform.api.schemas import (
     BookDetailResponse,
     BookListItem,
     BookResponse,
+    ContributorSummary,
     DeviceResponse,
     EditionFileResponse,
     EditionResponse,
@@ -25,6 +26,7 @@ from novel_platform.api.schemas import (
     UserResponse,
 )
 from novel_platform.application.auth.context import AuthContext, TokenResult
+from novel_platform.application.library.policy import ResourcePermissions
 from novel_platform.domain.auth.capabilities import CredentialCapability, sorted_capabilities
 from novel_platform.domain.auth.models import AccessCredentialStatus, UserRole
 from novel_platform.domain.library.models import FileFormat
@@ -240,13 +242,29 @@ def device_response(
     )
 
 
-def book_response(book: BookModel) -> BookResponse:
+def permission_fields(permissions: ResourcePermissions) -> dict[str, bool]:
+    return {
+        "can_edit": permissions.can_edit,
+        "can_delete": permissions.can_delete,
+        "can_upload_edition": permissions.can_upload_edition,
+        "can_translate": permissions.can_translate,
+    }
+
+
+def book_response(
+    book: BookModel,
+    *,
+    contributor_display_name: str,
+    permissions: ResourcePermissions,
+) -> BookResponse:
     return BookResponse(
+        **permission_fields(permissions),
         id=book.id,
         canonical_title=book.canonical_title,
         canonical_author=book.canonical_author,
         description=book.description,
         metadata=book.extra_metadata,
+        contributor=ContributorSummary(display_name=contributor_display_name),
         cover_url=f"/api/v1/books/{book.id}/cover" if book.cover_file_id else None,
         cover_thumbnail_url=(
             f"/api/v1/books/{book.id}/cover?thumbnail=true"
@@ -263,15 +281,19 @@ def book_list_item(
     edition_count: int,
     summary: BookLibrarySummary | None = None,
     *,
+    contributor_display_name: str,
+    permissions: ResourcePermissions,
     series_id: UUID | None = None,
     series_name: str | None = None,
     series_position: int | None = None,
 ) -> BookListItem:
     return BookListItem(
+        **permission_fields(permissions),
         id=book.id,
         canonical_title=book.canonical_title,
         canonical_author=book.canonical_author,
         description=book.description,
+        contributor=ContributorSummary(display_name=contributor_display_name),
         edition_count=edition_count,
         languages=summary.languages if summary else [],
         file_formats=(
@@ -322,9 +344,12 @@ def edition_response(
     file_record: EditionFileRecord | None = None,
     progress: ReadingProgressModel | None = None,
     *,
+    contributor_display_name: str,
+    permissions: ResourcePermissions,
     include_download: bool = True,
 ) -> EditionResponse:
     return EditionResponse(
+        **permission_fields(permissions),
         id=edition.id,
         book_id=edition.book_id,
         title=edition.title,
@@ -337,6 +362,7 @@ def edition_response(
         status=edition.status,
         revision=edition.revision,
         metadata=edition.extra_metadata,
+        contributor=ContributorSummary(display_name=contributor_display_name),
         current_file=(
             edition_file_response(file_record, include_download=include_download)
             if file_record
@@ -364,14 +390,20 @@ def book_detail_response(
     files: dict[UUID, EditionFileRecord] | None = None,
     progresses: dict[UUID, ReadingProgressModel] | None = None,
     *,
+    contributor_display_name: str,
+    permissions: ResourcePermissions,
+    edition_contributors: dict[UUID, str],
+    edition_permissions: dict[UUID, ResourcePermissions],
     include_download: bool = True,
 ) -> BookDetailResponse:
     return BookDetailResponse(
+        **permission_fields(permissions),
         id=book.id,
         canonical_title=book.canonical_title,
         canonical_author=book.canonical_author,
         description=book.description,
         metadata=book.extra_metadata,
+        contributor=ContributorSummary(display_name=contributor_display_name),
         cover_url=f"/api/v1/books/{book.id}/cover" if book.cover_file_id else None,
         cover_thumbnail_url=(
             f"/api/v1/books/{book.id}/cover?thumbnail=true"
@@ -386,6 +418,8 @@ def book_detail_response(
                 edition,
                 (files or {}).get(edition.id),
                 (progresses or {}).get(edition.id),
+                contributor_display_name=edition_contributors[edition.id],
+                permissions=edition_permissions[edition.id],
                 include_download=include_download,
             )
             for edition in editions

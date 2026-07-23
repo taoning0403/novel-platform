@@ -1,4 +1,4 @@
-import { Button, Collapse, Drawer, Input, Select, Tag } from "antd";
+import { Button, Drawer, Input, Select, Tag } from "antd";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -6,7 +6,6 @@ import { api, userFacingError } from "../api/client";
 import type { BookFilters } from "../api/client";
 import type { BookListItem, FileFormat, RecentReading } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
-import { CreateBookForm } from "../features/books/CreateBookForm";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { formatDate } from "../shared/format";
 import { ProtectedImage } from "../shared/ProtectedImage";
@@ -19,7 +18,7 @@ type AppliedFilter = "query" | "format" | "language" | "editionType";
 
 export function LibraryPage() {
   const auth = useAuth();
-  const canManage = auth.user?.role === "admin";
+  const canUpload = auth.user?.capabilities.includes("library.upload") ?? false;
   const [books, setBooks] = useState<BookListItem[]>([]);
   const [recent, setRecent] = useState<RecentReading[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,7 +105,7 @@ export function LibraryPage() {
         eyebrow={`馆藏 · ${books.length} 本作品`}
         title="书库"
         description="从上次停下的位置继续，或选择下一本书。"
-        primaryAction={canManage ? (
+        primaryAction={canUpload ? (
           <Link className={styles.uploadAction} to="/upload">
             <InterfaceIcon name="upload" /> 上传作品
           </Link>
@@ -207,7 +206,7 @@ export function LibraryPage() {
             title={hasActiveFilters ? "没有匹配的作品" : "书库还是空的"}
             detail={hasActiveFilters
               ? "调整筛选条件后重试。"
-              : canManage
+              : canUpload
                 ? "上传 EPUB 或 TXT，创建第一本带文件的作品。"
                 : "管理员尚未发布可读馆藏。"}
           />
@@ -243,6 +242,9 @@ export function LibraryPage() {
                     <p className={styles.bookUtility}>{book.edition_count} 个版本</p>
                     <h3>{book.canonical_title}</h3>
                     <p className={styles.catalogueAuthor}>{book.canonical_author ?? "作者未填写"}</p>
+                    <p className={styles.bookUtility}>
+                      上传人：{book.contributor.display_name}
+                    </p>
                   </div>
                   <p className={styles.bookSummary}>{book.description ?? "暂无简介"}</p>
                   <div className={styles.bookTags}>
@@ -266,17 +268,6 @@ export function LibraryPage() {
               </article>
             ))}
           </div>
-        ) : null}
-
-        {canManage ? (
-          <Collapse
-            className={styles.legacyCreate}
-            items={[{
-              key: "legacy-create",
-              label: "高级：仅创建空 Book",
-              children: <CreateBookForm onCreated={loadBooks} />,
-            }]}
-          />
         ) : null}
       </section>
 

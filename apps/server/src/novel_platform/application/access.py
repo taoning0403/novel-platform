@@ -73,3 +73,18 @@ class LibraryAccessService:
 
     async def require_translation(self, context: AuthContext) -> LibraryAccessScope:
         return await self.require_capability(context, CredentialCapability.TRANSLATION_USE)
+
+    async def require_any_capability(
+        self,
+        context: AuthContext,
+        *capabilities: CredentialCapability,
+    ) -> LibraryAccessScope:
+        scope = await self.scope(context)
+        if not any(scope.has(capability) for capability in capabilities):
+            raise ApplicationError(
+                "library_capability_required",
+                "当前访问凭证不包含所需能力。",
+                status_code=HTTPStatus.FORBIDDEN,
+                details={"capabilities": [item.value for item in capabilities]},
+            )
+        return scope

@@ -4,8 +4,10 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.books.commands import CreateBook, UpdateBook
 from novel_platform.application.errors import ApplicationError
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.domain.books.models import normalise_book_title
 from novel_platform.domain.editions.models import ContentRole
 from novel_platform.domain.library.models import FileFormat
@@ -118,8 +120,11 @@ class BookService:
         book_id: UUID,
         owner_user_id: UUID,
         command: UpdateBook,
+        *,
+        scope: LibraryAccessScope,
     ) -> BookModel:
         book = await self.get(book_id, owner_user_id)
+        await LibraryResourcePolicy(self.session).require_book_edit(scope, book)
         allowed = {"canonical_title", "canonical_author", "description", "metadata"}
         if not command.changes or set(command.changes) - allowed:
             raise ApplicationError(

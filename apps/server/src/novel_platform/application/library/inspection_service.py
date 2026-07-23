@@ -9,10 +9,12 @@ from uuid import UUID
 from anyio import to_thread
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.errors import ApplicationError
 from novel_platform.application.library.commands import InspectImport
 from novel_platform.application.library.epub import inspect_epub
 from novel_platform.application.library.filenames import sanitize_filename
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.application.library.storage import (
     FileStorage,
     StorageError,
@@ -42,23 +44,24 @@ class ImportInspectionService:
         self.books = BookRepository(session)
         self.editions = EditionRepository(session)
         self.library = LibraryRepository(session)
+        self.policy = LibraryResourcePolicy(session)
 
     async def inspect(
         self,
         *,
-        owner_user_id: UUID,
-        requested_by_user_id: UUID,
+        scope: LibraryAccessScope,
         command: InspectImport,
         stream: BinaryIO,
     ) -> LibraryImportModel:
+        self.policy.require_upload_capability(scope)
         target_book_id, target_edition_id = await self._validate_target(
-            owner_user_id=owner_user_id,
+            scope=scope,
             command=command,
         )
         filename = sanitize_filename(command.filename)
         library_import = LibraryImportModel(
-            owner_user_id=owner_user_id,
-            requested_by_user_id=requested_by_user_id,
+            owner_user_id=scope.owner_user_id,
+            requested_by_user_id=scope.viewer_user_id,
             status=ImportStatus.PENDING,
             operation=command.operation,
             original_filename=filename,
@@ -139,20 +142,28 @@ class ImportInspectionService:
             await self._record_failure(library_import, error)
             raise self._with_import_id(error, library_import.id) from exc
 
-    async def get(self, owner_user_id: UUID, import_id: UUID) -> LibraryImportModel:
-        library_import = await self.library.get_import(owner_user_id, import_id)
+    async def get(
+        self,
+        scope: LibraryAccessScope,
+        import_id: UUID,
+    ) -> LibraryImportModel:
+        self.policy.require_upload_capability(scope)
+        library_import = await self.library.get_import(scope.owner_user_id, import_id)
         if library_import is None:
             raise ApplicationError("upload_not_found", "上传记录不存在。", status_code=404)
+        self.policy.require_import_access(scope, library_import)
         return library_import
 
-    async def delete(self, owner_user_id: UUID, import_id: UUID) -> None:
+    async def delete(self, scope: LibraryAccessScope, import_id: UUID) -> None:
+        self.policy.require_upload_capability(scope)
         library_import = await self.library.get_import(
-            owner_user_id,
+            scope.owner_user_id,
             import_id,
             for_update=True,
         )
         if library_import is None:
             raise ApplicationError("upload_not_found", "上传记录不存在。", status_code=404)
+        self.policy.require_import_access(scope, library_import)
         if library_import.status is ImportStatus.SUCCEEDED:
             raise ApplicationError(
                 "upload_already_committed",
@@ -252,9 +263,10 @@ class ImportInspectionService:
     async def _validate_target(
         self,
         *,
-        owner_user_id: UUID,
+        scope: LibraryAccessScope,
         command: InspectImport,
     ) -> tuple[UUID | None, UUID | None]:
+        self.policy.require_upload_capability(scope)
         if command.operation is ImportOperation.CREATE_BOOK:
             return None, None
         if command.operation is ImportOperation.ADD_EDITION:
@@ -262,18 +274,30 @@ class ImportInspectionService:
                 raise ApplicationError(
                     "validation_error", "添加 Edition 时必须选择 Book。", status_code=422
                 )
-            if await self.books.get(command.target_book_id, owner_user_id) is None:
-                raise ApplicationError("book_not_found", "Book 不存在。", status_code=404)
+            book = (
+                await self.books.get(command.target_book_id, scope.owner_user_id)
+                if scope.can_manage
+                else await self.books.get_readable(command.target_book_id, scope.owner_user_id)
+            )
+            await self.policy.require_readable_book_for_upload(scope, book)
             return command.target_book_id, None
         if command.target_edition_id is None:
             raise ApplicationError(
                 "validation_error", "替换文件时必须选择 Edition。", status_code=422
             )
-        edition = await self.editions.get_for_owner(owner_user_id, command.target_edition_id)
+        edition = (
+            await self.editions.get_for_owner(scope.owner_user_id, command.target_edition_id)
+            if scope.can_manage
+            else await self.editions.get_readable(
+                scope.owner_user_id,
+                command.target_edition_id,
+            )
+        )
         if edition is None:
             raise ApplicationError("edition_not_found", "Edition 不存在。", status_code=404)
         if command.target_book_id is not None and command.target_book_id != edition.book_id:
             raise ApplicationError("edition_not_found", "Edition 不存在。", status_code=404)
+        await self.policy.require_edition_replace(scope, edition)
         return edition.book_id, edition.id
 
     async def _record_failure(

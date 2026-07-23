@@ -375,6 +375,26 @@
   gap: 18px;
 }
 
+.capabilityList {
+  min-height: 44px;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+}
+
+.capabilityList legend {
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.capabilityList small {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .switchRow {
   min-height: 44px;
   display: flex;

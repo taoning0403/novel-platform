@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { ProtectedRoute } from "./auth/ProtectedRoute";
+import type { CredentialCapability } from "./api/types";
 import { AppShell } from "./layouts/AppShell";
 import { LoadingBlock } from "./shared/AsyncState";
 import { PageHeader } from "./ui/components/PageHeader";
@@ -29,12 +30,18 @@ function Protected({
   children,
   admin = false,
   recovery = false,
+  capability,
 }: {
   children: ReactNode;
   admin?: boolean;
   recovery?: boolean;
+  capability?: CredentialCapability;
 }) {
-  return <ProtectedRoute admin={admin} recovery={recovery}>{children}</ProtectedRoute>;
+  return (
+    <ProtectedRoute admin={admin} recovery={recovery} capability={capability}>
+      {children}
+    </ProtectedRoute>
+  );
 }
 
 export function RouteFallback() {
@@ -57,7 +64,10 @@ export function App() {
           <Route path="/series/:seriesId" element={<Protected><SeriesDetailPage /></Protected>} />
           <Route path="/series/:seriesId/upload" element={<Protected admin><SeriesUploadPage /></Protected>} />
           <Route path="/read/:editionId" element={<Protected><ReaderPage /></Protected>} />
-          <Route path="/upload" element={<Protected admin><UploadPage /></Protected>} />
+          <Route
+            path="/upload"
+            element={<Protected capability="library.upload"><UploadPage /></Protected>}
+          />
           <Route path="/settings/profile" element={<Protected><ProfilePage /></Protected>} />
           <Route path="/settings/devices" element={<Protected><DevicesPage /></Protected>} />
           <Route path="/settings/sessions" element={<Protected><SessionsPage /></Protected>} />

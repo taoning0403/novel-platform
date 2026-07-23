@@ -5,8 +5,10 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.editions.commands import CreateEdition, UpdateEdition
 from novel_platform.application.errors import ApplicationError
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.domain.editions.models import ContentRole, validate_edition
 from novel_platform.infrastructure.database.models import BookEditionModel
 from novel_platform.infrastructure.repositories.books import BookRepository
@@ -171,8 +173,11 @@ class EditionService:
         owner_user_id: UUID,
         edition_id: UUID,
         command: UpdateEdition,
+        *,
+        scope: LibraryAccessScope,
     ) -> BookEditionModel:
         edition = await self.get(book_id, owner_user_id, edition_id)
+        await LibraryResourcePolicy(self.session).require_edition_edit(scope, edition)
         unexpected = set(command.changes) - self._PATCHABLE_FIELDS
         if unexpected:
             raise ApplicationError(
@@ -180,6 +185,14 @@ class EditionService:
                 "One or more edition fields cannot be changed.",
                 status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
                 details={"fields": sorted(unexpected)},
+            )
+        contributor_forbidden = set(command.changes) - {"title", "metadata"}
+        if not scope.can_manage and contributor_forbidden:
+            raise ApplicationError(
+                "contributor_field_forbidden",
+                "贡献者只能修改自己上传版本的标题和元数据。",
+                status_code=HTTPStatus.FORBIDDEN,
+                details={"fields": sorted(contributor_forbidden)},
             )
 
         candidate: dict[str, Any] = {

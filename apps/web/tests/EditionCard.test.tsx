@@ -14,6 +14,13 @@ const independentTranslation: Edition = {
   content_role: "translation",
   translation_origin: "ai",
   creation_method: "uploaded",
+  contributor: {
+    display_name: "测试用户",
+  },
+  can_edit: true,
+  can_delete: true,
+  can_upload_edition: true,
+  can_translate: true,
   source_edition_id: null,
   supersedes_edition_id: null,
   status: "ready",

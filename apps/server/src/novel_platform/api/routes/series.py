@@ -4,13 +4,14 @@ from fastapi import APIRouter, Response, status
 
 from novel_platform.api.dependencies.auth import CurrentAuth
 from novel_platform.api.dependencies.database import DatabaseSession
+from novel_platform.api.library_responses import LibraryResponseBuilder
 from novel_platform.api.schemas import (
     SeriesCreate,
     SeriesDetailResponse,
     SeriesPatch,
     SeriesResponse,
 )
-from novel_platform.api.serializers import book_list_item, series_response
+from novel_platform.api.serializers import series_response
 from novel_platform.application.access import LibraryAccessService
 from novel_platform.application.series.service import SeriesService
 from novel_platform.infrastructure.repositories.library import LibraryRepository
@@ -67,10 +68,11 @@ async def get_series(
         book_ids=[record.book.id for record in records],
         readable_only=not scope.can_manage,
     )
+    responses = LibraryResponseBuilder(session, scope)
     return SeriesDetailResponse(
         **series_response(series, len(records)).model_dump(),
         books=[
-            book_list_item(
+            await responses.book_list_item(
                 record.book,
                 record.edition_count,
                 summaries.get(record.book.id),

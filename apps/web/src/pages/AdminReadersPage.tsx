@@ -23,6 +23,7 @@ import { flushSync } from "react-dom";
 
 import { api, userFacingError } from "../api/client";
 import type {
+  CredentialCapability,
   Device,
   IssuedReaderCredential,
   ReaderIdentity,
@@ -30,6 +31,7 @@ import type {
 } from "../api/types";
 import { ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { formatDate } from "../shared/format";
+import { credentialCapabilityLabels } from "../shared/labels";
 import { DestructiveAction } from "../ui/components/DestructiveAction";
 import { PageHeader } from "../ui/components/PageHeader";
 import { StatusTag } from "../ui/components/StatusTag";
@@ -72,6 +74,21 @@ function expirySummary(reader: ReaderIdentity): string {
   return `${days} 天`;
 }
 
+function selectedCapabilities(
+  allowUpload: boolean,
+  allowTranslation: boolean,
+): CredentialCapability[] {
+  return [
+    "library.read",
+    ...(allowUpload ? ["library.upload" as const] : []),
+    ...(allowTranslation ? ["translation.use" as const] : []),
+  ];
+}
+
+function capabilitySummary(capabilities: CredentialCapability[]): string {
+  return capabilities.map((item) => credentialCapabilityLabels[item]).join("、");
+}
+
 function ReaderDetail({
   reader,
   onBack,
@@ -94,6 +111,12 @@ function ReaderDetail({
   const [allowNewDevices, setAllowNewDevices] = useState(
     reader.credential?.allow_new_devices ?? true,
   );
+  const [allowUpload, setAllowUpload] = useState(
+    reader.credential?.capabilities.includes("library.upload") ?? false,
+  );
+  const [allowTranslation, setAllowTranslation] = useState(
+    reader.credential?.capabilities.includes("translation.use") ?? false,
+  );
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [events, setEvents] = useState<SecurityAuditEvent[] | null>(null);
@@ -110,12 +133,20 @@ function ReaderDetail({
   });
 
   const credential = reader.credential;
+  const reissueCapabilities = selectedCapabilities(allowUpload, allowTranslation);
   const activeSessionCount = devices === null
     ? null
     : devices.reduce(
       (total, device) => total + (device.revoked_at ? 0 : device.active_session_count),
       0,
     );
+
+  useEffect(() => {
+    setAllowUpload(reader.credential?.capabilities.includes("library.upload") ?? false);
+    setAllowTranslation(
+      reader.credential?.capabilities.includes("translation.use") ?? false,
+    );
+  }, [reader.credential?.capabilities]);
 
   const loadSecurityDetails = useCallback(async () => {
     setIsSecurityLoading(true);
@@ -193,6 +224,7 @@ function ReaderDetail({
           expires_at: expiryIso(expiresAt),
           max_devices: maxDevices,
           allow_new_devices: allowNewDevices,
+          capabilities: reissueCapabilities,
         });
         onIssued(issued);
       }, "已重新签发访问凭证。");
@@ -212,7 +244,7 @@ function ReaderDetail({
         }
       : {
           title: "重新签发访问凭证？",
-          description: "旧凭证、设备和全部会话将失效，并生成仅显示一次的新凭证。",
+          description: `旧凭证、设备和全部会话将失效。新凭证权限：${capabilitySummary(reissueCapabilities)}。`,
         };
 
   const actionItems: MenuProps["items"] = [
@@ -399,6 +431,35 @@ function ReaderDetail({
 
             <div className={styles.policy}>
               <div>
+                <h3>重新签发权限</h3>
+                <p>
+                  当前权限：{credential
+                    ? capabilitySummary(credential.capabilities)
+                    : "无有效凭证"}。权限不会原地修改，选择仅在重新签发时生效。
+                </p>
+              </div>
+              <div className={styles.capabilityList} aria-label="重新签发访问权限">
+                <Checkbox checked disabled>阅读馆藏</Checkbox>
+                <Checkbox
+                  checked={allowUpload}
+                  onChange={(event) => setAllowUpload(event.target.checked)}
+                >
+                  上传作品与版本
+                </Checkbox>
+                <Checkbox
+                  checked={allowTranslation}
+                  onChange={(event) => setAllowTranslation(event.target.checked)}
+                >
+                  使用小说翻译
+                </Checkbox>
+                {allowTranslation ? (
+                  <small>小说正文将发送到已配置的私有翻译服务，可能产生 Provider 费用。</small>
+                ) : null}
+              </div>
+            </div>
+
+            <div className={styles.policy}>
+              <div>
                 <h3>设备策略</h3>
                 <p>新设备需要当前有效凭证，并受设备上限约束。</p>
               </div>
@@ -567,6 +628,8 @@ export function AdminReadersPage() {
   const [expiresAt, setExpiresAt] = useState(defaultExpiry);
   const [maxDevices, setMaxDevices] = useState(3);
   const [allowNewDevices, setAllowNewDevices] = useState(true);
+  const [allowUpload, setAllowUpload] = useState(false);
+  const [allowTranslation, setAllowTranslation] = useState(false);
   const [issued, setIssued] = useState<IssuedReaderCredential | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -661,6 +724,8 @@ export function AdminReadersPage() {
     setExpiresAt(defaultExpiry());
     setMaxDevices(3);
     setAllowNewDevices(true);
+    setAllowUpload(false);
+    setAllowTranslation(false);
     setCreateError(null);
   }
 
@@ -675,6 +740,7 @@ export function AdminReadersPage() {
         expires_at: expiryIso(expiresAt),
         max_devices: maxDevices,
         allow_new_devices: allowNewDevices,
+        capabilities: selectedCapabilities(allowUpload, allowTranslation),
       });
       setCreateOpen(false);
       setSelectedReaderId(result.reader.id);
@@ -875,6 +941,30 @@ export function AdminReadersPage() {
             >
               允许新增设备
             </Checkbox>
+            <fieldset className={styles.capabilityList}>
+              <legend>访问权限</legend>
+              <Checkbox checked disabled>阅读馆藏（必选）</Checkbox>
+              <Checkbox
+                checked={allowUpload}
+                onChange={(event) => setAllowUpload(event.target.checked)}
+              >
+                上传作品与版本
+              </Checkbox>
+              <Checkbox
+                checked={allowTranslation}
+                onChange={(event) => setAllowTranslation(event.target.checked)}
+              >
+                使用小说翻译
+              </Checkbox>
+              {allowTranslation ? (
+                <small>小说正文将发送到已配置的翻译服务，可能产生 Provider 费用。</small>
+              ) : null}
+            </fieldset>
+            <p className={styles.formIntro}>
+              本次签发：{capabilitySummary(
+                selectedCapabilities(allowUpload, allowTranslation),
+              )}
+            </p>
             {createError ? <Alert type="error" showIcon title={createError} /> : null}
             <div className={styles.modalActions}>
               <Button
@@ -924,6 +1014,11 @@ export function AdminReadersPage() {
             showIcon
             title={`${issued.reader.display_name} 的完整凭证离开此窗口后无法再次取得。`}
           />
+          <p className={styles.formIntro}>
+            有效权限：{capabilitySummary(
+              issued.reader.credential?.capabilities ?? ["library.read"],
+            )}
+          </p>
           <code className={styles.credentialCode}>{issued.access_credential}</code>
           {copyStatus ? <Alert type="info" showIcon title={copyStatus} role="status" /> : null}
         </Modal>

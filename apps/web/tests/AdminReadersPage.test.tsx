@@ -28,6 +28,7 @@ const reader: ReaderIdentity = {
     hint: "np_reader_…a1b2",
     lifecycle_status: "active",
     effective_status: "active",
+    capabilities: ["library.read"],
     expires_at: "2026-08-16T00:00:00Z",
     max_devices: 3,
     allow_new_devices: true,

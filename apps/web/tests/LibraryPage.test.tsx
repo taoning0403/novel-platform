@@ -6,7 +6,17 @@ import { ApiError, api } from "../src/api/client";
 import { LibraryPage } from "../src/pages/LibraryPage";
 
 vi.mock("../src/auth/AuthProvider", () => ({
-  useAuth: () => ({ user: { display_name: "测试用户", role: "admin" } }),
+  useAuth: () => ({
+    user: {
+      display_name: "测试用户",
+      role: "admin",
+      capabilities: [
+        "library.read",
+        "library.upload",
+        "translation.use",
+      ],
+    },
+  }),
 }));
 
 afterEach(() => vi.restoreAllMocks());
@@ -30,6 +40,11 @@ describe("LibraryPage", () => {
         canonical_title: "测试 EPUB",
         canonical_author: "测试作者",
         description: "简介",
+        contributor: { display_name: "测试用户" },
+        can_edit: true,
+        can_delete: true,
+        can_upload_edition: true,
+        can_translate: true,
         edition_count: 2,
         languages: ["ja", "zh-CN"],
         file_formats: ["epub", "txt"],

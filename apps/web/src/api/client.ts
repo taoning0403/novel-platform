@@ -7,8 +7,6 @@ import type {
   BookListItem,
   BookPreference,
   BookPatchPayload,
-  CreateBookPayload,
-  CreateEditionPayload,
   Device,
   Edition,
   FileFormat,
@@ -368,8 +366,6 @@ export const api = {
     if (filters.sort) search.set("sort", filters.sort);
     return request<BookListItem[]>(`/api/v1/books?${search}`);
   },
-  createBook: (payload: CreateBookPayload) =>
-    request<Book>("/api/v1/books", { method: "POST", body: JSON.stringify(payload) }),
   getBook: (bookId: string) => request<BookDetail>(`/api/v1/books/${bookId}`),
   patchBook: (bookId: string, payload: BookPatchPayload) =>
     request<Book>(`/api/v1/books/${bookId}`, {
@@ -378,11 +374,6 @@ export const api = {
     }),
   deleteBook: (bookId: string) =>
     request<void>(`/api/v1/books/${bookId}`, { method: "DELETE" }),
-  createEdition: (bookId: string, payload: CreateEditionPayload) =>
-    request<Edition>(`/api/v1/books/${bookId}/editions`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   patchEdition: (bookId: string, editionId: string, payload: PatchEditionPayload) =>
     request<Edition>(`/api/v1/books/${bookId}/editions/${editionId}`, {
       method: "PATCH",
