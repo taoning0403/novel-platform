@@ -28,9 +28,20 @@
   creator-aware upload/delete policy, removal of fileless creation, and actor-scoped private
   LinguaSpindle v0.3.1 TXT translation into creator-preview/admin-publish generated Editions.
 
+## Current committed milestone
+
+- v0.10.0 candidate: immutable AES-256-GCM-encrypted reader-owned OpenAI-compatible credential
+  versions, exact Run-to-version binding, sanitized Provider token usage, opaque LinguaSpindle
+  v0.3.2 credential scopes, and a fixed-upstream private Relay with no administrator/shared-key
+  fallback.
+
+The implementation and v0.10 acceptance route exist, but the final candidate gate evidence and
+external deployment verification remain pending. The milestone is not recorded above as a
+completed baseline until those results are consolidated.
+
 ## Committed boundary
 
-There is no committed post-v0.9.0 milestone. New durable behavior requires an explicit task,
+There is no committed post-v0.10.0 milestone. New durable behavior requires an explicit task,
 incremental acceptance criteria, and any necessary ADR before implementation.
 
 ## Reserved future increments
@@ -40,12 +51,13 @@ Candidate later work, not committed:
 1. Consider annotations/export and per-chapter translation review/editing in a later milestone.
 2. Consider optional source comparison without making normal reading depend on a source link.
 3. Evaluate object storage, a worker, and a queue only when measured workloads justify them.
-4. Consider EPUB/manga translation or alternative Provider workflows only after explicit scope,
-   threat-model and cost/data-egress review; keep Provider secrets outside Novel Platform.
+4. Consider EPUB/manga translation, site-funded translation or alternative Provider workflows
+   only after explicit scope, threat-model and cost/data-egress review; keep upstream keys
+   write-only/encrypted and out of Browser/LinguaSpindle public state.
 5. Evaluate native clients only after their secure credential and offline synchronization model is
    designed.
 
 Every increment must preserve the unique administrator owner, database-backed capability plus
-resource-creator checks, invited-user/private-state isolation, independent Editions, and the
-Server-only private service boundary. Do not begin another milestone without an explicit task and
-the necessary ADRs.
+resource-creator checks, invited-user/private-state isolation, independent Editions, no shared-key
+fallback, and the private Server → LinguaSpindle → Relay boundary. Do not begin another milestone
+without an explicit task and the necessary ADRs.

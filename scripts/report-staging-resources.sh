@@ -36,7 +36,11 @@ fi
   printf '```\n\n### docker system df\n\n```text\n'
   docker system df
   printf '```\n\n### container health\n\n```text\n'
-  for service in postgres server web; do
+  services=(postgres server web)
+  if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+    services+=(provider-relay)
+  fi
+  for service in "${services[@]}"; do
     container_id="$(compose ps -q "$service")"
     docker inspect --format '{{.Name}} running={{.State.Running}} restart_count={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id"
   done

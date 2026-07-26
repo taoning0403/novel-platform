@@ -86,7 +86,8 @@ services:
   migrate:
     build:
       context: ./apps/server
-    environment: *server-environment
+    environment:
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,7 +106,10 @@ services:
   server:
     build:
       context: ./apps/server
-    environment: *server-environment
+    environment:
+      <<: *server-environment
+      PROVIDER_CREDENTIAL_MASTER_KEY: "${PROVIDER_CREDENTIAL_MASTER_KEY:?PROVIDER_CREDENTIAL_MASTER_KEY is required}"
+      PROVIDER_RELAY_INTERNAL_URL: "${PROVIDER_RELAY_INTERNAL_URL:-http://novel-provider-relay:8790}"
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -99,6 +99,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           label: "个人",
           items: [
             { label: "身份", to: "/settings/profile", icon: "profile" },
+            ...(canTranslate
+              ? [{
+                  label: "翻译凭据",
+                  to: "/settings/provider-credential",
+                  icon: "security" as const,
+                }]
+              : []),
             { label: "设备", to: "/settings/devices", icon: "devices" },
             { label: "会话", to: "/settings/sessions", icon: "sessions" },
             ...(isAdmin ? [{ label: "状态", to: "/status", icon: "status" as const }] : []),
@@ -153,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </span>
             </div>
             <Button type="text" size="small" onClick={() => void logout()}>退出</Button>
-            <span className={styles.version}>漫读 v0.9.0</span>
+            <span className={styles.version}>漫读 v0.10.0</span>
           </div>
         </aside>
       ) : null}

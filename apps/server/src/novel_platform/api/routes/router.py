@@ -10,6 +10,7 @@ from novel_platform.api.routes import (
     health,
     imports,
     preferences,
+    provider_credentials,
     reader,
     readers,
     series,
@@ -28,6 +29,7 @@ api_router.include_router(editions.router)
 api_router.include_router(files.router)
 api_router.include_router(imports.router)
 api_router.include_router(preferences.router)
+api_router.include_router(provider_credentials.router)
 api_router.include_router(reader.router)
 api_router.include_router(series.router)
 api_router.include_router(readers.router)

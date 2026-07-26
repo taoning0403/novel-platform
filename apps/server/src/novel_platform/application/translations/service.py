@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.errors import ApplicationError
 from novel_platform.application.library.storage import FileStorage, StorageError
+from novel_platform.application.provider_credentials.service import ProviderCredentialService
 from novel_platform.application.translations.commands import CreateTranslationRun
 from novel_platform.application.translations.ingestion_service import (
     GeneratedTranslationIngestionService,
@@ -56,6 +57,7 @@ class TranslationRunService:
         self.books = BookRepository(session)
         self.editions = EditionRepository(session)
         self.library = LibraryRepository(session)
+        self.provider_credentials = ProviderCredentialService(session, settings)
         self.ingestion = GeneratedTranslationIngestionService(session, storage, settings, client)
 
     async def service_status(self, scope: LibraryAccessScope) -> LinguaServiceStatus:
@@ -91,6 +93,7 @@ class TranslationRunService:
                 status.error_message or "小说翻译服务暂不可用。",
                 status_code=503,
             )
+        provider_credential = await self.provider_credentials.current_for_run(scope.viewer_user_id)
 
         book = await self.books.get(book_id, scope.owner_user_id)
         source = await self.editions.get_readable(scope.owner_user_id, source_edition_id)
@@ -126,10 +129,13 @@ class TranslationRunService:
             raise ApplicationError("invalid_target_language", "目标语言无效。", status_code=422)
         if not edition_title or len(edition_title) > 500:
             raise ApplicationError("invalid_edition_title", "译本标题无效。", status_code=422)
-        configuration = self._configuration_snapshot(status)
+        configuration = self._configuration_snapshot(status, provider_credential.version)
         fingerprint = hashlib.sha256(
             json.dumps(
-                configuration,
+                {
+                    **configuration,
+                    "credential_scope": str(provider_credential.id),
+                },
                 ensure_ascii=True,
                 sort_keys=True,
                 separators=(",", ":"),
@@ -138,6 +144,7 @@ class TranslationRunService:
         run = EditionTranslationRunModel(
             library_owner_user_id=scope.owner_user_id,
             created_by_user_id=scope.viewer_user_id,
+            provider_credential_version_id=provider_credential.id,
             book_id=book_id,
             source_edition_id=source.id,
             source_edition_file_id=source_file.edition_file.id,
@@ -205,6 +212,8 @@ class TranslationRunService:
             TranslationRunStatus.PREPARING,
             TranslationRunStatus.ATTENTION_REQUIRED,
         } and (run.remote_project_id is None or run.remote_job_id is None):
+            if run.status is TranslationRunStatus.ATTENTION_REQUIRED:
+                run = await self._resume_preparation(scope.owner_user_id, run_id)
             run = await self._ensure_remote(scope.owner_user_id, run_id)
             if run.remote_job_id is None:
                 return run
@@ -286,6 +295,14 @@ class TranslationRunService:
                 "翻译任务当前不能执行该操作。",
                 status_code=409,
             )
+        retry_previous_status: TranslationRunStatus | None = None
+        retry_previous_completed_at: datetime | None = None
+        if action == "retry":
+            (
+                run,
+                retry_previous_status,
+                retry_previous_completed_at,
+            ) = await self._begin_retry(scope.owner_user_id, run_id)
         had_remote_job = run.remote_job_id is not None
         if run.remote_job_id is None:
             if action == "cancel" and run.remote_project_id is None:
@@ -333,6 +350,9 @@ class TranslationRunService:
                 await self.session.rollback()
                 current = await self.runs.get(scope.owner_user_id, run_id, for_update=True)
                 if current is not None:
+                    if action == "retry" and retry_previous_status is not None:
+                        current.status = retry_previous_status
+                        current.completed_at = retry_previous_completed_at
                     current.error_code = exc.code
                     current.error_message = exc.message
                     current.error_details = {
@@ -348,12 +368,97 @@ class TranslationRunService:
                 ) from exc
         except IntegrityError as exc:
             await self.session.rollback()
+            if action == "retry":
+                current = await self.runs.get(scope.owner_user_id, run_id, for_update=True)
+                if current is not None:
+                    current.status = TranslationRunStatus.ATTENTION_REQUIRED
+                    current.completed_at = None
+                    current.error_code = "translation_retry_state_conflict"
+                    current.error_message = "远端重试结果需要人工确认。"
+                    current.error_details = {
+                        "phase": action,
+                        "retryable": True,
+                    }
+                    current.updated_at = datetime.now(UTC)
+                    await self.session.commit()
             raise ApplicationError(
                 "translation_run_already_active",
                 "相同原文、目标语言与配置已有活动翻译任务。",
                 status_code=409,
             ) from exc
         return await self._required_run(scope.owner_user_id, run_id)
+
+    async def _begin_retry(
+        self,
+        owner_user_id: UUID,
+        run_id: UUID,
+    ) -> tuple[
+        EditionTranslationRunModel,
+        TranslationRunStatus,
+        datetime | None,
+    ]:
+        run = await self.runs.get(owner_user_id, run_id, for_update=True)
+        if run is None:
+            raise self._not_found()
+        if run.status not in {
+            TranslationRunStatus.FAILED,
+            TranslationRunStatus.PARTIALLY_SUCCEEDED,
+        }:
+            raise ApplicationError(
+                "translation_control_conflict",
+                "翻译任务当前不能执行该操作。",
+                status_code=409,
+            )
+        previous_status = run.status
+        previous_completed_at = run.completed_at
+        run.status = TranslationRunStatus.PREPARING
+        run.completed_at = None
+        run.error_code = None
+        run.error_message = None
+        run.error_details = {}
+        run.updated_at = datetime.now(UTC)
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ApplicationError(
+                "translation_run_already_active",
+                "相同原文、目标语言与配置已有活动翻译任务。",
+                status_code=409,
+            ) from exc
+        return (
+            await self._required_run(owner_user_id, run_id),
+            previous_status,
+            previous_completed_at,
+        )
+
+    async def _resume_preparation(
+        self,
+        owner_user_id: UUID,
+        run_id: UUID,
+    ) -> EditionTranslationRunModel:
+        run = await self.runs.get(owner_user_id, run_id, for_update=True)
+        if run is None:
+            raise self._not_found()
+        if run.status is TranslationRunStatus.ATTENTION_REQUIRED and (
+            run.remote_project_id is None or run.remote_job_id is None
+        ):
+            run.status = TranslationRunStatus.PREPARING
+            run.completed_at = None
+            run.error_code = None
+            run.error_message = None
+            run.error_details = {}
+            run.updated_at = datetime.now(UTC)
+            try:
+                await self.session.commit()
+            except IntegrityError as exc:
+                await self.session.rollback()
+                raise ApplicationError(
+                    "translation_preparation_busy",
+                    "同一凭据已有任务正在建立远端关联，请稍后重试。",
+                    status_code=409,
+                ) from exc
+        return await self._required_run(owner_user_id, run_id)
 
     async def cleanup(
         self,
@@ -409,6 +514,10 @@ class TranslationRunService:
 
     async def _ensure_remote(self, owner_user_id: UUID, run_id: UUID) -> EditionTranslationRunModel:
         run = await self._required_run(owner_user_id, run_id)
+        if run.remote_project_id is None or run.remote_job_id is None:
+            await self.provider_credentials.usable_bound_credential(
+                run.provider_credential_version_id
+            )
         request_id = self._request_id(run_id)
         try:
             if run.remote_project_id is None:
@@ -472,6 +581,7 @@ class TranslationRunService:
                 await self.session.commit()
                 remote = await self.client.create_job(
                     project_id=project_id,
+                    credential_scope=str(run.provider_credential_version_id),
                     idempotency_key=f"np:{run_id}:job:v1",
                     request_id=request_id,
                 )
@@ -592,15 +702,21 @@ class TranslationRunService:
                 status_code=403,
             )
 
-    def _configuration_snapshot(self, status: LinguaServiceStatus) -> dict[str, object]:
+    def _configuration_snapshot(
+        self,
+        status: LinguaServiceStatus,
+        credential_version: int,
+    ) -> dict[str, object]:
         return {
-            "contract": "novel-platform-linguaspindle.v1",
+            "contract": "novel-platform-linguaspindle.v2",
             "service_version": status.version,
             "pipeline_key": status.pipeline_key,
             "pipeline_version": status.pipeline_version,
             "provider_id": status.provider_id,
             "provider_model": status.provider_model,
             "profile_id": self.settings.linguaspindle_profile_id,
+            "credential_provider": "openai_compatible",
+            "credential_version": credential_version,
         }
 
     @staticmethod

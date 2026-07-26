@@ -15,6 +15,11 @@ const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v050";
 const acceptanceProfile = process.env.ACCEPTANCE_PROFILE ?? "v050";
 const acceptanceExpectedRevision =
   process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260715_0005";
+const acceptanceLinguaVersionRange =
+  process.env.ACCEPTANCE_LINGUASPINDLE_VERSION_RANGE ?? ">=0.3.1,<0.4.0";
+const acceptanceProviderCredentialMasterKey =
+  process.env.ACCEPTANCE_PROVIDER_CREDENTIAL_MASTER_KEY ??
+  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 const acceptanceReaderCapabilities = process.env.ACCEPTANCE_READER_CAPABILITIES
   ?.split(",")
   .filter(Boolean);
@@ -33,6 +38,7 @@ const keepEnvironment = process.env.KEEP_ACCEPTANCE_ENV === "1";
 const steps = [];
 const actions = [];
 const sensitive = new Set();
+sensitive.add(acceptanceProviderCredentialMasterKey);
 const protectedContents = ["验收正文第一段", "验收正文第二段"];
 
 const results = {
@@ -509,9 +515,11 @@ async function main() {
     MAX_UPLOAD_BYTES: String(1024 * 1024),
     LINGUASPINDLE_ENABLED: "false",
     LINGUASPINDLE_BASE_URL: "http://linguaspindle:8765",
-    LINGUASPINDLE_VERSION_RANGE: ">=0.3.1,<0.4.0",
+    LINGUASPINDLE_VERSION_RANGE: acceptanceLinguaVersionRange,
     LINGUASPINDLE_PROVIDER_ID: "mock",
     LINGUASPINDLE_MAX_DOWNLOAD_BYTES: String(1024 * 1024),
+    PROVIDER_CREDENTIAL_MASTER_KEY: acceptanceProviderCredentialMasterKey,
+    PROVIDER_RELAY_INTERNAL_URL: "http://novel-provider-relay:8790",
   };
   const environment = {
     compose_project: project,
@@ -1208,9 +1216,11 @@ async function main() {
         `MAX_UPLOAD_BYTES=${1024 * 1024}`,
         "LINGUASPINDLE_ENABLED=false",
         "LINGUASPINDLE_BASE_URL=http://linguaspindle:8765",
-        "LINGUASPINDLE_VERSION_RANGE='>=0.3.1,<0.4.0'",
+        `LINGUASPINDLE_VERSION_RANGE='${acceptanceLinguaVersionRange}'`,
         "LINGUASPINDLE_PROVIDER_ID=mock",
         `LINGUASPINDLE_MAX_DOWNLOAD_BYTES=${1024 * 1024}`,
+        `PROVIDER_CREDENTIAL_MASTER_KEY=${acceptanceProviderCredentialMasterKey}`,
+        "PROVIDER_RELAY_INTERNAL_URL=http://novel-provider-relay:8790",
       ];
       await writeFile(environmentFile, `${envLines.join("\n")}\n`);
       await chmod(environmentFile, 0o600);

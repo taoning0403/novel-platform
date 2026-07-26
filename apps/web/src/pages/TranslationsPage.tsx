@@ -10,6 +10,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { api, userFacingError } from "../api/client";
 import type {
+  ProviderCredentialStatus,
   TranslationAction,
   TranslationRun,
   TranslationRunStatus,
@@ -129,6 +130,8 @@ export function TranslationsPage() {
   const selectedId = searchParams.get("run");
   const [runs, setRuns] = useState<TranslationRun[]>([]);
   const [service, setService] = useState<TranslationServiceStatus | null>(null);
+  const [credential, setCredential] = useState<ProviderCredentialStatus | null>(null);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pollMessage, setPollMessage] = useState<string | null>(null);
@@ -150,12 +153,18 @@ export function TranslationsPage() {
   const loadWorkspace = useCallback(async () => {
     if (!loadedRef.current) setIsLoading(true);
     setError(null);
+    setCredentialError(null);
     try {
-      const [nextService, nextRuns] = await Promise.all([
+      const [nextService, nextCredential, nextRuns] = await Promise.all([
         api.translationServiceStatus(),
+        api.getProviderCredential().catch((caught: unknown) => {
+          setCredentialError(userFacingError(caught));
+          return null;
+        }),
         api.listTranslationRuns(),
       ]);
       setService(nextService);
+      setCredential(nextCredential);
       setRuns(nextRuns);
       if (
         nextRuns.length > 0
@@ -292,9 +301,14 @@ export function TranslationsPage() {
   return (
     <main className={styles.page}>
       <PageHeader
-        eyebrow="LinguaSpindle · 私有服务"
+        eyebrow="LinguaSpindle · 私有 Relay"
         title="小说翻译"
-        description="跟踪你有权查看的翻译任务；正文只由漫读 Server 发送到管理员配置的私有服务。"
+        description="跟踪你有权查看的翻译任务；正文经漫读的私有 Relay 使用发起人自己的加密凭据，费用由对应 Provider 账户承担。"
+        secondaryActions={(
+          <Button href="/settings/provider-credential">
+            管理我的凭据
+          </Button>
+        )}
         primaryAction={<Button onClick={() => void loadWorkspace()}>刷新任务</Button>}
       />
 
@@ -313,6 +327,35 @@ export function TranslationsPage() {
         <Tag color={service?.provider_offline ? "success" : "default"}>
           {service?.provider_offline ? "离线 Provider" : "可能产生费用"}
         </Tag>
+      </section>
+
+      <section
+        className={styles.credentialBar}
+        data-configured={credential?.configured ?? false}
+        aria-live="polite"
+      >
+        <div>
+          <strong>
+            {credentialError
+              ? "无法确认个人凭据状态"
+              : credential?.configured
+                ? "个人 Provider 凭据已配置"
+                : "发起任务前需要个人凭据"}
+          </strong>
+          <small>
+            {credentialError
+              ? `${credentialError} 发起新任务前请进入凭据设置重试。`
+              : credential?.configured
+                ? `新任务使用凭据 v${credential.version ?? "—"}；Token 费用计入你的 Provider 账户。`
+                : "漫读不会回退到管理员 Key。请先加密保存自己的 OpenAI-compatible API Key。"}
+          </small>
+        </div>
+        <Button
+          type={credential?.configured && !credentialError ? "default" : "primary"}
+          href="/settings/provider-credential"
+        >
+          {credential?.configured && !credentialError ? "查看与轮换" : "去配置"}
+        </Button>
       </section>
 
       {runs.length === 0 ? (

@@ -62,7 +62,11 @@ fi
 
 container_lines=""
 container_health_status="PASS"
-for service in postgres server web; do
+services=(postgres server web)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  services+=(provider-relay)
+fi
+for service in "${services[@]}"; do
   container_id="$(compose ps -q "$service")"
   if [[ -z "$container_id" ]]; then
     container_lines+="$service: absent"$'\n'
@@ -155,6 +159,8 @@ pass. A local PASS is not reported as a completed external deployment.
 
 - Public entry: HTTPS reverse proxy only.
 - API and PostgreSQL: Compose-private networks; no direct public port is required.
+- Provider Relay: database + linguaspindle-private only when enabled; no host/proxy/edge port.
+- Provider credentials: AES-256-GCM ciphertext in PostgreSQL; master key remains external.
 - Secure, HttpOnly Refresh and device Cookies: required by staging validation.
 - WebAuthn RP ID and allowed origin: explicit and HTTPS-bound.
 - Anonymous OpenAPI UI: disabled.

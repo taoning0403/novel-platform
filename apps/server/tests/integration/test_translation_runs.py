@@ -1,4 +1,6 @@
+import base64
 import hashlib
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, BinaryIO, cast
@@ -6,10 +8,13 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import func, select
 
+from novel_platform import relay as provider_relay_module
 from novel_platform.api.dependencies.translation import get_linguaspindle_client
-from novel_platform.config import get_settings
+from novel_platform.application.auth.admin_service import AdminService
+from novel_platform.config import ProviderRelaySettings, get_settings
 from novel_platform.domain.editions.models import (
     ContentRole,
     CreationMethod,
@@ -19,6 +24,8 @@ from novel_platform.domain.editions.models import (
 from novel_platform.infrastructure.database.models import (
     BookEditionModel,
     EditionTranslationRunModel,
+    ProviderCredentialVersionModel,
+    ProviderUsageRecordModel,
     ReadingProgressModel,
     StoredFileModel,
     UserBookPreferenceModel,
@@ -26,11 +33,17 @@ from novel_platform.infrastructure.database.models import (
 from novel_platform.infrastructure.integrations.linguaspindle import (
     DownloadedArtifact,
     LinguaServiceStatus,
+    LinguaSpindleFailure,
     RemoteArtifact,
     RemoteJob,
     RemoteProject,
 )
+from novel_platform.infrastructure.repositories.provider_credentials import (
+    ProviderCredentialRepository,
+)
 from novel_platform.main import app
+from novel_platform.relay import app as provider_relay_app
+from novel_platform.relay import get_relay_session
 
 
 class FakeLinguaSpindle:
@@ -40,21 +53,24 @@ class FakeLinguaSpindle:
         self.jobs: dict[str, RemoteJob] = {}
         self.sources: dict[str, bytes] = {}
         self.control_keys: list[tuple[str, str, str | None]] = []
+        self.credential_scopes: list[str] = []
         self.deleted_projects: list[str] = []
         self.corrupt_download_jobs: set[str] = set()
         self.translated_text = b"Chapter 1\n\nTranslated body.\n"
+        self.before_control: Callable[[str, str], Awaitable[None]] | None = None
+        self.control_failure: LinguaSpindleFailure | None = None
 
     async def service_status(self, *, request_id: str) -> LinguaServiceStatus:
         return LinguaServiceStatus(
             enabled=True,
             available=True,
-            version="0.3.1",
+            version="0.3.2",
             pipeline_key="novel_txt_v1",
             pipeline_version="1",
-            provider_id="mock",
-            provider_name="Mock Provider",
-            provider_model="mock-v1",
-            provider_offline=True,
+            provider_id="openai-compatible",
+            provider_name="Fake OpenAI-compatible Relay",
+            provider_model="gpt-4.1-mini",
+            provider_offline=False,
             idempotency_required=True,
         )
 
@@ -83,6 +99,7 @@ class FakeLinguaSpindle:
         self,
         *,
         project_id: str,
+        credential_scope: str,
         idempotency_key: str,
         request_id: str,
     ) -> RemoteJob:
@@ -98,6 +115,7 @@ class FakeLinguaSpindle:
         )
         self.jobs_by_key[idempotency_key] = job
         self.jobs[job.id] = job
+        self.credential_scopes.append(credential_scope)
         return job
 
     async def get_job(self, job_id: str, *, request_id: str) -> RemoteJob:
@@ -112,6 +130,10 @@ class FakeLinguaSpindle:
         idempotency_key: str | None = None,
     ) -> RemoteJob:
         self.control_keys.append((job_id, action, idempotency_key))
+        if self.before_control is not None:
+            await self.before_control(job_id, action)
+        if self.control_failure is not None:
+            raise self.control_failure
         statuses = {
             "pause": "paused",
             "resume": "running",
@@ -211,9 +233,15 @@ async def create_reader_login(
         },
     )
     assert logged_in.status_code == 200, logged_in.text
-    return cast(dict[str, Any], created.json()["reader"]), {
-        "Authorization": f"Bearer {logged_in.json()['access_token']}"
-    }
+    headers = {"Authorization": f"Bearer {logged_in.json()['access_token']}"}
+    if "translation.use" in capabilities:
+        configured = await app_harness.client.put(
+            "/api/v1/me/provider-credential",
+            headers=headers,
+            json={"api_key": f"sk-test-{uuid4()}"},
+        )
+        assert configured.status_code == 200, configured.text
+    return cast(dict[str, Any], created.json()["reader"]), headers
 
 
 async def create_txt_book(
@@ -247,8 +275,11 @@ def configure_fake(app_harness, fake: FakeLinguaSpindle) -> None:
     settings = app_harness.settings.model_copy(
         update={
             "linguaspindle_enabled": True,
-            "linguaspindle_provider_id": "mock",
+            "linguaspindle_provider_id": "openai-compatible",
             "linguaspindle_max_download_bytes": 1024 * 1024,
+            "provider_credential_master_key": SecretStr(
+                base64.b64encode(bytes(range(32))).decode()
+            ),
         }
     )
     app.dependency_overrides[get_settings] = lambda: settings
@@ -277,6 +308,525 @@ async def create_run(
         headers=headers,
         json=payload,
     )
+
+
+@pytest.mark.integration
+async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_versions(
+    app_harness,
+) -> None:
+    fake = FakeLinguaSpindle()
+    configure_fake(app_harness, fake)
+    client = app_harness.client
+    admin = await app_harness.provision_admin()
+    reader, translator_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="自带凭据译者",
+        capabilities=["library.read", "translation.use"],
+    )
+    other_reader, other_translator_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="另一位自带凭据译者",
+        capabilities=["library.read", "translation.use"],
+    )
+    _, read_only_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="无翻译能力读者",
+        capabilities=["library.read"],
+    )
+    denied_status = await client.get(
+        "/api/v1/me/provider-credential",
+        headers=read_only_headers,
+    )
+    assert denied_status.status_code == 403
+    assert denied_status.json()["error"]["code"] == "library_capability_required"
+
+    async with app_harness.session_factory() as session:
+        recovery = await AdminService(session, app_harness.settings).create_recovery()
+    recovery_login = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "credential": recovery.credential,
+            "refresh_token_delivery": "body",
+            "device": {
+                "client_instance_id": str(uuid4()),
+                "name": "受限恢复设备",
+                "platform": "web",
+                "app_version": "0.10.0-test",
+            },
+        },
+    )
+    assert recovery_login.status_code == 200, recovery_login.text
+    recovery_denied = await client.get(
+        "/api/v1/me/provider-credential",
+        headers={"Authorization": f"Bearer {recovery_login.json()['access_token']}"},
+    )
+    assert recovery_denied.status_code == 403
+    assert recovery_denied.json()["error"]["code"] == "recovery_session_restricted"
+    initial_status = await client.get(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+    )
+    assert initial_status.status_code == 200
+    assert initial_status.json()["configured"] is True
+    assert initial_status.json()["provider"] == "openai_compatible"
+    assert initial_status.json()["version"] == 1
+    assert "api_key" not in initial_status.text
+
+    created = await create_txt_book(client, admin.headers, title="凭据版本测试书")
+    first = await create_run(
+        client,
+        translator_headers,
+        book_id=created["book"]["id"],
+        source_edition_id=created["edition"]["id"],
+    )
+    assert first.status_code == 201, first.text
+    first_run = first.json()
+
+    rotated = await client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={"api_key": "sk-rotated-never-return-this-value"},
+    )
+    assert rotated.status_code == 200, rotated.text
+    assert rotated.json()["version"] == 2
+    assert "sk-rotated" not in rotated.text
+    other_status = await client.get(
+        "/api/v1/me/provider-credential",
+        headers=other_translator_headers,
+    )
+    assert other_status.status_code == 200
+    assert other_status.json()["configured"] is True
+    assert other_status.json()["version"] == 1
+
+    second = await create_run(
+        client,
+        translator_headers,
+        book_id=created["book"]["id"],
+        source_edition_id=created["edition"]["id"],
+    )
+    assert second.status_code == 201, second.text
+    assert len(fake.credential_scopes) == 2
+    assert fake.credential_scopes[0] != fake.credential_scopes[1]
+
+    async with app_harness.session_factory() as session:
+        versions = list(
+            (
+                await session.scalars(
+                    select(ProviderCredentialVersionModel)
+                    .where(ProviderCredentialVersionModel.user_id == UUID(reader["id"]))
+                    .order_by(ProviderCredentialVersionModel.version)
+                )
+            ).all()
+        )
+        assert [item.version for item in versions] == [1, 2]
+        assert versions[0].retired_at is not None and versions[0].revoked_at is None
+        assert versions[1].retired_at is None and versions[1].revoked_at is None
+        assert versions[1].ciphertext != b"sk-rotated-never-return-this-value"
+        first_bound = await ProviderCredentialRepository(session).resolve_for_relay(
+            UUID(fake.credential_scopes[0]),
+            remote_job_id=first_run["remote_job_id"],
+        )
+        assert first_bound is not None and first_bound.version == 1
+        stored_run = await session.get(
+            EditionTranslationRunModel,
+            UUID(first_run["id"]),
+        )
+        other_credential = await ProviderCredentialRepository(session).current(
+            UUID(other_reader["id"])
+        )
+        assert stored_run is not None and other_credential is not None
+        stored_run.status = "failed"
+        await session.flush()
+        assert (
+            await ProviderCredentialRepository(session).resolve_for_relay(
+                UUID(fake.credential_scopes[0]),
+                remote_job_id=first_run["remote_job_id"],
+            )
+            is None
+        )
+        stored_run.status = "partially_succeeded"
+        await session.flush()
+        assert (
+            await ProviderCredentialRepository(session).resolve_for_relay(
+                UUID(fake.credential_scopes[0]),
+                remote_job_id=first_run["remote_job_id"],
+            )
+            is None
+        )
+        stored_run.status = "queued"
+        stored_run.provider_credential_version_id = other_credential.id
+        await session.flush()
+        assert (
+            await ProviderCredentialRepository(session).resolve_for_relay(
+                other_credential.id,
+                remote_job_id=first_run["remote_job_id"],
+            )
+            is None
+        )
+        await session.rollback()
+
+    removed = await client.delete(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+    )
+    assert removed.status_code == 204
+    missing = await client.get(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+    )
+    assert missing.status_code == 200
+    assert missing.json()["configured"] is False
+    assert missing.json()["version"] is None
+    other_after_removal = await client.get(
+        "/api/v1/me/provider-credential",
+        headers=other_translator_headers,
+    )
+    assert other_after_removal.status_code == 200
+    assert other_after_removal.json()["configured"] is True
+    assert other_after_removal.json()["version"] == 1
+    refused = await create_run(
+        client,
+        translator_headers,
+        book_id=created["book"]["id"],
+        source_edition_id=created["edition"]["id"],
+        target_language="fr",
+    )
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "provider_credential_required"
+
+    async with app_harness.session_factory() as session:
+        versions = list(
+            (
+                await session.scalars(
+                    select(ProviderCredentialVersionModel).where(
+                        ProviderCredentialVersionModel.user_id == UUID(reader["id"])
+                    )
+                )
+            ).all()
+        )
+        assert versions and all(item.revoked_at is not None for item in versions)
+        assert (
+            await ProviderCredentialRepository(session).resolve_for_relay(
+                UUID(fake.credential_scopes[0]),
+                remote_job_id=first_run["remote_job_id"],
+            )
+            is None
+        )
+
+
+@pytest.mark.integration
+async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
+    app_harness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeLinguaSpindle()
+    configure_fake(app_harness, fake)
+    admin = await app_harness.provision_admin()
+    _, translator_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="中继测试译者",
+        capabilities=["library.read", "translation.use"],
+    )
+    _, other_translator_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="中继隔离对照译者",
+        capabilities=["library.read", "translation.use"],
+    )
+    created = await create_txt_book(
+        app_harness.client,
+        admin.headers,
+        title="中继边界测试书",
+    )
+    started = await create_run(
+        app_harness.client,
+        translator_headers,
+        book_id=created["book"]["id"],
+        source_edition_id=created["edition"]["id"],
+    )
+    assert started.status_code == 201, started.text
+    run = started.json()
+    credential_scope = fake.credential_scopes[0]
+    bootstrap_started = await create_run(
+        app_harness.client,
+        translator_headers,
+        book_id=created["book"]["id"],
+        source_edition_id=created["edition"]["id"],
+        target_language="fr",
+    )
+    assert bootstrap_started.status_code == 201, bootstrap_started.text
+    bootstrap_run = bootstrap_started.json()
+    assert fake.credential_scopes[1] == credential_scope
+    async with app_harness.session_factory() as session:
+        exact_stored = await session.get(
+            EditionTranslationRunModel,
+            UUID(run["id"]),
+        )
+        bootstrap_stored = await session.get(
+            EditionTranslationRunModel,
+            UUID(bootstrap_run["id"]),
+        )
+        assert exact_stored is not None
+        assert bootstrap_stored is not None
+        assert exact_stored.remote_job_id == run["remote_job_id"]
+        bootstrap_stored.remote_job_id = None
+        bootstrap_stored.status = "preparing"
+        await session.commit()
+    shared_secret = "relay-service-secret-" + ("x" * 32)
+    relay_settings = ProviderRelaySettings(
+        database_url=app_harness.settings.database_url,
+        provider_credential_master_key=SecretStr(base64.b64encode(bytes(range(32))).decode()),
+        provider_relay_service_secret=SecretStr(shared_secret),
+        provider_relay_upstream_base_url="https://provider.example/v1",
+        provider_relay_allowed_models=["gpt-4.1-mini"],
+        provider_relay_max_request_bytes=512,
+        provider_relay_max_response_bytes=4096,
+    )
+    monkeypatch.setattr(provider_relay_module, "settings", relay_settings)
+
+    async def override_relay_session():
+        async with app_harness.session_factory() as session:
+            yield session
+
+    provider_relay_app.dependency_overrides[get_relay_session] = override_relay_session
+    relay_headers = {
+        "Authorization": f"Bearer {shared_secret}",
+        "X-LinguaSpindle-Credential-Scope": credential_scope,
+        "X-LinguaSpindle-Job-ID": run["remote_job_id"],
+    }
+    request_payload = {
+        "model": "gpt-4.1-mini",
+        "messages": [
+            {"role": "system", "content": "Translate."},
+            {"role": "user", "content": "正文"},
+        ],
+        "temperature": 0,
+    }
+    upstream_requests: list[httpx.Request] = []
+
+    def success_handler(request: httpx.Request) -> httpx.Response:
+        upstream_requests.append(request)
+        assert str(request.url) == "https://provider.example/v1/chat/completions"
+        assert request.headers["Authorization"].startswith("Bearer sk-test-")
+        assert shared_secret not in request.headers["Authorization"]
+        assert "X-LinguaSpindle-Credential-Scope" not in request.headers
+        assert "X-LinguaSpindle-Job-ID" not in request.headers
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            json={
+                "id": "upstream-private-id",
+                "model": "gpt-4.1-mini",
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Translated.",
+                        },
+                        "finish_reason": "stop",
+                        "logprobs": {"must": "be stripped"},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                    "total_tokens": 15,
+                    "private_detail": 99,
+                },
+                "system_fingerprint": "must-be-stripped",
+            },
+        )
+
+    provider_relay_app.state.upstream_transport = httpx.MockTransport(success_handler)
+    transport = httpx.ASGITransport(app=provider_relay_app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://relay") as relay_client:
+            assert (await relay_client.get("/health")).status_code == 200
+            assert (
+                await relay_client.post("/v1/chat/completions", json=request_payload)
+            ).status_code == 401
+            missing_job_headers = dict(relay_headers)
+            missing_job_headers.pop("X-LinguaSpindle-Job-ID")
+            assert (
+                await relay_client.post(
+                    "/v1/chat/completions",
+                    headers=missing_job_headers,
+                    json=request_payload,
+                )
+            ).status_code == 400
+            assert (
+                await relay_client.post(
+                    "/v1/chat/completions",
+                    headers=relay_headers,
+                    json={**request_payload, "model": "unapproved-model"},
+                )
+            ).status_code == 403
+            assert (
+                await relay_client.post(
+                    "/v1/chat/completions",
+                    headers={**relay_headers, "Content-Type": "application/json"},
+                    content=b'{"model":"' + (b"x" * 600) + b'"}',
+                )
+            ).status_code == 413
+
+            successful = await relay_client.post(
+                "/v1/chat/completions",
+                headers=relay_headers,
+                json=request_payload,
+            )
+            # PostgreSQL sorts NULL before TRUE for a descending boolean order.
+            # The exact binding must still win over the unbound preparing row.
+            assert successful.status_code == 200, successful.text
+            assert successful.json() == {
+                "model": "gpt-4.1-mini",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Translated.",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                    "total_tokens": 15,
+                },
+            }
+            assert len(upstream_requests) == 1
+            async with app_harness.session_factory() as session:
+                claimed_run = await session.get(
+                    EditionTranslationRunModel,
+                    UUID(run["id"]),
+                )
+                assert claimed_run is not None
+                assert claimed_run.remote_job_id == run["remote_job_id"]
+                unclaimed_bootstrap = await session.get(
+                    EditionTranslationRunModel,
+                    UUID(bootstrap_run["id"]),
+                )
+                assert unclaimed_bootstrap is not None
+                assert unclaimed_bootstrap.remote_job_id is None
+
+            redirect_requests: list[httpx.Request] = []
+
+            def redirect_handler(request: httpx.Request) -> httpx.Response:
+                redirect_requests.append(request)
+                return httpx.Response(
+                    307,
+                    headers={"Location": "https://attacker.example/steal"},
+                )
+
+            provider_relay_app.state.upstream_transport = httpx.MockTransport(redirect_handler)
+            redirected = await relay_client.post(
+                "/v1/chat/completions",
+                headers=relay_headers,
+                json=request_payload,
+            )
+            assert redirected.status_code == 502
+            assert len(redirect_requests) == 1
+
+            provider_relay_app.state.upstream_transport = httpx.MockTransport(
+                lambda request: httpx.Response(
+                    400,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "error": {
+                            "message": "secret upstream body",
+                            "api_key": "sk-do-not-return",
+                        }
+                    },
+                )
+            )
+            rejected = await relay_client.post(
+                "/v1/chat/completions",
+                headers=relay_headers,
+                json=request_payload,
+            )
+            assert rejected.status_code == 502
+            assert "secret upstream body" not in rejected.text
+            assert "sk-do-not-return" not in rejected.text
+
+            reflected_keys: list[str] = []
+
+            def reflected_key_handler(request: httpx.Request) -> httpx.Response:
+                provider_key = request.headers["Authorization"].removeprefix("Bearer ")
+                reflected_keys.append(provider_key)
+                return httpx.Response(
+                    200,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": "gpt-4.1-mini",
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": f"reflected credential: {provider_key}",
+                                }
+                            }
+                        ],
+                    },
+                )
+
+            provider_relay_app.state.upstream_transport = httpx.MockTransport(reflected_key_handler)
+            reflected = await relay_client.post(
+                "/v1/chat/completions",
+                headers={
+                    **relay_headers,
+                    "X-LinguaSpindle-Job-ID": bootstrap_run["remote_job_id"],
+                },
+                json=request_payload,
+            )
+            assert reflected.status_code == 502
+            assert reflected_keys
+            assert reflected_keys[0] not in reflected.text
+            async with app_harness.session_factory() as session:
+                claimed_bootstrap = await session.get(
+                    EditionTranslationRunModel,
+                    UUID(bootstrap_run["id"]),
+                )
+                assert claimed_bootstrap is not None
+                assert claimed_bootstrap.remote_job_id == bootstrap_run["remote_job_id"]
+    finally:
+        provider_relay_app.dependency_overrides.clear()
+        provider_relay_app.state.upstream_transport = None
+
+    async with app_harness.session_factory() as session:
+        usage = list((await session.scalars(select(ProviderUsageRecordModel))).all())
+        assert len(usage) == 1
+        assert usage[0].prompt_tokens == 12
+        assert usage[0].completion_tokens == 3
+        assert usage[0].total_tokens == 15
+        assert usage[0].remote_job_id == run["remote_job_id"]
+
+    status_response = await app_harness.client.get(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["usage"]["all_time"] == {
+        "request_count": 1,
+        "prompt_tokens": 12,
+        "completion_tokens": 3,
+        "total_tokens": 15,
+    }
+    other_status = await app_harness.client.get(
+        "/api/v1/me/provider-credential",
+        headers=other_translator_headers,
+    )
+    assert other_status.status_code == 200
+    assert other_status.json()["usage"]["all_time"] == {
+        "request_count": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
 
 
 @pytest.mark.integration
@@ -367,6 +917,13 @@ async def test_translation_capability_idempotency_isolation_and_retry(
     assert len(fake.projects_by_key) == len(fake.jobs_by_key) == 1
     assert next(iter(fake.projects_by_key)).endswith(":project:v1")
     assert next(iter(fake.jobs_by_key)).endswith(":job:v1")
+    assert len(fake.credential_scopes) == 1
+    assert run["configuration"]["credential_version"] == 1
+    assert "credential_scope" not in run["configuration"]
+    async with app_harness.session_factory() as session:
+        stored_run = await session.get(EditionTranslationRunModel, UUID(run["id"]))
+        assert stored_run is not None
+        assert str(stored_run.provider_credential_version_id) == fake.credential_scopes[0]
 
     replay = await create_run(
         client,
@@ -401,6 +958,18 @@ async def test_translation_capability_idempotency_isolation_and_retry(
     )
     assert failed.status_code == 200
     assert failed.json()["status"] == "failed"
+
+    observed_control_statuses: list[str] = []
+
+    async def observe_control_status(job_id: str, action: str) -> None:
+        assert job_id == run["remote_job_id"]
+        assert action == "retry"
+        async with app_harness.session_factory() as session:
+            stored = await session.get(EditionTranslationRunModel, UUID(run["id"]))
+            assert stored is not None
+            observed_control_statuses.append(str(stored.status))
+
+    fake.before_control = observe_control_status
     retried = await client.post(
         f"/api/v1/translation-runs/{run['id']}/retry",
         headers=translator_headers,
@@ -412,6 +981,32 @@ async def test_translation_capability_idempotency_isolation_and_retry(
         "retry",
         f"np:{run['id']}:retry:1:v1",
     )
+    assert observed_control_statuses == ["preparing"]
+
+    fake.set_status(run["remote_job_id"], "failed")
+    failed_again = await client.post(
+        f"/api/v1/translation-runs/{run['id']}/sync",
+        headers=translator_headers,
+    )
+    assert failed_again.status_code == 200
+    assert failed_again.json()["status"] == "failed"
+    fake.control_failure = LinguaSpindleFailure(
+        "linguaspindle_control_rejected",
+        "远端明确拒绝了重试。",
+        status_code=503,
+        retryable=True,
+    )
+    rejected_retry = await client.post(
+        f"/api/v1/translation-runs/{run['id']}/retry",
+        headers=translator_headers,
+    )
+    assert rejected_retry.status_code == 503
+    assert rejected_retry.json()["error"]["code"] == "linguaspindle_control_rejected"
+    async with app_harness.session_factory() as session:
+        stored = await session.get(EditionTranslationRunModel, UUID(run["id"]))
+        assert stored is not None
+        assert str(stored.status) == "failed"
+        assert stored.completed_at is not None
 
 
 @pytest.mark.integration

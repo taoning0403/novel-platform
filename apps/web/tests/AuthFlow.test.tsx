@@ -144,6 +144,7 @@ it("restores an authenticated admin from the HttpOnly refresh cookie", async () 
   expect(within(mainNavigation).getByRole("link", { name: "管理" })).toBeInTheDocument();
   expect(within(mainNavigation).getByRole("link", { name: "上传" })).toBeInTheDocument();
   expect(within(mainNavigation).getByRole("link", { name: "小说翻译" })).toBeInTheDocument();
+  expect(within(mainNavigation).getByRole("link", { name: "翻译凭据" })).toBeInTheDocument();
   expect(window.localStorage.getItem("access_token")).toBeNull();
 });
 
@@ -191,8 +192,10 @@ it.each([
   const navigation = screen.getByRole("navigation", { name: "主导航" });
   const uploadLink = within(navigation).queryByRole("link", { name: "上传" });
   const translationLink = within(navigation).queryByRole("link", { name: "小说翻译" });
+  const credentialLink = within(navigation).queryByRole("link", { name: "翻译凭据" });
   expect(uploadLink === null).toBe(!upload);
   expect(translationLink === null).toBe(!translation);
+  expect(credentialLink === null).toBe(!translation);
   expect(within(navigation).queryByRole("link", { name: "管理" })).not.toBeInTheDocument();
 });
 

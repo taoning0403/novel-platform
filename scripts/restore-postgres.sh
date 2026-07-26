@@ -107,7 +107,11 @@ fi
   || die "live restore requires --confirm followed by the exact POSTGRES_DB value"
 
 "$SCRIPT_DIRECTORY/backup-postgres.sh"
-compose stop web server
+restore_services=(web server)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  restore_services+=(provider-relay)
+fi
+compose stop "${restore_services[@]}"
 compose exec -T postgres dropdb --if-exists --force --username="$POSTGRES_USER" "$POSTGRES_DB"
 compose exec -T postgres createdb --username="$POSTGRES_USER" "$POSTGRES_DB"
 restore_into_database "$POSTGRES_DB"
@@ -115,7 +119,9 @@ restored_revision="$(database_revision)"
 expected_head="$(code_head_revision)"
 [[ "$restored_revision" == "$expected_head" ]] \
   || die "restored database revision differs from code head; application remains stopped"
-compose up --detach --no-deps server
-compose up --detach --no-deps web
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  compose up --detach --no-deps provider-relay
+fi
+compose up --detach --no-deps server web
 "$SCRIPT_DIRECTORY/healthcheck-staging.sh"
 printf 'live staging restore PASS\n'

@@ -19,7 +19,11 @@ current_commit="$(git -C "$REPOSITORY_ROOT" rev-parse HEAD)"
 
 "$SCRIPT_DIRECTORY/backup-library.sh"
 git -C "$REPOSITORY_ROOT" switch --detach "$target_commit"
-compose build migrate server web
+build_services=(migrate server web)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  build_services+=(provider-relay)
+fi
+compose build "${build_services[@]}"
 target_head="$(code_head_revision)"
 current_database_revision="$(database_revision)"
 if [[ "$target_head" != "$current_database_revision" ]]; then

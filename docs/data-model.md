@@ -8,13 +8,16 @@ User
 ├── AdminRecoveryCredential ─────────────> AuthSession
 ├── AdminPasskey ────────────────────────> AuthSession
 ├── WebAuthnChallenge
+├── ProviderCredentialVersion ──> ProviderUsageRecord
 ├── ReaderSettings
 ├── ReadingProgress ──> BookEdition
 └── UserBookPreference ──> Book / BookEdition
 
 User(admin, library owner) + User(actual creator)
 ├── Book ──> BookEdition ──> EditionFile ──> StoredFile
-│              └── EditionTranslationRun ──> optional generated BookEdition
+│              └── EditionTranslationRun
+│                    ├── exact ProviderCredentialVersion
+│                    └── optional generated BookEdition
 ├── BookSeries ──> SeriesMembership ──> Book
 └── LibraryImport ──> StoredFile
 
@@ -154,22 +157,51 @@ protected StoredFiles.
 all; a current uploader sees only their own row; other actors receive 404. It is never included in
 reader projections.
 
+## Provider credentials and usage
+
+`provider_credential_versions` retains immutable OpenAI-compatible credential versions for one
+User. `(user_id, provider, version)` is unique and a partial unique index permits at most one
+current non-retired/non-revoked version. Each row stores:
+
+- random UUID used as the opaque integration scope;
+- owner User, fixed Provider kind and positive per-User version;
+- fixed `aes-256-gcm-v1` algorithm, 12-byte random nonce and authenticated ciphertext; and
+- creation, retirement and revocation times.
+
+The AES key is environment-only and the authenticated data binds User, credential UUID, Provider
+and version, so moving ciphertext between rows fails decryption. No raw key, suffix, plaintext
+hash or upstream authorization value has a column. Rotation retires the prior current row and
+creates another; removal revokes all non-revoked history. Retired ciphertext remains usable only
+through an eligible Run that already references it. Revocation is final.
+
+`provider_usage_records` contains one sanitized successful Relay call record: credential version,
+bounded model name, optional LinguaSpindle Job correlation, nonnegative prompt/completion/total
+token counts and time. It contains no User-supplied prompt, translated output, Provider response,
+key, scope header or price estimate. User totals are derived by joining through the credential
+owner; current-month totals use UTC month boundaries.
+
 ## Translation Runs
 
 `edition_translation_runs` is durable orchestration state, not a queue or LinguaSpindle mirror.
 It stores:
 
 - library owner, actor, Book, fixed source Edition + EditionFile + revision + SHA-256 + `txt`;
+- exact non-null Provider credential-version foreign key;
 - target language, requested title, optional same-Book generated Edition to supersede;
-- non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs);
+- non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs and
+  safe credential version number);
 - actor-scoped `client_request_id` and remote Project/Job/Artifact/request IDs;
 - local/remote status, progress, sanitized error, retry, cleanup and timestamps;
 - optional generated Edition ID (`ON DELETE SET NULL`) so Run history survives Edition deletion.
 
-`(created_by_user_id, client_request_id)` is unique. A partial unique index prevents an equivalent
-active source-file/target/configuration Run; remote Project/Job/Artifact and generated Edition IDs
-are unique when present. Status and cleanup values use checked strings so service changes do not
-silently expand the local state machine.
+`(created_by_user_id, client_request_id)` is unique. The configuration fingerprint includes the
+credential UUID even though API snapshots expose only its version. A partial unique index prevents
+an equivalent active source-file/target/configuration/credential Run; remote
+Project/Job/Artifact and generated Edition IDs are unique when present. Status and cleanup values
+use checked strings so service changes do not silently expand the local state machine.
+A second partial unique index permits only one `preparing` Run with no remote Job ID per credential
+version. This makes the Relay's first authenticated Job-ID claim unambiguous; after that atomic
+bootstrap, every Provider call must match the persisted Job correlation.
 
 The source snapshot never follows a later file replacement. Only a verified successful Artifact
 can create one `draft + ai + generated` Edition and file relation. That Edition's creator is the
@@ -198,7 +230,7 @@ belongs to at most one Series; `(series_id, position)` provides stable append or
 Series removes memberships only. Reader queries filter members through Book readability and hide
 an empty result.
 
-## v0.5 and v0.9 migrations
+## v0.5, v0.9 and v0.10 migrations
 
 Migration `20260715_0005` adds the site/credential/Passkey/challenge schema and expands
 User/Device/Session/audit rows without deleting content or private reading state. The separate
@@ -219,3 +251,11 @@ Edition. It then backfills all creator fields to the unique owner, inserts only 
 every retained credential, and creates Translation Run storage. Notices/reporting contain counts,
 not titles, filenames, paths, IDs or content. Destructive cleanup makes downgrade unsupported;
 restore the matching coordinated PostgreSQL + library backup.
+
+Migration `20260726_0007` creates encrypted credential-version and usage storage and makes every
+new Translation Run bind one credential version. A historical v0.9 Run has no truthful payer/key
+version; the migration therefore fails closed if any Run exists instead of deleting it or
+fabricating attribution. The operator must retain the pre-upgrade backup, explicitly clean/reset
+those orchestration rows under the approved deployment procedure, and rerun. A direct
+v0.8-to-v0.10 upgrade first creates an empty Run table in `0006`, so `0007` is non-destructive for
+that path.

@@ -1,10 +1,11 @@
 import { Alert, Button, Descriptions, Input, Modal, Spin, Tag } from "antd";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
-import { api, userFacingError } from "../../api/client";
+import { ApiError, api, userFacingError } from "../../api/client";
 import type {
   BookDetail,
   Edition,
+  ProviderCredentialStatus,
   TranslationRun,
   TranslationServiceStatus,
 } from "../../api/types";
@@ -19,6 +20,21 @@ interface TranslationLaunchModalProps {
   onCreated: (run: TranslationRun) => void | Promise<void>;
 }
 
+const emptyUsage: ProviderCredentialStatus["usage"] = {
+  all_time: {
+    request_count: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  },
+  current_month: {
+    request_count: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  },
+};
+
 export function TranslationLaunchModal({
   book,
   edition,
@@ -32,6 +48,7 @@ export function TranslationLaunchModal({
   }, [book.editions, edition]);
   const isRetranslation = edition?.creation_method === "generated";
   const [service, setService] = useState<TranslationServiceStatus | null>(null);
+  const [credential, setCredential] = useState<ProviderCredentialStatus | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState("en");
@@ -51,10 +68,17 @@ export function TranslationLaunchModal({
     setClientRequestId(randomUuid());
     setError(null);
     setService(null);
+    setCredential(null);
     setIsChecking(true);
-    void api.translationServiceStatus()
-      .then((nextService) => {
-        if (!cancelled) setService(nextService);
+    void Promise.all([
+      api.translationServiceStatus(),
+      api.getProviderCredential(),
+    ])
+      .then(([nextService, nextCredential]) => {
+        if (!cancelled) {
+          setService(nextService);
+          setCredential(nextCredential);
+        }
       })
       .catch((caught: unknown) => {
         if (!cancelled) setError(userFacingError(caught));
@@ -69,7 +93,12 @@ export function TranslationLaunchModal({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (source === null || clientRequestId === "" || service?.available !== true) return;
+    if (
+      source === null
+      || clientRequestId === ""
+      || service?.available !== true
+      || credential?.configured !== true
+    ) return;
     setIsSubmitting(true);
     setError(null);
     try {
@@ -83,6 +112,15 @@ export function TranslationLaunchModal({
       });
       await onCreated(run);
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "provider_credential_required") {
+        setCredential({
+          configured: false,
+          provider: "openai_compatible",
+          version: null,
+          updated_at: null,
+          usage: credential?.usage ?? emptyUsage,
+        });
+      }
       setError(userFacingError(caught));
     } finally {
       setIsSubmitting(false);
@@ -137,7 +175,7 @@ export function TranslationLaunchModal({
 
           <section className={styles.service} aria-live="polite">
             <div>
-              <span>私有翻译服务</span>
+              <span>私有翻译 Relay</span>
               {isChecking ? <Spin size="small" /> : (
                 <Tag color={service?.available ? "success" : "default"}>{serviceLabel}</Tag>
               )}
@@ -146,6 +184,9 @@ export function TranslationLaunchModal({
               <small>
                 LinguaSpindle {service.version ?? "未知版本"} · {service.pipeline_key}
                 {service.pipeline_version ? ` ${service.pipeline_version}` : ""}
+                {credential?.configured
+                  ? ` · 个人凭据 v${credential.version ?? "—"}`
+                  : ""}
               </small>
             ) : null}
           </section>
@@ -155,6 +196,20 @@ export function TranslationLaunchModal({
               type="warning"
               showIcon
               title={service.error_message ?? "小说翻译服务暂不可用。"}
+            />
+          ) : null}
+
+          {!isChecking && credential?.configured === false ? (
+            <Alert
+              type="warning"
+              showIcon
+              title="先配置你的 Provider 凭据"
+              description="漫读不会改用管理员 Key。配置自己的 API Key 后，新任务产生的 Token 费用计入你的 Provider 账户。"
+              action={(
+                <Button href="/settings/provider-credential">
+                  去配置
+                </Button>
+              )}
             />
           ) : null}
 
@@ -186,8 +241,8 @@ export function TranslationLaunchModal({
           <Alert
             type="warning"
             showIcon
-            title="正文会发送到管理员配置的私有翻译服务，并可能产生 Provider 费用。"
-            description="此处不能更改 Provider、模型、Profile、服务地址或下载地址。提交前请确认你有权处理该正文。"
+            title="正文会经私有 Relay 发送给 Provider，并使用你加密保存的 API Key。"
+            description="Token 费用由你的 Provider 账户承担。此处不能更改 Provider、模型、服务地址或下载地址；提交前请确认你有权处理该正文。"
           />
           {error ? <Alert type="error" showIcon title={error} role="alert" /> : null}
 
@@ -197,7 +252,11 @@ export function TranslationLaunchModal({
               type="primary"
               htmlType="submit"
               loading={isSubmitting}
-              disabled={source === null || service?.available !== true}
+              disabled={(
+                source === null
+                || service?.available !== true
+                || credential?.configured !== true
+              )}
             >
               {isRetranslation ? "创建重译任务" : "创建翻译任务"}
             </Button>

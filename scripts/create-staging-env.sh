@@ -15,10 +15,16 @@ random_value() {
   python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
 }
 
+base64_32_value() {
+  python3 -c 'import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())'
+}
+
 postgres_password="$(random_value)"
 jwt_secret="$(random_value)"
 hash_secret="$(random_value)"
 credential_hash_secret="$(random_value)"
+provider_credential_master_key="$(base64_32_value)"
+provider_relay_service_secret="$(random_value)"
 trusted_host="$(python3 -c 'import sys; from urllib.parse import urlsplit; print(urlsplit(sys.argv[1]).hostname)' "$base_url")"
 
 mkdir -p "$(dirname "$output")"
@@ -66,15 +72,25 @@ MAX_COVER_BYTES=20971520
 MAX_COVER_PIXELS=40000000
 LINGUASPINDLE_ENABLED=false
 LINGUASPINDLE_BASE_URL=http://linguaspindle:8765
-LINGUASPINDLE_VERSION_RANGE='>=0.3.1,<0.4.0'
+LINGUASPINDLE_VERSION_RANGE='>=0.3.2,<0.4.0'
 LINGUASPINDLE_PROVIDER_ID=openai-compatible
 LINGUASPINDLE_PROFILE_ID=
 LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS=3
 LINGUASPINDLE_READ_TIMEOUT_SECONDS=30
 LINGUASPINDLE_MAX_DOWNLOAD_BYTES=104857600
+PROVIDER_CREDENTIAL_MASTER_KEY=$provider_credential_master_key
+PROVIDER_RELAY_SERVICE_SECRET=$provider_relay_service_secret
+PROVIDER_RELAY_INTERNAL_URL=http://novel-provider-relay:8790
+PROVIDER_RELAY_UPSTREAM_BASE_URL=https://api.openai.com/v1
+PROVIDER_RELAY_ALLOWED_MODELS='["gpt-4.1-mini"]'
+PROVIDER_RELAY_CONNECT_TIMEOUT_SECONDS=5
+PROVIDER_RELAY_READ_TIMEOUT_SECONDS=120
+PROVIDER_RELAY_MAX_REQUEST_BYTES=1048576
+PROVIDER_RELAY_MAX_RESPONSE_BYTES=4194304
 EOF
 chmod 600 "$output"
-unset postgres_password jwt_secret hash_secret credential_hash_secret trusted_host
+unset postgres_password jwt_secret hash_secret credential_hash_secret \
+  provider_credential_master_key provider_relay_service_secret trusted_host
 
 printf 'staging environment created without printing secret values\n'
 printf 'Administrator initialization and recovery credentials must be generated with the server CLI.\n'

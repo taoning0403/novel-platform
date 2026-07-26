@@ -7,14 +7,33 @@ import path from "node:path";
 
 const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
-const jsonPath = path.join(artifacts, "acceptance-v090.json");
-const markdownPath = path.join(artifacts, "acceptance-v090.md");
-const actionLogPath = path.join(artifacts, "acceptance-v090-actions.log");
+const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.9.0";
+const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v090";
+const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v090";
+const acceptanceExpectedRevision =
+  process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260723_0006";
+const acceptanceLinguaVersion = process.env.ACCEPTANCE_LINGUASPINDLE_VERSION ?? "0.3.1";
+const acceptanceLinguaVersionRange =
+  process.env.ACCEPTANCE_LINGUASPINDLE_VERSION_RANGE ?? ">=0.3.1,<0.4.0";
+const acceptanceLinguaStatusKey =
+  `real_v${acceptanceLinguaVersion.replaceAll(".", "")}_mock_provider`;
+const acceptanceProviderCredentialMasterKey =
+  process.env.ACCEPTANCE_PROVIDER_CREDENTIAL_MASTER_KEY ??
+  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+const inheritedAcceptanceTag =
+  process.env.ACCEPTANCE_INHERITED_TAG ?? `${acceptanceTag}-regression`;
+const requireHistoricalVisualEvidence =
+  process.env.ACCEPTANCE_REQUIRE_HISTORICAL_VISUAL_EVIDENCE !== "0";
+const jsonPath = path.join(artifacts, `acceptance-${acceptanceTag}.json`);
+const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
+const actionLogPath = path.join(artifacts, `acceptance-${acceptanceTag}-actions.log`);
 const databaseComposeFile = "scripts/acceptance-v090.database.yml";
-const databaseProject = `novel-v090-db-${process.pid}-${Date.now()}`;
+const databaseProject =
+  `novel-${acceptanceTag.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-db-${process.pid}-${Date.now()}`;
 const started = new Date();
 const actions = [];
 const steps = [];
+const sensitive = new Set([acceptanceProviderCredentialMasterKey]);
 
 const criterionLabels = [
   "v0.8 仍适用的认证、Reader、Passkey、设备、Session 与代理回归",
@@ -37,7 +56,7 @@ const criteria = criterionLabels.map((label, index) => ({
 }));
 
 const deploymentPendingItems = [
-  "PENDING_OPERATOR_CONFIG: 未连接真实 LinguaSpindle v0.3.1 + Mock Provider。",
+  `PENDING_OPERATOR_CONFIG: 未连接真实 LinguaSpindle v${acceptanceLinguaVersion} + Mock Provider。`,
   "PENDING_OPERATOR_CONFIG: 未配置或调用真实 OpenAI-compatible Provider；没有付费或正文外发调用。",
   "DEPLOYMENT_PENDING: 未在服务器执行 v0.9 migration、reset、Compose 网络变更或远端清理。",
   "DEPLOYMENT_PENDING: 真实 HTTPS、Passkey RP ID、私有 DNS、持久化与重启恢复待部署授权后复核。",
@@ -72,8 +91,13 @@ async function sha256(filePath) {
 }
 
 function redact(value) {
-  return String(value ?? "")
+  let output = String(value ?? "");
+  for (const item of [...sensitive].sort((left, right) => right.length - left.length)) {
+    output = output.replaceAll(item, "[REDACTED]");
+  }
+  return output
     .replaceAll(root, "[REPOSITORY ROOT]")
+    .replaceAll("正文", "[CONTENT REDACTED]")
     .replace(/\bnpa_[A-Za-z0-9_-]{16,}\b/g, "npa_[REDACTED]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[JWT REDACTED]")
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, "Bearer [REDACTED]")
@@ -122,6 +146,19 @@ function mark(numbers, evidence) {
   }
 }
 
+function composeServiceNames(source) {
+  const lines = source.split("\n");
+  const servicesStart = lines.findIndex((line) => line === "services:");
+  if (servicesStart < 0) return [];
+  const names = [];
+  for (let index = servicesStart + 1; index < lines.length; index += 1) {
+    if (/^[A-Za-z0-9_-]+:\s*$/.test(lines[index])) break;
+    const match = lines[index].match(/^  ([A-Za-z0-9_-]+):\s*$/);
+    if (match) names.push(match[1]);
+  }
+  return names;
+}
+
 function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -158,15 +195,15 @@ async function waitForDatabase(environment, timeoutMs = 120_000) {
 async function writeReports(status, inherited, failure) {
   const gitCommit = run("read Git commit", "git", ["rev-parse", "HEAD"]).trim();
   const report = {
-    version: "0.9.0",
+    version: acceptanceVersion,
     status,
     deployment_status: "DEPLOYMENT_PENDING",
     provider_status: {
       fake_transport: "PASS",
-      real_v031_mock_provider: "PENDING_OPERATOR_CONFIG",
+      [acceptanceLinguaStatusKey]: "PENDING_OPERATOR_CONFIG",
       real_openai_compatible: "PENDING_OPERATOR_CONFIG",
     },
-    visual_status: "LOCAL_PASS",
+    visual_status: requireHistoricalVisualEvidence ? "LOCAL_PASS" : "NOT_REPLAYED",
     started_at: started.toISOString(),
     completed_at: new Date().toISOString(),
     git_commit: gitCommit,
@@ -180,14 +217,16 @@ async function writeReports(status, inherited, failure) {
   await mkdir(artifacts, { recursive: true });
   await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
   const markdown = [
-    "# Novel Platform v0.9.0 local acceptance",
+    `# Novel Platform v${acceptanceVersion} local acceptance`,
     "",
     `- Status: **${status}**`,
     "- Deployment: **DEPLOYMENT_PENDING**",
     "- Fake LinguaSpindle transport: **PASS**",
-    "- Real v0.3.1 + Mock Provider: **PENDING_OPERATOR_CONFIG**",
+    `- Real v${acceptanceLinguaVersion} + Mock Provider: **PENDING_OPERATOR_CONFIG**`,
     "- Real OpenAI-compatible Provider: **PENDING_OPERATOR_CONFIG**",
-    "- Visual review: **LOCAL_PASS**",
+    requireHistoricalVisualEvidence
+      ? "- Visual review: **LOCAL_PASS**"
+      : "- Historical visual evidence: **NOT_REPLAYED**",
     `- Started: ${report.started_at}`,
     `- Completed: ${report.completed_at}`,
     `- Git commit: ${gitCommit}`,
@@ -227,7 +266,7 @@ async function writeReports(status, inherited, failure) {
   await writeFile(
     actionLogPath,
     [
-      "Novel Platform v0.9.0 sanitized acceptance action log",
+      `Novel Platform v${acceptanceVersion} sanitized acceptance action log`,
       "Only action labels are recorded; arguments, outputs, secrets, content, IDs, URLs, and paths are omitted.",
       "",
       ...actions.map((label) => `[ACTION] ${label}`),
@@ -242,7 +281,9 @@ async function main() {
   let databaseStarted = false;
   let inherited = null;
   let failure = null;
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "novel-v090-acceptance-"));
+  const temporaryRoot = await mkdtemp(
+    path.join(os.tmpdir(), `novel-${acceptanceTag}-acceptance-`),
+  );
   const databasePort = await freePort();
   const databaseEnvironment = {
     ...process.env,
@@ -263,19 +304,26 @@ async function main() {
       ], {
         env: {
           ...process.env,
-          ACCEPTANCE_VERSION: "0.9.0",
-          ACCEPTANCE_TAG: "v090-regression",
-          ACCEPTANCE_COMMAND: "acceptance:v090",
-          ACCEPTANCE_EXPECTED_REVISION: "20260723_0006",
+          ACCEPTANCE_VERSION: acceptanceVersion,
+          ACCEPTANCE_TAG: inheritedAcceptanceTag,
+          ACCEPTANCE_COMMAND: acceptanceCommand,
+          ACCEPTANCE_EXPECTED_REVISION: acceptanceExpectedRevision,
+          ACCEPTANCE_LINGUASPINDLE_VERSION_RANGE: acceptanceLinguaVersionRange,
           ACCEPTANCE_READER_CAPABILITIES: "library.read",
           ACCEPTANCE_LEGACY_BOOK_POST_STATUS: "405",
         },
       });
       const regression = JSON.parse(
-        await readFile(path.join(artifacts, "acceptance-v090-regression.json"), "utf8"),
+        await readFile(
+          path.join(artifacts, `acceptance-${inheritedAcceptanceTag}.json`),
+          "utf8",
+        ),
       );
       const core = JSON.parse(
-        await readFile(path.join(artifacts, "acceptance-v090-regression-core.json"), "utf8"),
+        await readFile(
+          path.join(artifacts, `acceptance-${inheritedAcceptanceTag}-core.json`),
+          "utf8",
+        ),
       );
       assert(regression.status === "PASS", "inherited v0.8 regression did not pass");
       assert(core.status === "PASS" && core.criteria.length === 84, "inherited 84-criterion core changed");
@@ -283,8 +331,8 @@ async function main() {
       inherited = {
         status: regression.status,
         criteria_count: regression.criteria.length,
-        artifact: "artifacts/acceptance-v090-regression.json",
-        core_artifact: "artifacts/acceptance-v090-regression-core.json",
+        artifact: `artifacts/acceptance-${inheritedAcceptanceTag}.json`,
+        core_artifact: `artifacts/acceptance-${inheritedAcceptanceTag}-core.json`,
       };
       mark([1, 9], "v090 regression replay: 84 core + 9 hardening criteria");
     });
@@ -339,9 +387,11 @@ async function main() {
           "MAX_UPLOAD_BYTES=1048576",
           "LINGUASPINDLE_ENABLED=false",
           "LINGUASPINDLE_BASE_URL=http://linguaspindle:8765",
-          "LINGUASPINDLE_VERSION_RANGE='>=0.3.1,<0.4.0'",
+          `LINGUASPINDLE_VERSION_RANGE='${acceptanceLinguaVersionRange}'`,
           "LINGUASPINDLE_PROVIDER_ID=mock",
           "LINGUASPINDLE_MAX_DOWNLOAD_BYTES=1048576",
+          `PROVIDER_CREDENTIAL_MASTER_KEY=${acceptanceProviderCredentialMasterKey}`,
+          "PROVIDER_RELAY_INTERNAL_URL=http://novel-provider-relay:8790",
           "",
         ].join("\n"),
         { mode: 0o600 },
@@ -410,7 +460,10 @@ async function main() {
 
     await step("Verify v0.9 API, private-network, secret and visual-evidence contracts", async () => {
       const openapi = JSON.parse(await readFile(path.join(root, "packages/api-client/openapi.json"), "utf8"));
-      assert(openapi.info.version === "0.9.0", "OpenAPI version is not 0.9.0");
+      assert(
+        openapi.info.version === acceptanceVersion,
+        `OpenAPI version is not ${acceptanceVersion}`,
+      );
       assert(openapi.paths["/api/v1/books"]?.post === undefined, "legacy metadata-only Book POST remains");
       assert(
         openapi.paths["/api/v1/books/{book_id}/editions"]?.post === undefined,
@@ -424,26 +477,49 @@ async function main() {
       const stagingCompose = await readFile(path.join(root, "compose.staging.yml"), "utf8");
       const stagingEnvironment = await readFile(path.join(root, ".env.staging.example"), "utf8");
       assert(overlay.includes("linguaspindle-private"), "translation overlay lacks private network");
-      assert(overlay.includes("server:") && !overlay.includes("web:") && !overlay.includes("migrate:"), "non-Server service joined translation network");
+      const overlayServices = composeServiceNames(overlay);
+      assert(
+        overlayServices.includes("server") &&
+          !overlayServices.includes("web") &&
+          !overlayServices.includes("migrate"),
+        "Web or migration service joined translation network",
+      );
       assert(!overlay.includes("ports:"), "translation overlay exposes a host port");
       assert(stagingCompose.includes("LINGUASPINDLE_ENABLED"), "staging configuration does not pass LinguaSpindle settings");
       const providerSecretPattern = /(?:OPENAI_API_KEY|PROVIDER_(?:API_)?KEY|LINGUASPINDLE_(?:API_)?KEY)/;
       assert(!providerSecretPattern.test(overlay + stagingCompose + stagingEnvironment), "Novel Platform configuration contains a Provider secret variable");
 
-      const desktopCapture = path.join(artifacts, "visual-v090", "translations-desktop.png");
-      const mobileCapture = path.join(artifacts, "visual-v090", "translations-mobile-320.png");
-      await access(desktopCapture);
-      await access(mobileCapture);
-      await access(path.join(artifacts, "visual-v090", "README.md"));
-      assert(
-        await sha256(desktopCapture) === "4d1cdb58ca702391673b5b212427f1f0dd8e3e1dd2f1bdb6a6d36c6f9ee80b65",
-        "desktop visual evidence checksum changed",
+      if (requireHistoricalVisualEvidence) {
+        const desktopCapture = path.join(
+          artifacts,
+          "visual-v090",
+          "translations-desktop.png",
+        );
+        const mobileCapture = path.join(
+          artifacts,
+          "visual-v090",
+          "translations-mobile-320.png",
+        );
+        await access(desktopCapture);
+        await access(mobileCapture);
+        await access(path.join(artifacts, "visual-v090", "README.md"));
+        assert(
+          await sha256(desktopCapture) ===
+            "4d1cdb58ca702391673b5b212427f1f0dd8e3e1dd2f1bdb6a6d36c6f9ee80b65",
+          "desktop visual evidence checksum changed",
+        );
+        assert(
+          await sha256(mobileCapture) ===
+            "89114c163499189ee69668ec82a429b1738e25481d2e22fcc30e25a77e7ba216",
+          "mobile visual evidence checksum changed",
+        );
+      }
+      mark(
+        [4, 7, 8, 10],
+        requireHistoricalVisualEvidence
+          ? "OpenAPI/Compose/leak/visual contract inspection"
+          : "OpenAPI/Compose/leak inspection; historical v0.9 visual evidence not replayed",
       );
-      assert(
-        await sha256(mobileCapture) === "89114c163499189ee69668ec82a429b1738e25481d2e22fcc30e25a77e7ba216",
-        "mobile visual evidence checksum changed",
-      );
-      mark([4, 7, 8, 10], "OpenAPI/Compose/leak/visual contract inspection");
     });
   } catch (error) {
     failure = error instanceof Error ? error : new Error(String(error));

@@ -38,8 +38,25 @@ mkdir -p \
 chmod 700 "${STAGING_BACKUP_DIR:-$STAGING_ROOT/data/backups}"
 
 compose config --quiet
+if [[ "$LINGUASPINDLE_ENABLED" == "false" ]]; then
+  orphan_relay_container_ids="$(staging_provider_relay_container_ids)" \
+    || die "could not inspect disabled Provider Relay containers"
+  orphan_relay_containers=()
+  while IFS= read -r orphan_relay_container; do
+    [[ -n "$orphan_relay_container" ]] || continue
+    orphan_relay_containers+=("$orphan_relay_container")
+  done <<<"$orphan_relay_container_ids"
+  if (( ${#orphan_relay_containers[@]} > 0 )); then
+    docker rm --force "${orphan_relay_containers[@]}" >/dev/null
+    printf 'Removed disabled Provider Relay orphan container(s).\n'
+  fi
+fi
 printf 'Building immutable staging images...\n'
-compose build migrate server web
+build_services=(migrate server web)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  build_services+=(provider-relay)
+fi
+compose build "${build_services[@]}"
 
 printf 'Starting PostgreSQL only...\n'
 compose up --detach postgres
@@ -54,7 +71,11 @@ fi
 # Ephemeral server tasks share the service's fixed network addresses, so stop the existing
 # application before running them. A validation or migration failure intentionally leaves the
 # public application stopped.
-compose stop web server >/dev/null 2>&1 || true
+application_services=(web server)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  application_services+=(provider-relay)
+fi
+compose stop "${application_services[@]}" >/dev/null 2>&1 || true
 printf 'Validating private library storage permissions...\n'
 compose run --rm --no-deps --entrypoint python server -c \
   'from novel_platform.api.dependencies.storage import get_file_storage; get_file_storage().initialize()'
@@ -72,8 +93,16 @@ if [[ "$before_revision" == "20260715_0005" ]]; then
   grep -Fq 'Status: **PASS**' "$V090_RESTORE_TEST_REPORT" \
     || die "the supplied isolated-restore report is not PASS"
 elif [[ -n "$before_revision" \
-  && "$before_revision" != "20260723_0006" ]]; then
-  die "existing pre-v0.5 database must complete the historical v0.5 conversion before v0.9"
+  && "$before_revision" != "20260723_0006" \
+  && "$before_revision" != "20260726_0007" ]]; then
+  die "existing database revision is not a supported v0.10 upgrade source"
+fi
+if [[ "$before_revision" == "20260723_0006" ]]; then
+  unscoped_runs="$(compose exec -T postgres sh -c \
+    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
+      "SELECT count(*) FROM edition_translation_runs"')"
+  [[ "$unscoped_runs" == "0" ]] \
+    || die "v0.10 cannot truthfully bind existing translation Runs; restore/reset or explicitly archive and remove them before retrying"
 fi
 printf 'Applying Alembic migrations...\n'
 compose up --no-deps --abort-on-container-exit --exit-code-from migrate migrate
@@ -110,6 +139,17 @@ elif (( initialized_users == 0 )); then
   printf 'New database remains pending CLI administrator initialization.\n'
 fi
 compose run --rm --no-deps --entrypoint novel-platform server auth migration audit >/dev/null
+
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  printf 'Starting private Provider Relay...\n'
+  compose up --detach --no-deps provider-relay
+  relay_container="$(compose ps -q provider-relay)"
+  deadline=$((SECONDS + 180))
+  until [[ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$relay_container" 2>/dev/null)" == "healthy" ]]; do
+    (( SECONDS < deadline )) || die "Provider Relay container did not become healthy"
+    sleep 2
+  done
+fi
 
 printf 'Starting API and Web...\n'
 compose up --detach --no-deps server

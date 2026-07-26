@@ -1,10 +1,10 @@
-# v0.9.0 single-host deployment
+# v0.10.0 single-host deployment
 
 This runbook describes a private single-host deployment, the guarded v0.4.0-to-v0.5.0 data/auth
-upgrade, historical v0.6/v0.7/v0.8 application/security upgrades, and the current destructive
-v0.8.0-to-v0.9.0 capability/contributor/private-translation upgrade. It is not a
-production, high-availability, disaster-recovery, or filing-approval claim. No real server is
-changed by repository acceptance.
+upgrade, historical v0.6/v0.7/v0.8/v0.9 upgrades, and the current v0.9.0-to-v0.10.0 encrypted
+reader-owned Provider credential/private-Relay upgrade. It is not a production,
+high-availability, disaster-recovery, or filing-approval claim. Repository acceptance does not
+change a real server or authorize a paid Provider call.
 
 ## Required HTTPS topology
 
@@ -22,9 +22,12 @@ Host Caddy/Nginx (certificate, HTTP-to-HTTPS redirect)
                          ├── PostgreSQL :5432 (private database network)
                          ├── /data/library (private mode-700 bind mount)
                          └── optional external linguaspindle-private network
-                                  └── LinguaSpindle v0.3.1 :8765 (no host port)
-                                      ├── independent SQLite/Artifact volume
-                                      └── Provider secret (never Novel Platform config)
+                                  ├── LinguaSpindle >=0.3.2 :8765 (no host port)
+                                  │     ├── independent SQLite/Artifact volume
+                                  │     └── opaque credential scope + Relay Bearer only
+                                  └── Provider Relay :8790 (no host/proxy port)
+                                        ├── PostgreSQL ciphertext/usage (database network)
+                                        └── fixed HTTPS OpenAI-compatible upstream
 ```
 
 The external edge may be a host Nginx/Caddy instance, load balancer, tunnel, or Cloudflare proxy,
@@ -33,8 +36,9 @@ owns public ports 80/443 and forwards to `127.0.0.1:8080`. `compose.staging.yml`
 published service to that loopback address by default; it does not provide a public HTTP login
 entry. The external edge must terminate a valid certificate, redirect HTTP to HTTPS, preserve the
 public Host/scheme, and forward only to the Web container. Do not expose host ports 8080, 8000,
-5432, LinguaSpindle 8765, or `/data/library` publicly. Only `server` may join
-`linguaspindle-private`; Web, migrate and PostgreSQL must not.
+5432, Relay 8790, LinguaSpindle 8765, or `/data/library` publicly. When translation is enabled,
+`server` and `provider-relay` join `linguaspindle-private`; Relay also joins the database network
+and no proxy/default network. Web, migrate and PostgreSQL must not join the translation network.
 
 A minimal Caddy virtual host is:
 
@@ -91,13 +95,14 @@ cd /srv/novel-platform/app
 ./scripts/create-staging-env.sh https://reading.example.com
 ```
 
-The command generates independent database, JWT, refresh/throttle-hash, and credential/device
-hash secrets without printing their values. It does not generate an administrator password,
-Setup Token, recovery credential, or Passkey.
+The command generates independent database, JWT, refresh/throttle-hash, credential/device-hash,
+32-byte Base64 vault-master and Relay-service secrets without printing their values. It does not
+generate an administrator password, Setup Token, recovery credential, Passkey or upstream
+Provider key.
 
 For an existing environment, merge names from `.env.staging.example` manually and preserve
 existing values until the coordinated upgrade reaches the secret-rotation step. Required v0.5
-settings include:
+authentication settings plus current v0.10 translation/vault settings include:
 
 ```text
 STAGING_HTTP_PORT=8080
@@ -115,12 +120,21 @@ AUTH_COOKIE_SAMESITE=strict
 STAGING_REAL_IP_PEER=172.30.19.1
 LINGUASPINDLE_ENABLED=false
 LINGUASPINDLE_BASE_URL=http://linguaspindle:8765
-LINGUASPINDLE_VERSION_RANGE='>=0.3.1,<0.4.0'
+LINGUASPINDLE_VERSION_RANGE='>=0.3.2,<0.4.0'
 LINGUASPINDLE_PROVIDER_ID=openai-compatible
 LINGUASPINDLE_PROFILE_ID=
 LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS=3
 LINGUASPINDLE_READ_TIMEOUT_SECONDS=30
 LINGUASPINDLE_MAX_DOWNLOAD_BYTES=104857600
+PROVIDER_CREDENTIAL_MASTER_KEY=<strict-base64-32-byte-key>
+PROVIDER_RELAY_SERVICE_SECRET=<independent-at-least-32-byte-secret>
+PROVIDER_RELAY_INTERNAL_URL=http://novel-provider-relay:8790
+PROVIDER_RELAY_UPSTREAM_BASE_URL=https://api.openai.com/v1
+PROVIDER_RELAY_ALLOWED_MODELS='["gpt-4.1-mini"]'
+PROVIDER_RELAY_CONNECT_TIMEOUT_SECONDS=5
+PROVIDER_RELAY_READ_TIMEOUT_SECONDS=120
+PROVIDER_RELAY_MAX_REQUEST_BYTES=1048576
+PROVIDER_RELAY_MAX_RESPONSE_BYTES=4194304
 ```
 
 Since v0.8.0 the server refuses to boot in staging/production unless authentication Cookies are
@@ -134,10 +148,38 @@ Keep `STAGING_HTTP_PORT` on an unused loopback port; 8080 is the documented defa
 opened by the host or cloud firewall.
 
 `LINGUASPINDLE_MAX_DOWNLOAD_BYTES` must not exceed `MAX_UPLOAD_BYTES`. Protected configuration
-accepts only one fixed HTTP(S) origin and the exact compatible version range. No Provider/API key
-variable exists in Novel Platform. Keep `LINGUASPINDLE_ENABLED=false` until the operator has
-verified the exact v0.3.1 image/tag, private DNS, health/system/pipeline/provider responses,
-mandatory `Idempotency-Key`, Artifact persistence and absence of a host port.
+accepts only one fixed LinguaSpindle origin, version range `>=0.3.2,<0.4.0`, one fixed Relay
+origin, one fixed HTTPS upstream and a non-empty unique model allowlist. Novel Platform has no
+environment variable for an upstream Provider key. Its 32-byte vault master key is required even
+while translation is disabled so personal credential ciphertext remains stable and decryptable.
+The Relay service secret must differ from the vault key and all authentication secrets. Protected
+configuration and staging preflight both reject the known all-zero development master key.
+
+Keep `LINGUASPINDLE_ENABLED=false` until LinguaSpindle has been upgraded and its separate backup
+and restore have passed. Once enabled, `scripts/healthcheck-staging.sh` fails closed unless the
+fixed external network maps the configured DNS alias to exactly one LinguaSpindle container, that
+container is running and healthy, `/health` reports a compatible `>=0.3.2,<0.4.0` runtime and
+healthy database, migrations are exactly at schema 5, no host port is published, and Server-side
+DNS resolves only to that network endpoint. It also verifies, without printing any secret, that
+Server and Relay use the protected host vault key, LinguaSpindle and Relay use the protected host
+service Bearer, Server/Relay non-secret runtime settings match the deployment configuration, and
+LinguaSpindle uses the exact private Relay `/v1` origin. A synthetic request with a database-proven
+absent credential scope must receive Relay's fixed `provider_credential_unavailable` 404; this
+proves the Bearer and allowlisted model before credential resolution, so the probe cannot reach the
+paid upstream. Separately verify system/pipeline/provider responses, scoped Job
+restart/idempotency and Artifact persistence before real use. In LinguaSpindle's separate mode-600
+configuration, set:
+
+```text
+LINGUASPINDLE_OPENAI_BASE_URL=http://novel-provider-relay:8790/v1
+LINGUASPINDLE_OPENAI_API_KEY=<same value as PROVIDER_RELAY_SERVICE_SECRET>
+LINGUASPINDLE_OPENAI_MODEL=<one PROVIDER_RELAY_ALLOWED_MODELS entry>
+```
+
+For scoped Jobs the variable named `LINGUASPINDLE_OPENAI_API_KEY` is only the internal
+LinguaSpindle-to-Relay Bearer, not an upstream Provider key. Share that value only with
+LinguaSpindle and Relay; do not inject it into Web, Server, migrate or PostgreSQL. The Relay
+replaces it with the actor's decrypted key only at the fixed upstream boundary.
 
 Validate without printing the resolved Compose environment:
 
@@ -156,7 +198,10 @@ docker compose --env-file /srv/novel-platform/config/.env.staging \
 ```
 
 Novel Platform scripts automatically add the overlay only when `LINGUASPINDLE_ENABLED=true`; they
-never create, delete or reconfigure the external network or any LinguaSpindle resource.
+start the Novel Platform Relay but never create, delete or reconfigure the external network or
+any LinguaSpindle resource. Changing the flag from `true` to `false` removes any Relay container
+left by the former overlay before migration, and the disabled healthcheck refuses to pass while a
+Relay container for the staging Compose project remains.
 
 Never run `docker compose config` with environment expansion into a report. Never paste or export
 CLI-generated credentials into `.env`, shell history, a command line, chat, or an acceptance
@@ -199,12 +244,158 @@ settings, or audit pages before Passkey registration.
 Create reader identities in the administrator UI. Deliver each one-time reader credential through
 an appropriate private channel. The UI cannot retrieve it again.
 
-## Upgrade from v0.8.0 to v0.9.0
+## Upgrade from v0.9.0 to v0.10.0
+
+This upgrade adds Alembic `20260726_0007`, encrypted per-User Provider credential versions,
+sanitized token-usage records, exact Run-to-version binding and the private Relay. A v0.9
+Translation Run has no truthful payer/key scope. Revision 0007 and `deploy-staging.sh` therefore
+refuse any v0.9 database containing a Run; neither path deletes it or invents attribution.
+
+The source tree is a v0.10 release candidate until the root task records the final local gate and
+external deployment checks. Do not report deployment PASS merely because package metadata,
+focused tests or migration code exist.
+
+### 1. Candidate, data and topology baseline
+
+1. Require all local quality gates and `pnpm acceptance:v0100` on the exact candidate commit.
+   Record `artifacts/acceptance-v0100.{md,json}` and
+   `artifacts/acceptance-v0100-regression*` without overwriting historical v0.9 artifacts. The
+   final candidate result remains pending until those reports are reviewed.
+2. Record sanitized Novel Platform revision/counts, Compose project, containers, networks,
+   published ports and database/library mounts. Explicitly record the count of
+   `edition_translation_runs`; do not record User IDs, titles, paths, hashes or remote IDs.
+3. Separately inventory the LinguaSpindle v0.3.1 deployment: exact image/commit, schema, container,
+   `linguaspindle-private`, SQLite/Artifact volume, health and host-port absence. Novel Platform
+   scripts do not own or back up these resources.
+4. Copy the existing Novel Platform and LinguaSpindle mode-600 environment files to separately
+   protected, mode-600 backup locations without printing them. Record only their checksums and
+   locations in a restricted operator record.
+5. Merge the current v0.10 environment names with `LINGUASPINDLE_ENABLED=false`. Generate a strict
+   Base64 32-byte vault key and an independent Relay service secret without terminal output or
+   shell-history exposure; preserve existing authentication/database values and keep the edited
+   file mode 600. Back up this new secret generation separately because all later ciphertext
+   depends on it.
+
+### 2. Coordinated backups and isolated restore
+
+Stop Novel Platform writers and create the current coordinated backup:
+
+```bash
+./scripts/backup-library.sh
+./scripts/restore-library.sh --test \
+  /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP \
+  /srv/novel-platform/reports/restore-v0100-TIMESTAMP.md
+```
+
+The PostgreSQL dump includes encrypted Provider credential rows and usage if they already exist;
+the library archive remains coordinated with all database file references. The manifest excludes
+`PROVIDER_CREDENTIAL_MASTER_KEY`, `PROVIDER_RELAY_SERVICE_SECRET`, upstream keys and all
+LinguaSpindle resources. Preserve the matching vault key in a separate protected secret backup.
+An isolated database/library restore alone cannot prove that ciphertext can be decrypted with a
+lost or mismatched key.
+
+Before upgrading LinguaSpindle to v0.3.2, stop its writers and follow its own
+v0.3.1-to-v0.3.2 full-data-root/Volume backup and isolated-restore procedure. Preserve SQLite and
+Artifacts together. Do not use Novel Platform backup, reset or rollback scripts on LinguaSpindle.
+
+### 3. Resolve unscoped v0.9 Runs and migrate
+
+If the sanitized Run count is nonzero, stop. Keep the verified pre-upgrade backup and explicitly
+choose one of these exact-target resolutions:
+
+- archive the operational evidence and remove only the known disposable test Runs through a
+  reviewed maintenance action; or
+- restore/reset the exact disposable Novel Platform database and library under separate
+  destructive approval.
+
+Do not synthesize a credential version, copy another User's key, or let the migration delete Runs.
+After the count is exactly zero, keep `LINGUASPINDLE_ENABLED=false`. A host already at
+`20260723_0006` runs:
+
+```bash
+./scripts/deploy-staging.sh
+```
+
+A host still at `20260715_0005` must additionally review the v0.9 destructive count preflight and
+bind the exact database plus the current isolated-restore PASS report:
+
+```bash
+./scripts/preflight-v090.sh
+ALLOW_V090_DESTRUCTIVE_MIGRATION=1 \
+V090_CONFIRM_DATABASE=novel_platform \
+V090_RESTORE_TEST_REPORT=/srv/novel-platform/reports/restore-v0100-TIMESTAMP.md \
+  ./scripts/deploy-staging.sh
+```
+
+The deploy script creates its normal coordinated backup unless explicitly told not to, stops
+writers, checks supported source revision and zero unscoped Runs, and then advances to
+`20260726_0007`. Verify the two credential tables exist, every new Run column is non-null, and the
+database revision matches code head. Revisions other than 0005, 0006 or 0007 are refused.
+
+### 4. Upgrade LinguaSpindle and enable the private chain
+
+Upgrade LinguaSpindle to the reviewed `>=0.3.2,<0.4.0` candidate while translation remains
+disabled. Verify its schema-5 migration, restart persistence, required idempotency and lack of a
+host port. Configure its fixed OpenAI-compatible values as described in **Environment**:
+
+- base URL `http://novel-provider-relay:8790/v1`;
+- runtime API key equal to the independently generated Relay service secret;
+- model equal to one Relay-allowlisted model.
+
+In the Novel Platform mode-600 environment, preserve/generate the matching vault key, set the same
+Relay service secret without exposing it to Server/Web/migrate/PostgreSQL, choose one fixed HTTPS
+upstream and allowlist, then set `LINGUASPINDLE_ENABLED=true` and redeploy. The overlay starts
+`provider-relay`, joins Server and Relay to `linguaspindle-private`, and gives Relay database
+access. It must not add Web, migrate or PostgreSQL to that network and must publish no Relay port.
+
+### 5. Post-deploy verification without a paid call
+
+Verify all of the following with synthetic data and, where a successful upstream response is
+needed, an explicitly isolated offline Mock Provider:
+
+- application/database revision is `20260726_0007`; main `/api/v1/health/ready` remains healthy
+  when translation is disabled or LinguaSpindle/Relay is unavailable;
+- a `translation.use` actor without a personal credential cannot launch translation and never
+  consumes an administrator/shared key;
+- configure/rotate/remove returns only non-secret status/version/usage; rotation keeps an existing
+  Run on its old version and removal makes later calls fail closed;
+- LinguaSpindle `>=0.3.2,<0.4.0` persists the opaque scope across restart, separates Job
+  fingerprints by scope, forwards required scope + Job headers and does not expose them publicly;
+- Relay rejects missing/wrong Bearer, scope or Job ID, an unbound/revoked version, disallowed
+  model, redirect, oversized body and malformed Provider response; it forwards neither internal
+  scope nor Relay Bearer upstream;
+- successful Mock usage persists only model, Job correlation and integer token counts; no key,
+  prompt, translation, raw response, scope or secret appears in API/OpenAPI/logs/reports;
+- Relay joins exactly database + `linguaspindle-private`; Server joins the translation network;
+  Web/PostgreSQL/migrate do not; API/PostgreSQL/Relay/LinguaSpindle publish no host ports;
+- the automated no-upstream probe returns the fixed 404 after validating runtime key/Bearer
+  agreement, exact private Relay origin and Relay-accepted LinguaSpindle model; and
+- coordinated backup + isolated restore, Server/Relay/LinguaSpindle restart and exact test-resource
+  cleanup preserve the expected state.
+
+Do not supply a real reader Provider key or send real book content during this verification. Real
+OpenAI-compatible execution is a paid/content-egress action and remains
+`PENDING_OPERATOR_CONFIG` until separately authorized.
+
+### 6. Rollback
+
+For a translation-only failure, set `LINGUASPINDLE_ENABLED=false` and redeploy without the overlay;
+keep encrypted credential and library data. Main readiness must remain available. Restore
+LinguaSpindle from its separate complete backup if its schema/image upgrade fails.
+
+For migration/data/key mismatch, stop writers and restore matching pre-upgrade Novel Platform code,
+PostgreSQL and library together, plus the separately protected vault key required by that backup.
+Do not automatically downgrade 0007 or mix database/library/key generations. A service Bearer can
+be rotated by updating Relay and LinguaSpindle together; it is not a substitute for the vault
+master key.
+
+## Upgrade from v0.8.0 to v0.9.0 (historical)
 
 This upgrade adds destructive Alembic `20260723_0006`, credential capabilities, creator
-attribution, Translation Runs, and an optional Server-only private network. Do not run it merely
-because the repository is checked out. Candidate review, database migration, network change,
-Provider configuration and remote cleanup are separate approvals.
+attribution and Translation Runs. Its original operator-owned Provider-key boundary is superseded
+by ADR 0019 and the v0.10 procedure above. Do not use this historical section to enable a v0.3.1
+translation chain. Its `v090` artifact/backup names describe the archived v0.9 release procedure;
+use the current v0.10 section and actual v0.10 script output for a new deployment.
 
 ### 1. Candidate and topology baseline
 
@@ -272,22 +463,13 @@ creator rows/credentials without read/orphan files, reissue dedicated read-only,
 translate-only and combined credentials, and confirm the old credential/Devices/Sessions/Refresh
 Tokens are immediately unusable.
 
-### 5. Enable private translation separately
+### 5. Historical translation verification (superseded)
 
-Leave translation disabled until main login/library/upload/Reader health and the four-identity
-capability/resource matrix pass. Then verify the external network/service baseline again, set the
-non-secret `LINGUASPINDLE_*` values and `LINGUASPINDLE_ENABLED=true`, and redeploy. The scripts add
-`compose.translation.yml`; only Server joins the existing external network.
-
-Run a short synthetic TXT against real v0.3.1 + its offline Mock Provider: status, create
-idempotency, sync/control, generated draft, creator preview, administrator publication,
-retranslation preservation, restart/persistence and exact Project cleanup. Mock is not evidence of
-real AI translation. A real OpenAI-compatible call additionally requires a separately configured
-LinguaSpindle key and explicit approval for that paid/content-egress call.
-
-Finally compare topology/ports/volumes, verify main readiness remains healthy with translation
-disabled or Lingua unavailable, and scan logs/reports/Web/OpenAPI for Provider keys, raw
-credentials,正文, storage paths and idempotency values.
+The v0.9 plan used Server → LinguaSpindle v0.3.1 with an operator-owned Provider key and no Relay.
+That plan remains here only to explain historical evidence; do not enable it on a current
+deployment. After completing migration 0006, continue with the v0.9-to-v0.10 procedure above,
+LinguaSpindle v0.3.2 and the reader-owned credential/Relay boundary. Historical Mock evidence is
+not evidence of either a v0.10 private chain or real AI translation.
 
 ### 6. Rollback
 
@@ -312,8 +494,9 @@ instead of deleting them immediately; recreate only the two Novel Platform direc
 documented ownership/mode. Do not touch `linguaspindle-private`, the LinguaSpindle container/image,
 SQLite or Artifact volume. Deploy the reviewed SHA into the empty directories, initialize the
 administrator through CLI, register a Passkey, create fresh test credentials, run the complete
-v0.9 gate/matrix/persistence checks, and retain the quarantine until the user separately approves
-its deletion. Reset must never be an Alembic/startup side effect.
+v0.10 gate/capability/BYOK/persistence checks with an offline Mock only, and retain the quarantine
+until the user separately approves its deletion. Reset must never be an Alembic/startup side
+effect and does not authorize a real Provider call.
 
 ## Upgrade from v0.7.0 to v0.8.0
 
@@ -519,17 +702,24 @@ Create regular coordinated backups:
 ./scripts/backup-library.sh
 ```
 
-The v0.9 dump includes site settings, credential history/capabilities, administrator recovery,
+The v0.10 dump includes site settings, credential history/capabilities, administrator recovery,
 Passkeys, WebAuthn challenges, Devices, Sessions, refresh rows, audit events, creator attribution,
-Translation Runs, all content/file revisions, Series, preferences, settings and progress. Raw
-credentials and Provider keys are absent because Novel Platform never stores them. The manifest
-states that LinguaSpindle SQLite/Artifacts/containers/networks are outside backup scope.
+Translation Runs, encrypted Provider credential versions, sanitized Provider usage, all
+content/file revisions, Series, preferences, settings and progress. Raw access credentials and
+plaintext Provider keys are absent. The manifest declares
+`provider_credential_master_key` as an external requirement and excludes that key, the Relay
+service secret and LinguaSpindle SQLite/Artifacts/containers/networks.
+
+Back up the exact matching vault master key separately under restricted secret-management
+controls. Never add its value to the database/library backup, manifest, report or checksum command
+line. Losing it makes restored Provider credential ciphertext unusable. Relay service Bearer
+rotation is independent and does not re-encrypt stored credentials.
 
 Restore-test every backup:
 
 ```bash
 ./scripts/restore-library.sh --test \
-  /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP
+  /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP
 ```
 
 An intentional live restore is destructive and needs separate authorization:
@@ -542,20 +732,26 @@ ALLOW_STAGING_RESTORE=1 \
 It rejects a schema mismatch before destructive work, repeats the isolated restore, makes a new
 safety backup, restores database and volume, recomputes permanent checksums, validates temporary
 references, and starts the app only after all checks pass. It never runs Alembic downgrade.
+After an authorized live restore, inject the matching external vault key and verify a synthetic
+credential status/decryption path against an offline Mock before enabling translation. Restore
+LinguaSpindle SQLite/Artifacts separately from its own coordinated backup when required.
 
 ## Rollback
 
 Application-only rollback is valid only when the target code supports the current schema.
-`20260723_0006` cannot be downgraded. Returning to a pre-v0.9 build requires separate destructive
-approval and the matching coordinated pre-upgrade backup:
+`20260723_0006` cannot be downgraded, and returning from schema `20260726_0007` to a pre-v0.10
+build must use the matching coordinated pre-upgrade backup rather than an automatic downgrade:
 
 1. stop writers;
 2. isolate-test the exact pre-upgrade coordinated backup;
-3. restore its database and library together;
-4. switch to the matching pre-v0.9 code;
-5. verify revision, references, health, and authentication behavior.
+3. restore its database and library together and select the matching separately protected vault
+   key generation;
+4. switch to code compatible with that exact schema;
+5. separately restore LinguaSpindle's complete data root if its upgrade is also being rolled back;
+6. verify revision, references, health, authentication and translation-disabled behavior.
 
-Do not run an automatic downgrade or restore a database and volume from different backups.
+Do not run an automatic downgrade or mix database, library, LinguaSpindle and vault-key
+generations.
 
 ## Health and exposure checks
 
@@ -563,10 +759,12 @@ Do not run an automatic downgrade or restore a database and volume from differen
 ./scripts/healthcheck-staging.sh
 ```
 
-The script verifies PostgreSQL/API/Web health, matching Alembic revision availability, and that
-PostgreSQL/FastAPI publish no host ports. Also verify externally that ports 5432, 8000, 8080 and
-LinguaSpindle 8765 are closed, that the Web binding is `127.0.0.1:8080`, only Server joins
-`linguaspindle-private`, and HTTP redirects to HTTPS. Lingua health must not change main readiness.
+The script verifies PostgreSQL/API/Web and enabled Relay health, matching Alembic revision
+availability, private services with no host ports, and the Relay's exact two-network boundary.
+Also verify externally that ports 5432, 8000, 8080, Relay 8790 and LinguaSpindle 8765 are closed;
+the Web binding is `127.0.0.1:8080`; Server and Relay join `linguaspindle-private`; Relay also
+shares the database network; Web/PostgreSQL/migrate do not join translation; and HTTP redirects to
+HTTPS. Lingua/Relay availability must not change main readiness.
 
 Container logs are diagnostic only. Never enable request-body/header logging or include verbose
 environment output in reports. Run the artifact leak scan after generating any deployment report.

@@ -12,7 +12,7 @@ import { TranslationsPage } from "../src/pages/TranslationsPage";
 const service: TranslationServiceStatus = {
   enabled: true,
   available: true,
-  version: "0.3.1",
+  version: "0.3.2",
   pipeline_key: "novel_txt_v1",
   pipeline_version: "1",
   provider_id: "mock",
@@ -37,7 +37,7 @@ const baseRun: TranslationRun = {
   edition_title: "英文机器译本",
   supersedes_edition_id: null,
   configuration: {
-    service_version: "0.3.1",
+    service_version: "0.3.2",
     pipeline_key: "novel_txt_v1",
     pipeline_version: "1",
     provider_id: "mock",
@@ -74,12 +74,34 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const zeroUsage = {
+  all_time: {
+    request_count: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  },
+  current_month: {
+    request_count: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  },
+};
+
 describe("TranslationsPage", () => {
   it("polls only while the selected active task is visible and stops at terminal state", async () => {
     vi.useFakeTimers();
     let visibility: DocumentVisibilityState = "hidden";
     vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
     vi.spyOn(api, "translationServiceStatus").mockResolvedValue(service);
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue({
+      configured: true,
+      provider: "openai_compatible",
+      version: 2,
+      updated_at: "2026-07-23T01:00:00Z",
+      usage: zeroUsage,
+    });
     vi.spyOn(api, "listTranslationRuns").mockResolvedValue([baseRun]);
     const completed: TranslationRun = {
       ...baseRun,
@@ -140,6 +162,13 @@ describe("TranslationsPage", () => {
     };
     const published = { ...generated, can_preview_draft: false, can_publish: false };
     vi.spyOn(api, "translationServiceStatus").mockResolvedValue(service);
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue({
+      configured: true,
+      provider: "openai_compatible",
+      version: 2,
+      updated_at: "2026-07-23T01:00:00Z",
+      usage: zeroUsage,
+    });
     vi.spyOn(api, "listTranslationRuns").mockResolvedValue([generated]);
     const patch = vi.spyOn(api, "patchEdition").mockResolvedValue({} as never);
     vi.spyOn(api, "getTranslationRun").mockResolvedValue(published);
@@ -158,6 +187,10 @@ describe("TranslationsPage", () => {
       generatedId,
       { status: "ready" },
     ));
+    expect(screen.getByRole("link", { name: "管理我的凭据" })).toHaveAttribute(
+      "href",
+      "/settings/provider-credential",
+    );
     expect(api.getTranslationRun).toHaveBeenCalledWith(generated.id);
     expect(await screen.findAllByText("译本已发布")).toHaveLength(2);
   });

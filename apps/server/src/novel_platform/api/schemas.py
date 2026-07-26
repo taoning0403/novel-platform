@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from novel_platform.domain.auth.capabilities import (
     CredentialCapability,
@@ -401,6 +401,34 @@ class TranslationServiceStatusResponse(BaseModel):
     idempotency_required: bool | None
     error_code: str | None
     error_message: str | None
+
+
+class ProviderCredentialPut(StrictModel):
+    api_key: SecretStr = Field(
+        min_length=1,
+        max_length=8192,
+        json_schema_extra={"format": "password"},
+    )
+
+
+class ProviderUsageTotalsResponse(BaseModel):
+    request_count: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ProviderCredentialUsageResponse(BaseModel):
+    all_time: ProviderUsageTotalsResponse
+    current_month: ProviderUsageTotalsResponse
+
+
+class ProviderCredentialStatusResponse(BaseModel):
+    configured: bool
+    provider: Literal["openai_compatible"] = "openai_compatible"
+    version: int | None
+    updated_at: datetime | None
+    usage: ProviderCredentialUsageResponse
 
 
 class TranslationRunCreate(StrictModel):

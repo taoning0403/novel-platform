@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Protocol
 from urllib.parse import urlsplit
+from uuid import UUID
 
 import httpx
 
@@ -101,6 +102,7 @@ class LinguaSpindleGateway(Protocol):
         self,
         *,
         project_id: str,
+        credential_scope: str,
         idempotency_key: str,
         request_id: str,
     ) -> RemoteJob: ...
@@ -171,6 +173,7 @@ class LinguaSpindleClient:
                 error_message="小说翻译服务未启用。",
             )
         try:
+            await self._require_relay_health(request_id=request_id)
             health, _ = await self._json("GET", "/health", request_id=request_id)
             system, _ = await self._json("GET", "/api/system", request_id=request_id)
             pipelines, _ = await self._json("GET", "/api/pipelines", request_id=request_id)
@@ -259,15 +262,23 @@ class LinguaSpindleClient:
         self,
         *,
         project_id: str,
+        credential_scope: str,
         idempotency_key: str,
         request_id: str,
     ) -> RemoteJob:
         _validate_remote_id(project_id)
+        try:
+            normalized_credential_scope = str(UUID(credential_scope))
+        except ValueError as exc:
+            raise ValueError("credential_scope must be a UUID") from exc
+        if normalized_credential_scope != credential_scope:
+            raise ValueError("credential_scope must use canonical UUID serialization")
         body = {
             "pipeline_key": "novel_txt_v1",
             "profile_id": self.settings.linguaspindle_profile_id,
             "provider_id": self.settings.linguaspindle_provider_id,
             "adapter_id": None,
+            "credential_scope": credential_scope,
         }
         payload, response = await self._json(
             "POST",
@@ -382,9 +393,26 @@ class LinguaSpindleClient:
             allow_empty=True,
         )
 
-    def _client(self) -> httpx.AsyncClient:
+    async def _require_relay_health(self, *, request_id: str) -> None:
+        try:
+            payload, _ = await self._json(
+                "GET",
+                "/health",
+                request_id=request_id,
+                client_base_url=self.settings.provider_relay_internal_url,
+            )
+            if not isinstance(payload, dict) or payload.get("status") != "ok":
+                raise _protocol_failure()
+        except LinguaSpindleFailure as exc:
+            raise LinguaSpindleFailure(
+                "provider_relay_unavailable",
+                "模型服务凭据中继暂不可用。",
+                retryable=True,
+            ) from exc
+
+    def _client(self, base_url: str | None = None) -> httpx.AsyncClient:
         return httpx.AsyncClient(
-            base_url=self.base_url,
+            base_url=base_url or self.base_url,
             timeout=self.timeout,
             follow_redirects=False,
             transport=self.transport,
@@ -399,13 +427,14 @@ class LinguaSpindleClient:
         idempotency_key: str | None = None,
         ambiguous: bool = False,
         allow_empty: bool = False,
+        client_base_url: str | None = None,
         **kwargs: Any,
     ) -> tuple[object, httpx.Response]:
         headers = {"X-Request-ID": request_id, "Accept": "application/json"}
         if idempotency_key is not None:
             headers["Idempotency-Key"] = idempotency_key
         try:
-            async with self._client() as client:
+            async with self._client(client_base_url) as client:
                 async with client.stream(method, path, headers=headers, **kwargs) as streamed:
                     if 300 <= streamed.status_code < 400:
                         raise _protocol_failure()
@@ -545,11 +574,15 @@ def _remote_artifact(payload: object) -> RemoteArtifact:
 
 
 def _supported_version(value: str) -> bool:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", value)
+    match = re.fullmatch(
+        r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+        r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+        value,
+    )
     if match is None:
         return False
     version = tuple(int(part) for part in match.groups())
-    return (0, 3, 1) <= version < (0, 4, 0)
+    return (0, 3, 2) <= version < (0, 4, 0)
 
 
 def _find_mapping(payload: object, key: str, value: str) -> dict[str, object] | None:

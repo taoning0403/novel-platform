@@ -91,6 +91,78 @@ describe("authenticated API client", () => {
     expect(window.localStorage.getItem("refresh_token")).toBeNull();
   });
 
+  it("uses the self credential endpoint without persisting or placing the API key in a URL", async () => {
+    setAccessToken("current-access-token");
+    const providerKey = "unit-test-api-client-credential";
+    const fetchMock = vi.fn(async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = String(input);
+      expect(url).toMatch(/\/api\/v1\/me\/provider-credential$/);
+      expect(url).not.toContain(providerKey);
+      expect(new Headers(init?.headers).get("Authorization")).toBe(
+        "Bearer current-access-token",
+      );
+      if (init?.method === "PUT") {
+        expect(JSON.parse(String(init.body))).toEqual({ api_key: providerKey });
+        return jsonResponse({
+          configured: true,
+          provider: "openai_compatible",
+          version: 1,
+          updated_at: "2026-07-25T09:30:00Z",
+          usage: {
+            all_time: {
+              request_count: 0,
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+            current_month: {
+              request_count: 0,
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+          },
+        });
+      }
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse({
+        configured: false,
+        provider: "openai_compatible",
+        version: null,
+        updated_at: null,
+        usage: {
+          all_time: {
+            request_count: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          },
+          current_month: {
+            request_count: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          },
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await api.getProviderCredential()).toMatchObject({ configured: false });
+    expect(
+      await api.updateProviderCredential({ api_key: providerKey }),
+    ).toMatchObject({ configured: true, version: 1 });
+    await api.deleteProviderCredential();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(Object.values(window.localStorage)).not.toContain(providerKey);
+  });
+
   it("refreshes an expired access token before logging out", async () => {
     setAccessToken("expired-access-token");
     let logoutCount = 0;

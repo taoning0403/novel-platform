@@ -73,6 +73,8 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                     "admin_passkeys",
                     "webauthn_challenges",
                     "edition_translation_runs",
+                    "provider_credential_versions",
+                    "provider_usage_records",
                 )
             }
             site = (
@@ -88,7 +90,7 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                 .mappings()
                 .one()
             )
-        assert revision == "20260723_0006"
+        assert revision == "20260726_0007"
         assert all(value is not None for value in tables.values())
         assert site["site_name"] == "个人数字阅读与藏书整理"
         assert site["icp_registration_number"] is None
@@ -516,7 +518,7 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                 .one()
             )
         await engine.dispose()
-        assert v090["revision"] == "20260723_0006"
+        assert v090["revision"] == "20260726_0007"
         assert v090["book_creator"] == target_admin
         assert v090["edition_creator"] == target_admin
         assert v090["file_creator"] == target_admin
@@ -623,8 +625,137 @@ async def test_v090_migration_blocks_active_import_and_backfills_read_capability
                 .one()
             )
         await engine.dispose()
-        assert migrated["version_num"] == "20260723_0006"
+        assert migrated["version_num"] == "20260726_0007"
         assert migrated["capability"] == "library.read"
         assert migrated["requested_by_user_id"] == admin_id
+    finally:
+        await drop_migration_database(database_name, admin_url)
+
+
+@pytest.mark.integration
+async def test_provider_credential_migration_refuses_and_preserves_unscoped_runs() -> None:
+    base_url = os.getenv("TEST_DATABASE_URL")
+    if not base_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    database_name, admin_url, database_url = await create_migration_database(base_url)
+    owner_id = UUID("00000000-0000-0000-0000-000000000001")
+    stored_file_id = UUID("81000000-0000-0000-0000-000000000001")
+    book_id = UUID("82000000-0000-0000-0000-000000000001")
+    edition_id = UUID("83000000-0000-0000-0000-000000000001")
+    edition_file_id = UUID("84000000-0000-0000-0000-000000000001")
+    run_id = UUID("85000000-0000-0000-0000-000000000001")
+    try:
+        run_alembic(database_url, "upgrade", "20260723_0006")
+        engine = create_async_engine(database_url)
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "UPDATE users SET username='__site_admin__', "
+                    "normalized_username='__site_admin__', display_name='管理员', "
+                    "status='active' WHERE id=:owner"
+                ),
+                {"owner": owner_id},
+            )
+            await connection.execute(
+                text(
+                    "UPDATE site_settings SET library_owner_user_id=:owner, "
+                    "migration_completed_at=now() WHERE id=1"
+                ),
+                {"owner": owner_id},
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO stored_files "
+                    "(id, owner_user_id, created_by_user_id, storage_key, "
+                    "original_filename, media_type, file_format, purpose, size_bytes, sha256) "
+                    "VALUES (:id, :owner, :owner, :storage_key, 'source.txt', "
+                    "'text/plain', 'txt', 'edition_source', 3, :sha256)"
+                ),
+                {
+                    "id": stored_file_id,
+                    "owner": owner_id,
+                    "storage_key": "1" * 64,
+                    "sha256": "2" * 64,
+                },
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO books "
+                    "(id, owner_user_id, created_by_user_id, canonical_title, metadata) "
+                    "VALUES (:id, :owner, :owner, 'Legacy Run Book', '{}'::jsonb)"
+                ),
+                {"id": book_id, "owner": owner_id},
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO book_editions "
+                    "(id, book_id, created_by_user_id, title, language, content_role, "
+                    "creation_method, status, revision, metadata) "
+                    "VALUES (:id, :book, :owner, 'Source', 'zh-CN', 'source', "
+                    "'uploaded', 'ready', 1, '{}'::jsonb)"
+                ),
+                {"id": edition_id, "book": book_id, "owner": owner_id},
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO edition_files "
+                    "(id, edition_id, stored_file_id, revision, is_current, metadata) "
+                    "VALUES (:id, :edition, :stored, 1, true, '{}'::jsonb)"
+                ),
+                {
+                    "id": edition_file_id,
+                    "edition": edition_id,
+                    "stored": stored_file_id,
+                },
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO edition_translation_runs "
+                    "(id, library_owner_user_id, created_by_user_id, book_id, "
+                    "source_edition_id, source_edition_file_id, source_revision, "
+                    "source_sha256, source_format, target_language, edition_title, "
+                    "configuration_fingerprint, configuration_snapshot, client_request_id) "
+                    "VALUES (:id, :owner, :owner, :book, :edition, :edition_file, 1, "
+                    ":sha256, 'txt', 'en', 'Legacy Translation', :fingerprint, "
+                    "'{}'::jsonb, :client_request)"
+                ),
+                {
+                    "id": run_id,
+                    "owner": owner_id,
+                    "book": book_id,
+                    "edition": edition_id,
+                    "edition_file": edition_file_id,
+                    "sha256": "2" * 64,
+                    "fingerprint": "3" * 64,
+                    "client_request": UUID("86000000-0000-0000-0000-000000000001"),
+                },
+            )
+        await engine.dispose()
+
+        with pytest.raises(subprocess.CalledProcessError):
+            run_alembic(database_url, "upgrade", "head")
+
+        engine = create_async_engine(database_url)
+        async with engine.connect() as connection:
+            state = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT (SELECT version_num FROM alembic_version) AS revision, "
+                            "(SELECT count(*) FROM edition_translation_runs WHERE id=:run) "
+                            "AS run_count, "
+                            "to_regclass('public.provider_credential_versions') "
+                            "AS credential_table"
+                        ),
+                        {"run": run_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        await engine.dispose()
+        assert state["revision"] == "20260723_0006"
+        assert state["run_count"] == 1
+        assert state["credential_table"] is None
     finally:
         await drop_migration_database(database_name, admin_url)

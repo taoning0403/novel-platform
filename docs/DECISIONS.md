@@ -8,7 +8,7 @@ current consolidated design.
 | --- | --- | --- |
 | [0001 — Monorepo and modular monolith](adr/0001-monorepo-and-modular-monolith.md) | Accepted | Keep server, web, shared packages, infrastructure, scripts, and records together; retain explicit API/application/domain/infrastructure boundaries inside one API deployment. |
 | [0002 — Edition versioning](adr/0002-edition-versioning.md) | Accepted | Treat every source or translation as an independent Edition; keep source links optional and mutable, and represent semantic replacement with a new Edition plus `supersedes_edition_id`. |
-| [0003 — Client-supplied LLM credentials](adr/0003-client-supplied-llm-credentials.md) | Superseded by 0018 for this integration | Keep the historical v0.1 omission; v0.9 uses a private standalone service whose runtime Provider secret never enters Novel Platform or the browser. |
+| [0003 — Client-supplied LLM credentials](adr/0003-client-supplied-llm-credentials.md) | Superseded by 0019 | Keep the historical v0.1 omission; 0019 now supplies the explicit encrypted lifetime, redaction and private-relay rules required before managed BYOK. |
 | [0004 — Reader and editing model](adr/0004-reader-and-editing-model.md) | Accepted | Make normal reading Edition-local and source-independent; attach progress and any future annotations to an Edition, and create traceable Editions for material edits. |
 | [0005 — Local accounts and session authentication](adr/0005-local-accounts-and-session-authentication.md) | Superseded in part by 0012 | Retain short-lived JWTs, database Session checks, rotating Refresh Tokens, and replay revocation; username/password and Web setup are historical only. |
 | [0006 — Web token storage](adr/0006-web-token-storage.md) | Accepted | Keep Access Tokens in memory, use an HttpOnly Refresh Cookie, and reserve OS secure storage for future native clients. |
@@ -23,11 +23,12 @@ current consolidated design.
 | [0015 — Quiet Trace UI/UX system](adr/0015-quiet-trace-ui-ux-system.md) | Accepted | Adopt 漫读 Quiet Trace branding, tokens, grouped responsive navigation, task-oriented Library and administration, and restrained Reader chrome without changing v0.5/v0.6 behavior contracts. |
 | [0016 — Trusted-edge client IP, entry rate limiting, bounded challenge cleanup, and device-bound refresh](adr/0016-trusted-edge-rate-limit-and-device-bound-refresh.md) | Accepted | Restore the real client IP from the single trusted host edge, rate-limit the two public auth entries at Nginx, delete expired challenges in bounded batches, and require the device secret plus an allowlisted Origin for refresh. |
 | [0017 — Credential capabilities and contributor-attributed library](adr/0017-credential-capabilities-and-contributor-library.md) | Accepted | Keep one library owner, attach immutable read/upload/translation capabilities to each invited credential, attribute durable content to its actual User, enforce creator-aware mutation, and remove fileless public creation. |
-| [0018 — Private LinguaSpindle translation orchestration](adr/0018-private-linguaspindle-translation-orchestration.md) | Accepted | Call exact-version LinguaSpindle through Server-only private HTTP, persist recoverable actor-scoped Runs, and atomically ingest verified successful TXT Artifacts as creator-owned draft generated Editions. |
+| [0018 — Private LinguaSpindle translation orchestration](adr/0018-private-linguaspindle-translation-orchestration.md) | Superseded in part by 0019 | Retain private HTTP orchestration, recoverable actor-scoped Runs and verified generated-Edition ingestion; 0019 replaces the operator-owned Provider-secret boundary. |
+| [0019 — Reader-owned Provider credentials and private relay](adr/0019-reader-owned-provider-credentials-and-private-relay.md) | Accepted | Encrypt versioned reader-owned Provider credentials in Novel Platform, bind every Run to one version, and use a private fixed-policy Relay plus an identity-free LinguaSpindle execution scope with no shared-key fallback. |
 
 ## Recording a decision
 
-1. Add the next numbered file under `docs/adr/` (currently `0018`).
+1. Add the next numbered file under `docs/adr/` (currently `0019`).
 2. Record date, status, context, decision, and consequences.
 3. Add a concise row to this index and update consolidated architecture or data-model docs.
 4. Supersede an accepted ADR with a new ADR when reversing it; do not rewrite history to

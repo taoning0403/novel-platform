@@ -21,6 +21,8 @@ import type {
   Passkey,
   PasskeyRegistrationResult,
   ProfilePayload,
+  ProviderCredentialStatus,
+  ProviderCredentialUpdate,
   PublicSiteSettings,
   ReaderCreatePayload,
   ReaderIdentity,
@@ -361,6 +363,15 @@ export const api = {
     request<void>(`/api/v1/devices/${deviceId}/revoke`, { method: "POST" }),
   updateProfile: (payload: ProfilePayload) =>
     request<User>("/api/v1/users/me", { method: "PATCH", body: JSON.stringify(payload) }),
+  getProviderCredential: () =>
+    request<ProviderCredentialStatus>("/api/v1/me/provider-credential"),
+  updateProviderCredential: (payload: ProviderCredentialUpdate) =>
+    request<ProviderCredentialStatus>("/api/v1/me/provider-credential", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteProviderCredential: () =>
+    request<void>("/api/v1/me/provider-credential", { method: "DELETE" }),
   listBooks: (filters: BookFilters = {}, limit = 100, offset = 0) => {
     const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (filters.query) search.set("query", filters.query);

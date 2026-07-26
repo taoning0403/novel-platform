@@ -208,6 +208,100 @@ class ReaderCredentialCapabilityModel(Base):
         return CredentialCapability(self.capability)
 
 
+class ProviderCredentialVersionModel(Base):
+    __tablename__ = "provider_credential_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "provider = 'openai_compatible'",
+            name="provider_openai_compatible",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
+        CheckConstraint("octet_length(ciphertext) >= 17", name="ciphertext_has_tag"),
+        CheckConstraint(
+            "algorithm = 'aes-256-gcm-v1'",
+            name="algorithm_aes_256_gcm_v1",
+        ),
+        CheckConstraint(
+            "retired_at IS NULL OR retired_at >= created_at",
+            name="retired_after_creation",
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at",
+            name="revoked_after_creation",
+        ),
+        UniqueConstraint("user_id", "provider", "version", name="user_provider_version"),
+        Index(
+            "uq_provider_credential_versions_current",
+            "user_id",
+            "provider",
+            unique=True,
+            postgresql_where=text("retired_at IS NULL AND revoked_at IS NULL"),
+        ),
+        Index(
+            "ix_provider_credential_versions_user_created",
+            "user_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True, default=uuid4, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="openai_compatible", server_default="openai_compatible"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    algorithm: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="aes-256-gcm-v1", server_default="aes-256-gcm-v1"
+    )
+    nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProviderUsageRecordModel(Base):
+    __tablename__ = "provider_usage_records"
+    __table_args__ = (
+        CheckConstraint("prompt_tokens >= 0", name="prompt_tokens_nonnegative"),
+        CheckConstraint("completion_tokens >= 0", name="completion_tokens_nonnegative"),
+        CheckConstraint("total_tokens >= 0", name="total_tokens_nonnegative"),
+        CheckConstraint(
+            "total_tokens >= prompt_tokens AND total_tokens >= completion_tokens",
+            name="total_tokens_consistent",
+        ),
+        CheckConstraint("length(btrim(model)) > 0", name="model_not_blank"),
+        Index(
+            "ix_provider_usage_records_credential_created",
+            "provider_credential_version_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True, default=uuid4, server_default=text("gen_random_uuid()")
+    )
+    provider_credential_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("provider_credential_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    remote_job_id: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class AdminRecoveryCredentialModel(Base):
     __tablename__ = "admin_recovery_credentials"
     __table_args__ = (
@@ -715,6 +809,16 @@ class EditionTranslationRunModel(Base):
         Index("ix_translation_runs_actor_created", "created_by_user_id", "created_at"),
         Index("ix_translation_runs_book_created", "book_id", "created_at"),
         Index("ix_translation_runs_source_edition", "source_edition_id"),
+        Index(
+            "ix_edition_translation_runs_provider_credential_version_id",
+            "provider_credential_version_id",
+        ),
+        Index(
+            "uq_translation_runs_credential_bootstrap",
+            "provider_credential_version_id",
+            unique=True,
+            postgresql_where=text("remote_job_id IS NULL AND status = 'preparing'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -725,6 +829,10 @@ class EditionTranslationRunModel(Base):
     )
     created_by_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    provider_credential_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("provider_credential_versions.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     book_id: Mapped[UUID] = mapped_column(
         ForeignKey("books.id", ondelete="RESTRICT"), nullable=False

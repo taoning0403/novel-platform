@@ -98,7 +98,7 @@ PY
 }
 
 if [[ "$mode" == "--test" ]]; then
-  report_file="${3:-${STAGING_REPORT_DIR:-$STAGING_ROOT/reports}/restore-v090-test-report.md}"
+  report_file="${3:-${STAGING_REPORT_DIR:-$STAGING_ROOT/reports}/restore-v0100-test-report.md}"
   temporary_database="novel_restore_$(date -u +%Y%m%d%H%M%S)_$RANDOM"
   temporary_volume="novel_restore_${RANDOM}_$(date -u +%s)"
   expected_files="$(mktemp)"
@@ -219,36 +219,87 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
   audit_events="$(compose exec -T postgres sh -c \
     'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc "SELECT count(*) FROM auth_audit_events"' \
     sh "$temporary_database")"
-  credential_capabilities="$(compose exec -T postgres sh -c \
-    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc "SELECT count(*) FROM reader_credential_capabilities"' \
-    sh "$temporary_database")"
-  translation_runs="$(compose exec -T postgres sh -c \
-    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc "SELECT count(*) FROM edition_translation_runs"' \
-    sh "$temporary_database")"
-  missing_attribution="$(compose exec -T postgres sh -c \
-    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
-      "SELECT (SELECT count(*) FROM books WHERE created_by_user_id IS NULL) +
-              (SELECT count(*) FROM book_editions WHERE created_by_user_id IS NULL) +
-              (SELECT count(*) FROM stored_files WHERE created_by_user_id IS NULL) +
-              (SELECT count(*) FROM library_imports WHERE requested_by_user_id IS NULL)"' \
-    sh "$temporary_database")"
-  credentials_without_read="$(compose exec -T postgres sh -c \
-    'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
-      "SELECT count(*) FROM reader_access_credentials rac
-       WHERE NOT EXISTS (
-         SELECT 1 FROM reader_credential_capabilities rcc
-         WHERE rcc.credential_id = rac.id AND rcc.capability = '\''library.read'\''
-       )"' \
-    sh "$temporary_database")"
-  (( missing_attribution == 0 )) || die "restored v0.9 content contains missing contributor attribution"
-  (( credentials_without_read == 0 )) || die "restored credential is missing library.read"
+  credential_capabilities="N/A (schema predates v0.9)"
+  translation_runs="N/A (schema predates v0.9)"
+  missing_attribution="N/A (schema predates v0.9)"
+  credentials_without_read="N/A (schema predates v0.9)"
+  provider_credential_versions="N/A (schema predates v0.10)"
+  provider_usage_records="N/A (schema predates v0.10)"
+  unbound_translation_runs="N/A (schema predates v0.10)"
+  credential_owner_mismatches="N/A (schema predates v0.10)"
+  revision_contract="v0.5 identity/library invariants"
+  case "$manifest_revision" in
+    20260715_0005)
+      ;;
+    20260723_0006|20260726_0007)
+      revision_contract="v0.9 capability, attribution and Translation Run invariants"
+      credential_capabilities="$(compose exec -T postgres sh -c \
+        'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+          "SELECT count(*) FROM reader_credential_capabilities"' \
+        sh "$temporary_database")"
+      translation_runs="$(compose exec -T postgres sh -c \
+        'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+          "SELECT count(*) FROM edition_translation_runs"' \
+        sh "$temporary_database")"
+      missing_attribution="$(compose exec -T postgres sh -c \
+        'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+          "SELECT (SELECT count(*) FROM books WHERE created_by_user_id IS NULL) +
+                  (SELECT count(*) FROM book_editions WHERE created_by_user_id IS NULL) +
+                  (SELECT count(*) FROM stored_files WHERE created_by_user_id IS NULL) +
+                  (SELECT count(*) FROM library_imports WHERE requested_by_user_id IS NULL)"' \
+        sh "$temporary_database")"
+      credentials_without_read="$(compose exec -T postgres sh -c \
+        'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+          "SELECT count(*) FROM reader_access_credentials rac
+           WHERE NOT EXISTS (
+             SELECT 1 FROM reader_credential_capabilities rcc
+             WHERE rcc.credential_id = rac.id AND rcc.capability = '\''library.read'\''
+           )"' \
+        sh "$temporary_database")"
+      (( missing_attribution == 0 )) \
+        || die "restored v0.9+ content contains missing contributor attribution"
+      (( credentials_without_read == 0 )) \
+        || die "restored v0.9+ credential is missing library.read"
+      if [[ "$manifest_revision" == "20260726_0007" ]]; then
+        revision_contract="v0.10 encrypted credential, usage and scoped Run invariants"
+        provider_credential_versions="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*) FROM provider_credential_versions"' \
+          sh "$temporary_database")"
+        provider_usage_records="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*) FROM provider_usage_records"' \
+          sh "$temporary_database")"
+        unbound_translation_runs="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*) FROM edition_translation_runs
+             WHERE provider_credential_version_id IS NULL"' \
+          sh "$temporary_database")"
+        credential_owner_mismatches="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM edition_translation_runs translation_run
+             JOIN provider_credential_versions credential
+               ON credential.id = translation_run.provider_credential_version_id
+             WHERE credential.user_id <> translation_run.created_by_user_id"' \
+          sh "$temporary_database")"
+        (( unbound_translation_runs == 0 )) \
+          || die "restored v0.10 Translation Run is missing its credential binding"
+        (( credential_owner_mismatches == 0 )) \
+          || die "restored v0.10 Translation Run is bound to another actor's credential"
+      fi
+      ;;
+    *)
+      die "isolated restore verification does not support manifest revision $manifest_revision"
+      ;;
+  esac
   stored_files="$(wc -l <"$expected_files" | tr -d ' ')"
   temporary_files="$(wc -l <"$expected_temporary_files" | tr -d ' ')"
   cleanup_test_verified
   trap - EXIT
   mkdir -p "$(dirname "$report_file")"
   cat >"$report_file" <<EOF
-# Novel Platform v0.9.0 isolated restore test
+# Novel Platform v0.10.0 isolated restore test
 
 - Status: **PASS**
 - Completed: $(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -259,6 +310,7 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
 - Every database-referenced stored file checksum verified: yes
 - Every database-referenced temporary file restored: yes
 - Alembic revision: $revision
+- Revision-aware contract: $revision_contract
 - Users present: $users
 - Books present: $books
 - Series present: $series
@@ -275,6 +327,11 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
 - Translation runs present: $translation_runs
 - Missing contributor attribution rows: $missing_attribution
 - Credentials missing library.read: $credentials_without_read
+- Provider credential versions present: $provider_credential_versions
+- Provider usage records present: $provider_usage_records
+- Translation runs missing credential binding: $unbound_translation_runs
+- Translation run/credential owner mismatches: $credential_owner_mismatches
+- Vault master-key usability: not tested; the matching key is an external restore prerequisite
 - Stored files verified: $stored_files
 - Referenced temporary files verified: $temporary_files
 
@@ -366,6 +423,9 @@ verify_temporary_references "$live_expected_temporary_files" "$live_actual_tempo
 cleanup_live_verification
 trap - EXIT
 
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  compose up --detach --no-deps provider-relay
+fi
 compose up --detach --no-deps server web
 "$SCRIPT_DIRECTORY/healthcheck-staging.sh"
 printf 'live database and library restore PASS\n'

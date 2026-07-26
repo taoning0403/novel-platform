@@ -18,6 +18,7 @@ const DevicesPage = lazy(() => import("./pages/DevicesPage").then((module) => ({
 const LibraryPage = lazy(() => import("./pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((module) => ({ default: module.LoginPage })));
 const ProfilePage = lazy(() => import("./pages/ProfilePage").then((module) => ({ default: module.ProfilePage })));
+const ProviderCredentialPage = lazy(() => import("./pages/ProviderCredentialPage").then((module) => ({ default: module.ProviderCredentialPage })));
 const ReaderPage = lazy(() => import("./pages/ReaderPage").then((module) => ({ default: module.ReaderPage })));
 const SeriesDetailPage = lazy(() => import("./pages/SeriesDetailPage").then((module) => ({ default: module.SeriesDetailPage })));
 const SeriesPage = lazy(() => import("./pages/SeriesPage").then((module) => ({ default: module.SeriesPage })));
@@ -74,6 +75,14 @@ export function App() {
             element={<Protected capability="translation.use"><TranslationsPage /></Protected>}
           />
           <Route path="/settings/profile" element={<Protected><ProfilePage /></Protected>} />
+          <Route
+            path="/settings/provider-credential"
+            element={(
+              <Protected capability="translation.use">
+                <ProviderCredentialPage />
+              </Protected>
+            )}
+          />
           <Route path="/settings/devices" element={<Protected><DevicesPage /></Protected>} />
           <Route path="/settings/sessions" element={<Protected><SessionsPage /></Protected>} />
           <Route path="/admin" element={<Protected admin><AdminDashboardPage /></Protected>} />

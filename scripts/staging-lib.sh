@@ -46,13 +46,53 @@ validate_secret() {
   esac
 }
 
+validate_base64_32_secret() {
+  local name="$1"
+  require_environment_value "$name"
+  command -v python3 >/dev/null 2>&1 || die "required command is unavailable: python3"
+  python3 - "$name" <<'PY' \
+    || die "$name must be strict base64 decoding to exactly 32 bytes" \
+      "and cannot use the known development key in staging/production"
+import base64
+import binascii
+import os
+import sys
+
+try:
+    value = base64.b64decode(os.environ[sys.argv[1]], validate=True)
+except (binascii.Error, KeyError, ValueError):
+    raise SystemExit(1)
+protected = os.environ.get("ENVIRONMENT", "").lower() in {"staging", "production"}
+raise SystemExit(0 if len(value) == 32 and not (protected and value == bytes(32)) else 1)
+PY
+}
+
+validate_model_allowlist() {
+  require_environment_value PROVIDER_RELAY_ALLOWED_MODELS
+  command -v python3 >/dev/null 2>&1 || die "required command is unavailable: python3"
+  python3 <<'PY' || die "PROVIDER_RELAY_ALLOWED_MODELS must be a non-empty JSON string list"
+import json
+import os
+
+value = json.loads(os.environ["PROVIDER_RELAY_ALLOWED_MODELS"])
+if (
+    not isinstance(value, list)
+    or not value
+    or len(value) != len(set(value))
+    or any(not isinstance(item, str) or not item.strip() or len(item) > 120 for item in value)
+):
+    raise SystemExit(1)
+PY
+}
+
 validate_staging_environment() {
   local name
   for name in PUBLIC_BASE_URL POSTGRES_DB POSTGRES_USER CORS_ORIGINS TRUSTED_HOSTS \
     AUTH_COOKIE_SECURE AUTH_CREDENTIAL_HASH_SECRET WEBAUTHN_RP_ID WEBAUTHN_ORIGINS \
     OPENAPI_ENABLED LINGUASPINDLE_ENABLED LINGUASPINDLE_BASE_URL \
     LINGUASPINDLE_VERSION_RANGE LINGUASPINDLE_PROVIDER_ID \
-    LINGUASPINDLE_MAX_DOWNLOAD_BYTES MAX_UPLOAD_BYTES; do
+    LINGUASPINDLE_MAX_DOWNLOAD_BYTES MAX_UPLOAD_BYTES \
+    PROVIDER_CREDENTIAL_MASTER_KEY PROVIDER_RELAY_INTERNAL_URL; do
     require_environment_value "$name"
   done
   if [[ "${NOVEL_ACCEPTANCE_LOCAL:-0}" == "1" ]]; then
@@ -73,6 +113,7 @@ validate_staging_environment() {
   validate_secret AUTH_JWT_SECRET
   validate_secret AUTH_HASH_SECRET
   validate_secret AUTH_CREDENTIAL_HASH_SECRET
+  validate_base64_32_secret PROVIDER_CREDENTIAL_MASTER_KEY
   [[ "$AUTH_JWT_SECRET" != "$AUTH_HASH_SECRET" \
     && "$AUTH_JWT_SECRET" != "$AUTH_CREDENTIAL_HASH_SECRET" \
     && "$AUTH_HASH_SECRET" != "$AUTH_CREDENTIAL_HASH_SECRET" ]] \
@@ -88,8 +129,8 @@ validate_staging_environment() {
   [[ "$OPENAPI_ENABLED" == "false" ]] || die "staging must disable anonymous OpenAPI UI"
   [[ "$LINGUASPINDLE_ENABLED" == "true" || "$LINGUASPINDLE_ENABLED" == "false" ]] \
     || die "LINGUASPINDLE_ENABLED must be true or false"
-  [[ "$LINGUASPINDLE_VERSION_RANGE" == ">=0.3.1,<0.4.0" ]] \
-    || die "LINGUASPINDLE_VERSION_RANGE must be >=0.3.1,<0.4.0"
+  [[ "$LINGUASPINDLE_VERSION_RANGE" == ">=0.3.2,<0.4.0" ]] \
+    || die "LINGUASPINDLE_VERSION_RANGE must be >=0.3.2,<0.4.0"
   [[ "$LINGUASPINDLE_BASE_URL" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]+)?$ ]] \
     || die "LINGUASPINDLE_BASE_URL must be one fixed HTTP(S) origin"
   [[ "$LINGUASPINDLE_MAX_DOWNLOAD_BYTES" =~ ^[0-9]+$ ]] \
@@ -99,11 +140,30 @@ validate_staging_environment() {
     || die "LINGUASPINDLE_MAX_DOWNLOAD_BYTES must be positive"
   (( LINGUASPINDLE_MAX_DOWNLOAD_BYTES <= MAX_UPLOAD_BYTES )) \
     || die "LINGUASPINDLE_MAX_DOWNLOAD_BYTES cannot exceed MAX_UPLOAD_BYTES"
+  [[ "$PROVIDER_RELAY_INTERNAL_URL" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]+)?$ ]] \
+    || die "PROVIDER_RELAY_INTERNAL_URL must be one fixed HTTP(S) origin"
   if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+    for name in PROVIDER_RELAY_SERVICE_SECRET PROVIDER_RELAY_UPSTREAM_BASE_URL \
+      PROVIDER_RELAY_ALLOWED_MODELS; do
+      require_environment_value "$name"
+    done
+    validate_secret PROVIDER_RELAY_SERVICE_SECRET
+    validate_model_allowlist
+    [[ "$PROVIDER_RELAY_SERVICE_SECRET" != "$AUTH_JWT_SECRET" \
+      && "$PROVIDER_RELAY_SERVICE_SECRET" != "$AUTH_HASH_SECRET" \
+      && "$PROVIDER_RELAY_SERVICE_SECRET" != "$AUTH_CREDENTIAL_HASH_SECRET" \
+      && "$PROVIDER_RELAY_SERVICE_SECRET" != "$PROVIDER_CREDENTIAL_MASTER_KEY" ]] \
+      || die "Provider vault/relay and authentication secrets must be independent"
+    [[ "$PROVIDER_RELAY_INTERNAL_URL" == "http://novel-provider-relay:8790" ]] \
+      || die "enabled Provider Relay must use the fixed private origin"
+    [[ "$LINGUASPINDLE_PROVIDER_ID" == "openai-compatible" ]] \
+      || die "scoped translation requires LINGUASPINDLE_PROVIDER_ID=openai-compatible"
     [[ "$LINGUASPINDLE_BASE_URL" != "http://localhost:"* \
       && "$LINGUASPINDLE_BASE_URL" != "http://127.0.0.1:"* \
       && "$LINGUASPINDLE_BASE_URL" != "http://[::1]:"* ]] \
       || die "enabled LinguaSpindle cannot use a loopback origin"
+    [[ "$PROVIDER_RELAY_UPSTREAM_BASE_URL" =~ ^https://[A-Za-z0-9._-]+(:[0-9]+)?(/[^?#]*)?$ ]] \
+      || die "staging Provider relay upstream must be one fixed HTTPS base URL"
   fi
 }
 
@@ -115,6 +175,14 @@ compose() {
     compose_files+=(-f "$STAGING_TRANSLATION_COMPOSE_FILE")
   fi
   docker compose --env-file "$STAGING_ENV_FILE" "${compose_files[@]}" "$@"
+}
+
+staging_provider_relay_container_ids() {
+  docker ps \
+    --all \
+    --quiet \
+    --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-novel-platform-staging}" \
+    --filter "label=com.docker.compose.service=provider-relay"
 }
 
 wait_for_postgres() {

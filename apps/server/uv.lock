@@ -682,11 +682,12 @@ wheels = [
 
 [[package]]
 name = "novel-platform-server"
-version = "0.9.0"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "charset-normalizer" },
+    { name = "cryptography" },
     { name = "defusedxml" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -712,6 +713,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14,<2" },
     { name = "charset-normalizer", specifier = ">=3.4,<4" },
+    { name = "cryptography", specifier = ">=44,<50" },
     { name = "defusedxml", specifier = ">=0.7,<1" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },

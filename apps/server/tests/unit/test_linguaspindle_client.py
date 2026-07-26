@@ -26,7 +26,7 @@ def client_with(
     return LinguaSpindleClient(settings, transport=httpx.MockTransport(handler))
 
 
-def status_handler(request: httpx.Request, *, version: str = "0.3.1") -> httpx.Response:
+def status_handler(request: httpx.Request, *, version: str = "0.3.2") -> httpx.Response:
     payloads = {
         "/health": {"status": "ok", "version": version, "database": "ok"},
         "/api/system": {"require_idempotency_key": True},
@@ -65,7 +65,7 @@ async def test_status_requires_compatible_version_pipeline_provider_and_idempote
     client = client_with(status_handler)
     status = await client.service_status(request_id="np-status-test")
     assert status.available is True
-    assert status.version == "0.3.1"
+    assert status.version == "0.3.2"
     assert status.pipeline_key == "novel_txt_v1"
     assert status.provider_id == "mock"
     assert status.provider_offline is True
@@ -74,6 +74,17 @@ async def test_status_requires_compatible_version_pipeline_provider_and_idempote
     unavailable = await incompatible.service_status(request_id="np-status-test")
     assert unavailable.available is False
     assert unavailable.error_code == "translation_service_incompatible"
+
+    prerelease = client_with(lambda request: status_handler(request, version="0.3.2-rc1"))
+    prerelease_status = await prerelease.service_status(request_id="np-status-test")
+    assert prerelease_status.available is False
+    assert prerelease_status.error_code == "translation_service_incompatible"
+
+    build_metadata = client_with(
+        lambda request: status_handler(request, version="0.3.2+reviewed.1")
+    )
+    build_metadata_status = await build_metadata.service_status(request_id="np-status-test")
+    assert build_metadata_status.available is True
 
 
 @pytest.mark.asyncio

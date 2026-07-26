@@ -5,6 +5,7 @@ import { api } from "../src/api/client";
 import type {
   BookDetail,
   Edition,
+  ProviderCredentialStatus,
   TranslationRun,
   TranslationServiceStatus,
 } from "../src/api/types";
@@ -69,7 +70,7 @@ const book = {
 const service: TranslationServiceStatus = {
   enabled: true,
   available: true,
-  version: "0.3.1",
+  version: "0.3.2",
   pipeline_key: "novel_txt_v1",
   pipeline_version: "1",
   provider_id: "mock",
@@ -85,6 +86,29 @@ const createdRun = {
   id: "00000000-0000-4000-8000-000000000201",
 } as TranslationRun;
 
+const zeroUsage: ProviderCredentialStatus["usage"] = {
+  all_time: {
+    request_count: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  },
+  current_month: {
+    request_count: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  },
+};
+
+const configuredCredential: ProviderCredentialStatus = {
+  configured: true,
+  provider: "openai_compatible",
+  version: 3,
+  updated_at: "2026-07-23T01:10:00Z",
+  usage: zeroUsage,
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -97,6 +121,7 @@ describe("TranslationLaunchModal", () => {
       getRandomValues: window.crypto.getRandomValues.bind(window.crypto),
     });
     vi.spyOn(api, "translationServiceStatus").mockResolvedValue(service);
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
     const create = vi.spyOn(api, "createTranslationRun").mockResolvedValue(createdRun);
     const onCreated = vi.fn();
 
@@ -111,7 +136,8 @@ describe("TranslationLaunchModal", () => {
     );
 
     expect(await screen.findByText(/Mock Provider · mock-v1/)).toBeInTheDocument();
-    expect(screen.getByText(/正文会发送到管理员配置的私有翻译服务/)).toBeInTheDocument();
+    expect(screen.getByText(/个人凭据 v3/)).toBeInTheDocument();
+    expect(screen.getByText(/使用你加密保存的 API Key/)).toBeInTheDocument();
     expect(screen.getByText("f2 · TXT")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("目标语言"), { target: { value: "ja" } });
     fireEvent.change(screen.getByLabelText("输出 Edition 名称"), {
@@ -134,5 +160,38 @@ describe("TranslationLaunchModal", () => {
     expect(payload).not.toHaveProperty("base_url");
     expect(payload).not.toHaveProperty("download_url");
     expect(onCreated).toHaveBeenCalledWith(createdRun);
+  });
+
+  it("blocks launch and routes to credential settings when no personal key is configured", async () => {
+    vi.spyOn(api, "translationServiceStatus").mockResolvedValue(service);
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue({
+      configured: false,
+      provider: "openai_compatible",
+      version: null,
+      updated_at: null,
+      usage: zeroUsage,
+    });
+    const create = vi.spyOn(api, "createTranslationRun");
+
+    render(
+      <TranslationLaunchModal
+        book={book}
+        edition={source}
+        open
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("先配置你的 Provider 凭据")).toBeInTheDocument();
+    expect(screen.getByText(/不会改用管理员 Key/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "去配置" })).toHaveAttribute(
+      "href",
+      "/settings/provider-credential",
+    );
+    const submit = screen.getByRole("button", { name: "创建翻译任务" });
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(create).not.toHaveBeenCalled();
   });
 });

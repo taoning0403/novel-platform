@@ -16,6 +16,40 @@
   background: var(--surface);
 }
 
+.credentialBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: -10px 0 24px;
+  padding: 15px 18px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--success);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.credentialBar[data-configured="false"] {
+  border-left-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.credentialBar strong,
+.credentialBar small {
+  display: block;
+}
+
+.credentialBar small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.credentialBar > :global(.ant-btn) {
+  min-height: 44px;
+  flex: 0 0 auto;
+}
+
 .serviceBar > div {
   display: flex;
   align-items: center;
@@ -268,6 +302,7 @@
   }
 
   .serviceBar,
+  .credentialBar,
   .detailHeading {
     align-items: flex-start;
     flex-direction: column;
@@ -283,7 +318,8 @@
   }
 
   .actions button,
-  .previewLink {
+  .previewLink,
+  .credentialBar > :global(.ant-btn) {
     width: 100%;
     min-height: 46px;
   }

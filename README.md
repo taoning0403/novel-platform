@@ -2,7 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-漫读 v0.9.0 (`novel-platform`) is a private, self-hosted digital reading and
+漫读 v0.10.0 (`novel-platform`) is a private, self-hosted digital reading and
 collection-management site designed for a personal, non-commercial deployment. One administrator
 owns a shared EPUB/TXT collection. A small number of invited people can read published Editions;
 selected credentials may also upload file-backed contributions or request TXT novel translation.
@@ -12,16 +12,17 @@ The current Web interface is Chinese-localized.
 It intentionally has no public registration/catalogue, public raw download, username/password
 login, comments, social features, payments, advertising, or public publishing.
 
-The v0.9.0 milestone adds immutable `library.read`, `library.upload`, and `translation.use`
-credential capabilities, durable creator attribution and creator-aware deletion rules. Novel
-translation is orchestrated by the Server through a separately deployed LinguaSpindle v0.3.1
-service on a private network; Provider secrets never enter Novel Platform or the browser. Verified
-successful TXT artifacts become creator-owned draft generated Editions, and only the administrator
-can publish them.
+v0.10.0 retains the v0.9 capability, contributor and generated-Edition model, and adds reader-owned
+OpenAI-compatible Provider credentials. Each translating actor stores a write-only key as an
+immutable AES-256-GCM-encrypted version, pays through that exact version for the lifetime of a Run,
+and can inspect sanitized request/Token totals. LinguaSpindle v0.3.2 receives only an opaque
+credential scope and calls a fixed-policy private Relay; neither LinguaSpindle nor the browser
+receives the upstream key, and there is no administrator/shared-key fallback.
 
-The current repository version is v0.9.0 and remains pre-1.0 software. Review the
-[current project state](docs/PROJECT_STATE.md) and [deployment runbook](docs/staging-deployment.md)
-before exposing an installation to the Internet.
+The source tree currently targets the v0.10.0 release candidate and remains pre-1.0 software.
+Final release-gate evidence and external deployment verification are still candidate work. Review
+the [current project state](docs/PROJECT_STATE.md) and
+[deployment runbook](docs/staging-deployment.md) before exposing an installation to the Internet.
 
 ## Highlights
 
@@ -35,6 +36,9 @@ before exposing an installation to the Internet.
   durable User while retaining one administrator-owned library and creator-aware mutation rules.
 - Translate readable TXT Editions through Server-only private LinguaSpindle HTTP with persisted,
   idempotent Runs, bounded artifact ingestion, creator draft preview, and administrator publish.
+- Configure, rotate, or remove only your own write-only Provider key; bind every Run to one
+  encrypted credential version and display sanitized monthly/all-time token usage without
+  returning key-derived material.
 - Bind Sessions to server-authorized Devices, rotate refresh tokens, revalidate authorization on
   every protected request, and retain structured security audit events without raw secrets.
 - Keep progress, Reader settings, preferred Editions, Devices, and Sessions private to each
@@ -53,9 +57,15 @@ Browser
       -> FastAPI modular monolith
           -> PostgreSQL
           -> private local EPUB/TXT library volume
-          -> optional private HTTP -> LinguaSpindle v0.3.1
-                                      -> its own SQLite/artifact volume/Provider secret
+          -> optional private HTTP -> LinguaSpindle >=0.3.2
+                                      -> private Provider Relay
+                                          -> encrypted credential lookup in PostgreSQL
+                                          -> fixed OpenAI-compatible upstream
 ```
+
+LinguaSpindle retains its own SQLite and Artifact volume and knows no Novel Platform User or
+upstream key. The Relay joins only the database and translation networks and publishes no host
+port.
 
 The production boundary contains no public catalogue, public object store, external identity
 provider, analytics service, worker, queue, or Redis requirement. See [architecture](docs/architecture.md),
@@ -96,6 +106,17 @@ times and assign one result to each authentication-secret placeholder in `.env`:
 ```bash
 openssl rand -hex 32
 ```
+
+Generate the independent Provider-vault master key in strict Base64 and assign it to
+`PROVIDER_CREDENTIAL_MASTER_KEY`:
+
+```bash
+openssl rand -base64 32
+```
+
+Do not reuse any authentication secret as the vault key. Translation remains disabled in the
+base local stack; enabling the private overlay additionally requires an independent Relay service
+secret and the external LinguaSpindle network described in the deployment runbook.
 
 Then start the local stack:
 
@@ -174,14 +195,21 @@ Production requires:
 - explicit `CORS_ORIGINS` and `TRUSTED_HOSTS`;
 - `OPENAPI_ENABLED=false`;
 - the three independent secrets above;
+- a separately protected `PROVIDER_CREDENTIAL_MASTER_KEY` that decodes to exactly 32 bytes;
+- when translation is enabled, an independent `PROVIDER_RELAY_SERVICE_SECRET`, one fixed HTTPS
+  upstream and a non-empty model allowlist;
 - controlled reverse proxying that overwrites forwarding headers.
 
 `compose.staging.yml` publishes only Nginx. API and PostgreSQL stay on private networks. Nginx
 restores the real client IP from the single trusted host-edge peer, rate-limits the public
 authentication entries, and the Uvicorn process trusts only Nginx's fixed internal address.
-When translation is enabled, add `compose.translation.yml`; it joins only `server` to the existing
-external `linguaspindle-private` network and adds no host port. Provider keys remain exclusively in
-LinguaSpindle. See [the deployment runbook](docs/staging-deployment.md).
+When translation is enabled, add `compose.translation.yml`; it joins `server` to the existing
+external `linguaspindle-private` network and starts a dedicated Relay on exactly the database and
+translation networks. The Relay has no host/proxy port. LinguaSpindle must be `>=0.3.2,<0.4.0` and
+uses the independently generated Relay service secret only as its internal Bearer. Upstream keys
+exist only as write-only input and encrypted Novel Platform database rows; the separately
+protected 32-byte vault master key is never part of PostgreSQL or its backup. See
+[the deployment runbook](docs/staging-deployment.md).
 
 ## Security
 
@@ -255,6 +283,28 @@ contribution. Backend checks capability and resource creator; hiding buttons is 
 The accepted v0.4 Reader, file-revision, Edition-identity, source/supersedes, progress-conflict,
 and Series invariants remain unchanged.
 
+## Reader-owned Provider credential boundary
+
+A current `translation.use` actor manages only their own OpenAI-compatible key under
+`/api/v1/me/provider-credential`. The raw value is accepted only by PUT, encrypted with a unique
+nonce and authenticated ownership/version data, cleared from the Web form, and never returned,
+hinted, hashed into a response, or stored in browser storage. Rotation creates a new immutable
+current version and retires the previous one; an already-created Run remains bound to its original
+version. Removal revokes every version for that User, including versions bound to unfinished work.
+
+Launching translation requires both current translation authority and a current personal
+credential. Missing, revoked, undecryptable, or mismatched credentials fail closed; the system
+never falls back to an administrator or site-funded key. The Relay accepts only its fixed Chat
+Completions path, service Bearer, opaque scope, LinguaSpindle Job ID, allowlisted model, and fixed
+HTTPS upstream. It replaces the service Bearer with the decrypted actor key only at the upstream
+boundary and stores integer Provider-reported token usage without prompts, translations, raw
+responses, prices, or cost estimates.
+
+`PROVIDER_CREDENTIAL_MASTER_KEY` must be strict Base64 decoding to exactly 32 bytes and must be
+backed up separately from the database. `PROVIDER_RELAY_SERVICE_SECRET` must be independent of the
+vault and authentication secrets and shared only with the Relay and LinguaSpindle. Losing the
+matching vault key makes restored credential ciphertext intentionally unusable.
+
 ## Public page and indexing
 
 The anonymous page reads only `/api/v1/site` and shows site name, non-commercial purpose, privacy
@@ -265,7 +315,29 @@ FastAPI applies `X-Robots-Tag: noindex, nofollow, noarchive` to non-health respo
 the same policy to HTML/static responses. This complements authentication; it is not access
 control.
 
-## v0.8.0 to v0.9.0 capability and translation upgrade
+## v0.9.0 to v0.10.0 BYOK and private-Relay upgrade
+
+v0.10.0 adds Alembic `20260726_0007`, encrypted Provider credential versions, sanitized usage
+records, and a required credential-version foreign key on every Translation Run. A historical
+v0.9 Run has no truthful payer/key binding, so migration 0007 refuses if any Run exists. It does
+not delete the Run or fabricate a scope. Back up first, then explicitly archive/remove those test
+Runs or restore/reset the exact disposable environment before retrying.
+
+Stop writers, create a coordinated `scripts/backup-library.sh` backup, and pass an isolated
+`scripts/restore-library.sh --test` before migration. Keep the matching
+`PROVIDER_CREDENTIAL_MASTER_KEY` in a separate protected backup: the PostgreSQL dump includes
+credential ciphertext and usage, while the master key and Relay service secret are excluded.
+Deploy LinguaSpindle `>=0.3.2,<0.4.0`; configure its OpenAI-compatible base URL to the private
+Relay `/v1`, its runtime API key to the Relay service secret, and its model to an operator
+allowlisted Relay model. Relay, LinguaSpindle, API and database ports must remain unexposed.
+The staging healthcheck proves runtime key/Bearer agreement and model acceptance with an absent
+synthetic scope that must stop at Relay's fixed 404 before any upstream request.
+
+No real paid Provider call or real-content egress is part of the repository gate. Such a call
+requires a reader-supplied key and separate explicit authorization after the private chain passes
+synthetic/Mock verification.
+
+## v0.8.0 to v0.9.0 capability and translation upgrade (historical)
 
 v0.9.0 adds Alembic `20260723_0006`. It deletes fileless placeholder Editions and Books, clears
 their dependent preferences/progress/links, backfills retained content attribution to the unique
@@ -277,9 +349,8 @@ PostgreSQL + library backup.
 Before migration, record sanitized counts, stop writers, create `scripts/backup-library.sh` output,
 and pass `scripts/restore-library.sh --test`. Actual server migration or a disposable reset requires
 explicit approval for the exact target. Never delete/rebuild LinguaSpindle SQLite, artifact volume,
-container, or network. After the database upgrade, configure the non-secret `LINGUASPINDLE_*`
-values, verify v0.3.1/private DNS/no host port/mandatory idempotency, and add
-`compose.translation.yml` only to the Server deployment when translation is ready.
+container, or network. ADR 0019 and the v0.10 upgrade above supersede v0.9's operator-owned
+Provider-key deployment boundary.
 
 ## v0.7.0 to v0.8.0 security upgrade
 
@@ -351,18 +422,23 @@ It briefly stops writers, produces a PostgreSQL custom dump plus library archive
 and rejects mismatched database/file references before publishing the backup directory. The dump
 includes credentials and capability rows, Passkeys, devices, Sessions, site settings, audit rows,
 Books, Editions, contributor attribution, Translation Runs, file revisions, Series, preferences,
-settings, and progress. The manifest explicitly excludes LinguaSpindle data and resources.
+settings, progress, encrypted Provider credential versions, and sanitized usage records. The
+manifest explicitly excludes the vault master key, Relay service secret, and all LinguaSpindle
+data and resources. A usable credential restore requires the separately protected matching master
+key.
 
 Always restore-test into isolated resources first:
 
 ```bash
 ./scripts/restore-library.sh --test \
-  /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP
+  /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP
 ```
 
 The test verifies manifest hashes, Alembic revision, permanent file checksums, temporary
-references, capability/attribution/Translation Run tables, then removes only the temporary
-database and volume. An
+references, and capability/attribution/Translation Run invariants, then removes only the temporary
+database and volume. The full dump restores credential/usage rows, but the test cannot prove key
+decryption unless the matching external vault key is supplied to a separate application
+verification. An
 intentional live restore additionally requires `ALLOW_STAGING_RESTORE=1`, `--staging`, and exact
 database-name confirmation. It never runs an automatic Alembic downgrade.
 
@@ -406,33 +482,35 @@ Integration tests require PostgreSQL and never use SQLite or live data.
 
 ## Automated acceptance
 
-The v0.9.0 release gate uses unique, disposable Compose projects and an isolated PostgreSQL
-database. It replays applicable authentication/Reader/proxy behavior, then exercises the current
-capability, contributor, migration, translation, Web, backup and leak contracts:
+The v0.10.0 release-candidate gate uses unique, disposable Compose projects and an isolated
+PostgreSQL database. It replays the applicable v0.9 capability/contributor/translation and
+authentication/Reader/proxy behavior into v0.10-specific evidence, then exercises the current
+BYOK, Relay, Web, version/OpenAPI and topology/leak contracts:
 
 ```bash
 pnpm acceptance
 # equivalent
-pnpm acceptance:v090
+pnpm acceptance:v0100
 ```
 
-The gate preserves the 84 applicable v0.5 core criteria and 9 v0.8 proxy/auth-hardening criteria,
-then adds 11 v0.9 criteria: capability lifecycle, four-identity actor/resource policy, legacy API
-removal and migration, private-service idempotency/control/atomic ingestion, retranslation and
-draft publication, service isolation, leak resistance, coordinated backup/restore, desktop/320 px
-visual evidence, and exact cleanup. Synthetic fake transport is mandatory. Real v0.3.1 + Mock
-Provider and real OpenAI-compatible Provider remain `PENDING_OPERATOR_CONFIG` until configured;
-the gate never presents fake/Mock output as a real AI translation.
+The gate preserves the 84 applicable v0.5 core, 9 v0.8 hardening, and 11 v0.9 criteria without
+rewriting their historical artifacts. Six v0.10 criteria cover the inherited replay; encrypted
+credential lifecycle/usage and Run scope binding; Relay authentication/fixed-upstream/redaction;
+Web credential management and no-fallback launch gating; v0.10 package/OpenAPI contracts; and
+LinguaSpindle v0.3.2/private-topology/leak boundaries.
 
-Sanitized outputs are `artifacts/acceptance-v090.{md,json}`, inherited replay evidence is written
-under `artifacts/acceptance-v090-regression*`, and visual evidence is under
-`artifacts/visual-v090/`. Remote migration, network changes, HTTPS/Passkey, Provider, persistence,
-and cleanup checks remain `DEPLOYMENT_PENDING` until separately authorized. Set
+Sanitized outputs are `artifacts/acceptance-v0100.{md,json}` and inherited replay evidence is
+written under `artifacts/acceptance-v0100-regression*`. Synthetic/fake transport is mandatory.
+Real LinguaSpindle v0.3.2 + Mock Provider and real OpenAI-compatible Provider calls remain
+`PENDING_OPERATOR_CONFIG`; real paid calls and content egress are not executed. Remote migration,
+secret injection, network changes, HTTPS/Passkey, persistence and cleanup checks remain
+`DEPLOYMENT_PENDING`. At this documentation refresh, the final v0.10 candidate gate report and
+external deployment result are still pending confirmation. Set
 `KEEP_ACCEPTANCE_ENV=1` only when preserving a failed isolated environment for local diagnosis.
 
-Historical gates `acceptance:v010` through `acceptance:v080` remain directly runnable with their
-historical evidence and contracts. v0.9 does not rewrite them to claim fileless creation remains
-supported.
+Historical gates `acceptance:v010` through `acceptance:v090` remain directly runnable with their
+historical evidence and contracts. v0.10 does not rewrite them to claim fileless creation or a
+shared operator-funded translation key remains supported.
 
 ## Superseded acceptance
 
@@ -448,6 +526,10 @@ v0.9.0 additionally supersedes public metadata-only Book/Edition creation and an
 an invited credential can never write. New content must be file-backed or verified generated
 output, and invited writes require both a current capability and creator-aware resource policy.
 
+v0.10.0 additionally supersedes operator-owned/shared Provider funding for Novel Platform
+translation. A translating actor must configure a current personal credential, and every new Run
+must bind its exact encrypted version.
+
 Those behaviors are not retained as compatibility backdoors. Still-valid BookEdition, file
 revision, safe Reader, private-state, Series, persistence, backup/restore, and leak assertions are
 replayed in the current gate.
@@ -459,6 +541,8 @@ All API endpoints use `/api/v1`:
 - `/site`: safe public site configuration;
 - `/auth`: credential/Passkey login, registration, refresh, identity, logout, and Sessions;
 - `/devices`, `/users/me`: viewer-private controls;
+- `/me/provider-credential` and `/me/provider-credential/usage`: write-only personal Provider-key
+  lifecycle plus non-secret configuration and usage totals for `translation.use` actors;
 - `/admin/readers`, `/admin/site`, `/admin/audit`: administrator-only management;
 - `/books`, nested `/editions`, `/series`: readable queries plus capability/creator-aware library
   mutations (Series remains administrator-only);

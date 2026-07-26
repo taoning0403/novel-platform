@@ -1,10 +1,11 @@
 # Architecture
 
-漫读 (`novel-platform`) v0.9.0 remains a modular monolith: one React client, one FastAPI process,
-PostgreSQL, and a private local library volume. Optional novel translation crosses one explicit
-boundary to a separately deployed LinguaSpindle v0.3.1 service. The product remains a personal
-non-commercial reading and collection-management site, not a public platform or distribution
-service.
+漫读 (`novel-platform`) v0.10.0 remains a modular monolith for browser-facing product behavior:
+one React client, one FastAPI application, PostgreSQL, and a private local library volume. Optional
+novel translation crosses a private boundary to LinguaSpindle v0.3.2 and returns through a
+separately started Provider Relay process from the same Server package. The product remains a
+personal non-commercial reading and collection-management site, not a public platform or
+distribution service.
 
 ```text
 Browser
@@ -16,21 +17,25 @@ Nginx (static SPA, bounded upload proxy, header hardening)
 FastAPI modular monolith
   ├── authentication / credential capabilities / WebAuthn / administration / audit
   ├── contributor-attributed Books / Editions / imports / files / Series
-  ├── actor-scoped Translation Run orchestration
+  ├── actor-scoped Translation Runs + encrypted Provider credential versions
   ├── safe Reader Projection / progress / settings / preferences
   ├── PostgreSQL
   ├── private Novel Platform library volume
-  └── private HTTP (Server only)
-       └── LinguaSpindle v0.3.1
-            ├── independent SQLite + Artifact volume
-            └── Provider configuration and secret
+  └── private HTTP
+       ├── Server -> LinguaSpindle v0.3.2
+       │             └── independent SQLite + Artifact volume
+       └── LinguaSpindle -> Provider Relay
+                              ├── encrypted credential lookup + usage ledger
+                              └── fixed HTTPS OpenAI-compatible Provider
 ```
 
-Novel Platform and LinguaSpindle share no identity, database, volume or domain model. Browser,
-Web, migrate and PostgreSQL never join the translation network. There is no Redis, worker, queue,
-public object store, external identity provider, analytics service, mail/SMS dependency, or
-Cloudflare requirement. Cloudflare Access may be an optional outer layer, but application
-authentication and authorization stand alone.
+LinguaSpindle still shares no identity, database, volume or domain model with Novel Platform. It
+persists only an opaque credential scope needed to resume a Job and sends that scope back to the
+Relay; it never receives a User ID or upstream Provider key. Browser, Web, migrate and PostgreSQL
+never join the translation network. Relay joins the database and translation networks but has no
+proxy/edge network or host port. There is no Redis, worker, public object store, external identity
+provider, analytics service, mail/SMS dependency, or Cloudflare requirement. Cloudflare Access may
+be an optional outer layer, but application authentication and authorization stand alone.
 
 ## Web component and route boundary
 
@@ -223,16 +228,23 @@ Series remains an administrator-owned ordered grouping. A Book belongs to at mos
 deleting a Series retains Books, Editions, files, preferences, and progress. Reader Series
 responses filter invisible Books and omit empty shells.
 
-## Private translation boundary
+## Private translation and Provider-credential boundary
 
-Translation is synchronous HTTP orchestration from Server with persisted recovery state; React
-never performs remote multi-step calls and the HTTP client never creates an Edition.
+Translation remains synchronous HTTP orchestration from Server with persisted recovery state;
+React never performs remote multi-step calls and the HTTP client never creates an Edition. Before
+launch, the actor must have both current `translation.use` authority and a current encrypted
+Provider credential version. There is no shared administrator-key fallback.
 
 ```text
 actor + fixed readable TXT EditionFile
-  -> create Run (actor/client UUID idempotency + source revision/SHA snapshot)
-  -> Lingua status/version/pipeline/provider/idempotency checks
-  -> deterministic Project + Job requests and stored correlation IDs
+  -> select exact actor credential version
+  -> create Run (actor/client UUID idempotency + source revision/SHA + credential snapshot)
+  -> Relay + Lingua status/version/pipeline/provider/idempotency checks
+  -> deterministic Project + scoped Job requests and stored correlation IDs
+  -> Lingua Job executes with opaque credential_scope + Job correlation
+  -> private Relay validates scope/binding/model/service Bearer and atomically claims a first Job ID
+  -> Relay decrypts only the bound key and calls the fixed upstream origin
+  -> Relay rejects reflected secrets and records sanitized integer token usage without prompt/output
   -> on-demand selected-Run sync/control (no worker or scheduler)
   -> terminal successful Artifact metadata
   -> same-origin bounded streaming download + size/SHA/format validation
@@ -241,15 +253,31 @@ actor + fixed readable TXT EditionFile
   -> creator-only preview -> administrator-only ready publication
 ```
 
-Base URL, compatible version, Provider/Profile identity, timeouts and maximum download size are
-operator configuration. Provider keys exist only inside LinguaSpindle. The browser submits no
-Provider/model/profile/URL/download choice. The client follows no redirects, accepts only fixed
-same-origin endpoints, does not propagate remote response bodies, and sanitizes error details.
+Lingua/Relay origins, compatible version, Provider/Profile identity, allowed upstream HTTPS
+origin/models, timeouts and byte ceilings are operator configuration. The browser submits only its
+own key through the self-service credential endpoint and never submits a Provider/model/profile/
+URL/download choice. The raw key is accepted only as a write-only `SecretStr`, encrypted with
+AES-256-GCM and never returned. Both clients follow no redirects, accept only fixed endpoints, do
+not propagate raw remote response bodies, and sanitize error details.
 
-The Run stores exact Project/Job/Artifact IDs. Retry recovers with deterministic idempotency;
-cleanup may delete only that stored Project. A cleanup failure never rolls back an already
-ingested Edition. Lingua availability is deliberately absent from main readiness, so disabling the
-feature/network affects only translation.
+The first Provider request can race the Novel Platform Job-creation response. A partial unique
+index permits only one uncorrelated `preparing` Run per credential version; the Relay row-locks
+that Run, atomically persists the authenticated LinguaSpindle Job ID, and releases the transaction
+before calling the upstream. Every later call must match the stored ID. Unexpected Relay
+exceptions are converted without logging values, and a successful Provider JSON value containing
+the decrypted key is rejected before any response or usage write.
+
+Each immutable credential version has a random UUID scope, per-User monotonic version, nonce and
+ciphertext. The separately injected 32-byte master key is absent from PostgreSQL and its backups.
+Rotation retires the old version but existing bound Runs may continue; removal revokes every
+version and later Provider calls fail closed. Run and remote Job fingerprints include the scope,
+while safe API responses expose only the version number. The Run also stores exact
+Project/Job/Artifact IDs. Retry recovers with deterministic idempotency; cleanup may delete only
+that stored Project. A cleanup failure never rolls back an already ingested Edition.
+
+Relay and Lingua availability are deliberately absent from main readiness, so disabling the
+feature/network affects only translation. Relay startup/health validates its master key, service
+secret and database reachability but does not make a paid upstream probe.
 
 ## Auditing and retention
 
@@ -272,7 +300,10 @@ count-only preflight refuses a missing conversion, non-unique owner/admin, owner
 Import, missing/mismatched file reference or invalid current-file set. It then clears private
 state/links pointing at fileless placeholders, deletes those Editions and resulting empty Books,
 backfills creator columns, grants every retained credential only `library.read`, and creates Run
-storage. It cannot be downgraded because placeholder deletion is destructive.
+storage. It cannot be downgraded because placeholder deletion is destructive. Alembic
+`20260726_0007` then creates encrypted Provider-credential and sanitized usage storage and makes
+the credential-version binding non-null on every Run. It refuses any existing unscoped v0.9 Run
+instead of inventing a payer or deleting orchestration history.
 
 Deployment order is:
 
@@ -280,23 +311,29 @@ Deployment order is:
 validate candidate/config/topology -> stop writers -> sanitized count preflight
 -> coordinated database+library backup -> isolated restore
 -> explicit approval for destructive migration/reset -> Alembic 20260723_0006
+-> fail-closed unscoped-Run check -> Alembic 20260726_0007
 -> volume integrity audit -> API/Web health + credential capability matrix
--> optional Server-only translation network -> v0.3.1 Mock short TXT/retranslation/cleanup
+-> LinguaSpindle >=0.3.2 + private Relay network/secret/health verification
+-> scoped synthetic translation without a paid Provider call
 -> restart persistence + before/after topology comparison
 ```
 
 The library audit compares database permanent references/checksums and temporary references with
 the mounted volume but reports only counts. A coordinated backup captures Novel Platform
-PostgreSQL and library while writers are stopped, including capability/creator/Run state. Its
-manifest excludes LinguaSpindle SQLite/Artifacts/containers/networks. Restore must first succeed
-against a temporary database and temporary volume. Rollback restores matching code + database +
-volume; a translation-only failure disables the feature/network without deleting generated
-Editions. Remote Projects are never cleaned by pattern or inventory guess.
+PostgreSQL and library while writers are stopped, including capability/creator/Run state,
+Provider ciphertext and sanitized usage. It deliberately excludes the vault master key as well as
+LinguaSpindle SQLite/Artifacts/containers/networks. Restoring usable Provider credentials requires
+the matching externally protected master key; LinguaSpindle state requires its own coordinated
+Volume backup. Restore must first succeed against a temporary database and temporary volume.
+Rollback restores matching code + database + library and, when required, the separately matched
+LinguaSpindle Volume; a translation-only failure disables the feature/network without deleting
+generated Editions. Remote Projects are never cleaned by pattern or inventory guess.
 
 ## Deliberate omissions
 
-v0.9.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
+v0.10.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
 public registration/catalogue, payments, advertising, public/raw downloads, native clients,
 scheduled jobs, object storage, Series nesting/reordering, EPUB/manga translation, per-chapter
-review, browser Provider configuration, client-supplied credentials or arbitrary Artifact URLs.
-Adding any durable boundary requires a new explicit milestone and ADR.
+review, user-selectable Provider/model/base URL, site-funded fallback, budgets/quotas, vault-master
+key rotation or arbitrary Artifact URLs. Adding any durable boundary requires a new explicit
+milestone and ADR.

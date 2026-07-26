@@ -31,6 +31,11 @@ compose restart server
 wait_for_stack
 api_restart="PASS"
 
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  compose restart provider-relay
+  wait_for_stack
+fi
+
 compose restart postgres
 wait_for_stack
 postgres_restart="PASS"
@@ -40,7 +45,11 @@ compose start
 wait_for_stack
 compose_restart="PASS"
 
-compose up --detach --force-recreate --no-deps server web
+recreate_services=(server web)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  recreate_services+=(provider-relay)
+fi
+compose up --detach --force-recreate --no-deps "${recreate_services[@]}"
 wait_for_stack
 compose_recreate="PASS"
 

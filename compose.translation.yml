@@ -3,6 +3,56 @@ services:
     networks:
       translation: {}
 
+  provider-relay:
+    build:
+      context: ./apps/server
+    environment:
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      PROVIDER_CREDENTIAL_MASTER_KEY: "${PROVIDER_CREDENTIAL_MASTER_KEY:?PROVIDER_CREDENTIAL_MASTER_KEY is required}"
+      PROVIDER_RELAY_SERVICE_SECRET: "${PROVIDER_RELAY_SERVICE_SECRET:?PROVIDER_RELAY_SERVICE_SECRET is required}"
+      PROVIDER_RELAY_UPSTREAM_BASE_URL: "${PROVIDER_RELAY_UPSTREAM_BASE_URL:?PROVIDER_RELAY_UPSTREAM_BASE_URL is required}"
+      PROVIDER_RELAY_ALLOWED_MODELS: "${PROVIDER_RELAY_ALLOWED_MODELS:?PROVIDER_RELAY_ALLOWED_MODELS is required}"
+      PROVIDER_RELAY_CONNECT_TIMEOUT_SECONDS: "${PROVIDER_RELAY_CONNECT_TIMEOUT_SECONDS:-5}"
+      PROVIDER_RELAY_READ_TIMEOUT_SECONDS: "${PROVIDER_RELAY_READ_TIMEOUT_SECONDS:-120}"
+      PROVIDER_RELAY_MAX_REQUEST_BYTES: "${PROVIDER_RELAY_MAX_REQUEST_BYTES:-1048576}"
+      PROVIDER_RELAY_MAX_RESPONSE_BYTES: "${PROVIDER_RELAY_MAX_RESPONSE_BYTES:-4194304}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - novel_platform.relay:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8790"
+      - --workers
+      - "1"
+      - --no-access-log
+    networks:
+      database: {}
+      translation:
+        aliases:
+          - novel-provider-relay
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   translation:
     external: true

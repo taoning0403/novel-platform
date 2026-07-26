@@ -17,7 +17,7 @@ mkdir -p "$backup_root"
 chmod 700 "$backup_root"
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-base_name="novel-platform-v090-${timestamp}"
+base_name="novel-platform-v0100-${timestamp}"
 temporary_directory="$backup_root/.${base_name}.tmp"
 backup_directory="$backup_root/$base_name"
 database_file="$temporary_directory/database.dump"
@@ -28,12 +28,18 @@ expected_temporary_files="$temporary_directory/.expected-temporary-files"
 application_stopped=0
 server_was_running=0
 web_was_running=0
+relay_was_running=0
 
 [[ -n "$(compose ps --status running -q server 2>/dev/null)" ]] && server_was_running=1
 [[ -n "$(compose ps --status running -q web 2>/dev/null)" ]] && web_was_running=1
+if [[ "$LINGUASPINDLE_ENABLED" == "true" \
+  && -n "$(compose ps --status running -q provider-relay 2>/dev/null)" ]]; then
+  relay_was_running=1
+fi
 
 restart_previous_application() {
   local services=()
+  (( relay_was_running )) && services+=(provider-relay)
   (( server_was_running )) && services+=(server)
   (( web_was_running )) && services+=(web)
   if (( ${#services[@]} )); then
@@ -56,7 +62,11 @@ chmod 700 "$temporary_directory"
 
 wait_for_postgres 120
 application_stopped=1
-compose stop web server >/dev/null
+services_to_stop=(web server)
+if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
+  services_to_stop+=(provider-relay)
+fi
+compose stop "${services_to_stop[@]}" >/dev/null
 
 compose exec -T postgres sh -c \
   'exec pg_dump --format=custom --compress=6 --no-owner --no-acl --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
@@ -186,7 +196,10 @@ manifest = {
     "postgresql_version": postgresql_version,
     "alembic_revision": alembic_revision,
     "scope": {
-        "included": ["novel_platform_postgresql", "novel_platform_library"],
+        "included": [
+            "novel_platform_postgresql_including_encrypted_provider_credentials_and_usage",
+            "novel_platform_library"
+        ],
         "excluded": [
             "linguaspindle_sqlite",
             "linguaspindle_artifacts",
@@ -194,6 +207,7 @@ manifest = {
             "linguaspindle_networks",
         ],
     },
+    "required_external_secrets": ["provider_credential_master_key"],
     "database": {"filename": "database.dump", "sha256": database_sha256},
     "library": {"filename": "library.tar.gz", "sha256": library_sha256},
 }
