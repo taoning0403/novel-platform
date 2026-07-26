@@ -175,7 +175,7 @@ describe("TranslationLaunchModal", () => {
       provider: "openai_compatible",
       provider_name: "OpenAI",
       base_url: "https://api.openai.com/v1",
-      model: "gpt-4.1-mini",
+      model: null,
       thinking_enabled: false,
       version: null,
       updated_at: null,
@@ -202,6 +202,30 @@ describe("TranslationLaunchModal", () => {
     const submit = screen.getByRole("button", { name: "创建翻译任务" });
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a configured credential has no model", async () => {
+    vi.spyOn(api, "translationServiceStatus").mockResolvedValue(service);
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue({
+      ...configuredCredential,
+      model: null,
+    });
+    const create = vi.spyOn(api, "createTranslationRun");
+
+    render(
+      <TranslationLaunchModal
+        book={book}
+        edition={source}
+        open
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("先配置你的 Provider 凭据")).toBeInTheDocument();
+    expect(screen.queryByText(/DeepSeek · null/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建翻译任务" })).toBeDisabled();
     expect(create).not.toHaveBeenCalled();
   });
 });

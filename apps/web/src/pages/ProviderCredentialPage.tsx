@@ -3,6 +3,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -35,22 +36,19 @@ const emptyUsage = {
 
 const providerPresets: Record<
   Exclude<ProviderKind, "custom">,
-  { label: string; baseUrl: string; defaultModel: string }
+  { label: string; baseUrl: string }
 > = {
   openai_compatible: {
     label: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
-    defaultModel: "gpt-4.1-mini",
   },
   deepseek: {
     label: "DeepSeek",
     baseUrl: "https://api.deepseek.com/v1",
-    defaultModel: "deepseek-chat",
   },
   kimi: {
     label: "Kimi",
     baseUrl: "https://api.moonshot.cn/v1",
-    defaultModel: "kimi-k2.5",
   },
 };
 
@@ -72,7 +70,7 @@ const emptyCredential: ProviderCredentialStatus = {
   provider: "openai_compatible",
   provider_name: providerPresets.openai_compatible.label,
   base_url: providerPresets.openai_compatible.baseUrl,
-  model: providerPresets.openai_compatible.defaultModel,
+  model: null,
   thinking_enabled: false,
   version: null,
   updated_at: null,
@@ -119,41 +117,39 @@ function normalizeThinkingEnabled(
 export function ProviderCredentialPage() {
   const [credential, setCredential] = useState<ProviderCredentialStatus | null>(null);
   const [provider, setProvider] = useState<ProviderKind>("openai_compatible");
-  const [model, setModel] = useState(providerPresets.openai_compatible.defaultModel);
+  const [model, setModel] = useState("");
+  const [modelCatalog, setModelCatalog] = useState<string[]>([]);
   const [customName, setCustomName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const catalogRequestId = useRef(0);
+
+  const invalidateModelCatalog = useCallback(() => {
+    catalogRequestId.current += 1;
+    setModelCatalog([]);
+    setModel("");
+    setThinkingEnabled(false);
+    setIsLoadingModels(false);
+    setCatalogError(null);
+  }, []);
 
   const syncFormWithCredential = useCallback((next: ProviderCredentialStatus) => {
-    const nextModel = (
-      !next.configured
-      && next.provider === "deepseek"
-      && next.model.trim() === "deepseek-reasoner"
-    )
-      ? "deepseek-chat"
-      : next.model;
     setProvider(next.provider);
-    setModel(nextModel);
-    setThinkingEnabled(
-      next.configured
-      && normalizeThinkingEnabled(
-        next.provider,
-        nextModel,
-        next.thinking_enabled,
-      ),
-    );
+    invalidateModelCatalog();
     if (next.provider === "custom") {
       setCustomName(next.provider_name);
       setBaseUrl(next.base_url);
     }
-  }, []);
+  }, [invalidateModelCatalog]);
 
   const loadCredential = useCallback(async () => {
     setIsLoading(true);
@@ -173,13 +169,75 @@ export function ProviderCredentialPage() {
     void loadCredential();
   }, [loadCredential]);
 
+  async function loadModelCatalog() {
+    const submittedApiKey = apiKey;
+    const submittedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
+    if (submittedApiKey.trim() === "") {
+      setCatalogError("请先输入 API Key。");
+      return;
+    }
+    if (provider === "custom" && !isSafeCustomBaseUrl(submittedBaseUrl)) {
+      setCatalogError(
+        "自定义 Base URL 必须是 HTTPS 地址，且不能包含用户名、密码、查询参数或片段。",
+      );
+      return;
+    }
+
+    const requestProvider = provider;
+    const requestId = catalogRequestId.current + 1;
+    catalogRequestId.current = requestId;
+    setModelCatalog([]);
+    setModel("");
+    setThinkingEnabled(false);
+    setIsLoadingModels(true);
+    setCatalogError(null);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const result = await api.listProviderModels(
+        requestProvider === "custom"
+          ? {
+              provider: requestProvider,
+              api_key: submittedApiKey,
+              base_url: submittedBaseUrl,
+            }
+          : {
+              provider: requestProvider,
+              api_key: submittedApiKey,
+            },
+      );
+      if (catalogRequestId.current !== requestId) return;
+      if (result.provider !== requestProvider) {
+        setCatalogError("返回的模型目录与当前 Provider 不一致，请检查配置后重试。");
+        return;
+      }
+      if (result.models.length === 0) {
+        setCatalogError("该 Provider 未返回可用模型，请检查 API Key 和地址。");
+        return;
+      }
+      setModelCatalog(result.models);
+    } catch (caught) {
+      if (catalogRequestId.current !== requestId) return;
+      setCatalogError(`${userFacingError(caught)} API Key 仍保留在当前页面，可修改后重试。`);
+    } finally {
+      if (catalogRequestId.current === requestId) {
+        setIsLoadingModels(false);
+      }
+    }
+  }
+
   async function saveCredential(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const submittedApiKey = apiKey;
-    const submittedModel = model.trim();
+    const submittedModel = model;
     const submittedCustomName = customName.trim();
     const submittedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
-    if (submittedApiKey.trim() === "" || submittedModel === "") return;
+    if (
+      submittedApiKey.trim() === ""
+      || submittedModel === ""
+      || !modelCatalog.includes(submittedModel)
+    ) return;
     if (provider === "custom") {
       if (submittedCustomName === "") {
         setError("请为自定义 Provider 输入一个名称。");
@@ -217,6 +275,7 @@ export function ProviderCredentialPage() {
 
     // Clear the only React copy before the request begins. It is never restored on failure.
     setApiKey("");
+    invalidateModelCatalog();
     setIsSaving(true);
     setError(null);
     setMessage(null);
@@ -238,27 +297,17 @@ export function ProviderCredentialPage() {
 
   async function deleteCredential() {
     setApiKey("");
+    invalidateModelCatalog();
     setIsDeleting(true);
     setError(null);
     setMessage(null);
     try {
       await api.deleteProviderCredential();
-      setThinkingEnabled(false);
-      setModel((current) => (
-        provider === "deepseek" && current.trim() === "deepseek-reasoner"
-          ? "deepseek-chat"
-          : current
-      ));
       setCredential((current) => current
         ? {
             ...current,
             configured: false,
-            model: (
-              current.provider === "deepseek"
-              && current.model.trim() === "deepseek-reasoner"
-            )
-              ? "deepseek-chat"
-              : current.model,
+            model: null,
             thinking_enabled: false,
             version: null,
             updated_at: new Date().toISOString(),
@@ -302,15 +351,34 @@ export function ProviderCredentialPage() {
     ? baseUrl
     : providerPresets[provider].baseUrl;
   const keyLabel = `${selectedProviderName} API Key`;
-  const thinkingSupported = supportsThinking(provider, model);
-  const thinkingHelp = provider === "deepseek"
-    ? "默认关闭。开启后模型会切换为 deepseek-reasoner，可能需要更多响应时间和 Token。"
+  const selectedModelAvailable = model !== "" && modelCatalog.includes(model);
+  const deepSeekThinkingModelsAvailable = (
+    modelCatalog.includes("deepseek-chat")
+    && modelCatalog.includes("deepseek-reasoner")
+  );
+  const thinkingSupported = selectedModelAvailable && supportsThinking(provider, model);
+  const thinkingHelp = model === ""
+    ? "先读取模型列表并选择模型；支持时可在这里开启思考模式。"
+    : provider === "deepseek"
+      ? deepSeekThinkingModelsAvailable
+        ? "默认关闭。开启后模型会切换为 deepseek-reasoner，可能需要更多响应时间和 Token。"
+        : "当前模型目录未同时提供 deepseek-chat 和 deepseek-reasoner，无法切换思考模式。"
     : provider === "kimi"
       ? thinkingSupported
         ? "默认关闭。开启后 Kimi 可能需要更多响应时间，并产生更多 Token 消耗。"
         : "Kimi 仅在模型为 kimi-k2.5 时支持思考模式；当前模型会保持关闭。"
       : "当前 Provider 没有可验证的统一开关，思考模式保持关闭。";
-  const thinkingControlDisabled = isSaving || isDeleting || !thinkingSupported;
+  const thinkingControlDisabled = (
+    isSaving
+    || isDeleting
+    || isLoadingModels
+    || !thinkingSupported
+    || (provider === "deepseek" && !deepSeekThinkingModelsAvailable)
+  );
+  const canLoadModels = (
+    apiKey.trim() !== ""
+    && (provider !== "custom" || baseUrl.trim() !== "")
+  );
 
   return (
     <main className={styles.page}>
@@ -340,7 +408,7 @@ export function ProviderCredentialPage() {
           </div>
           <div>
             <dt>模型</dt>
-            <dd>{credential.configured ? credential.model : "—"}</dd>
+            <dd>{credential.configured ? credential.model ?? "—" : "—"}</dd>
           </div>
           <div className={styles.endpointMeta}>
             <dt>API Base URL</dt>
@@ -432,12 +500,8 @@ export function ProviderCredentialPage() {
                   value={provider}
                   onChange={(value: ProviderKind) => {
                     setProvider(value);
-                    setThinkingEnabled(false);
-                    setModel(
-                      value === "custom"
-                        ? ""
-                        : providerPresets[value].defaultModel,
-                    );
+                    setApiKey("");
+                    invalidateModelCatalog();
                     setError(null);
                     setMessage(null);
                   }}
@@ -446,39 +510,6 @@ export function ProviderCredentialPage() {
                 <span className={styles.fieldHelp} id="provider-choice-help">
                   预设 Provider 使用固定官方地址；自定义服务必须兼容 OpenAI Chat Completions。
                 </span>
-              </label>
-
-              <label className={styles.field} htmlFor="provider-model">
-                模型
-                <Input
-                  className={styles.technicalInput}
-                  id="provider-model"
-                  name="provider-model"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  maxLength={120}
-                  placeholder="例如 gpt-4.1-mini"
-                  value={model}
-                  onChange={(event) => {
-                    const nextModel = event.target.value;
-                    setModel(nextModel);
-                    if (
-                      provider === "deepseek"
-                      && nextModel.trim() === "deepseek-reasoner"
-                    ) {
-                      setThinkingEnabled(true);
-                    } else if (!supportsThinking(provider, nextModel)) {
-                      setThinkingEnabled(false);
-                    }
-                  }}
-                  disabled={(
-                    isSaving
-                    || isDeleting
-                    || (provider === "deepseek" && thinkingEnabled)
-                  )}
-                  required
-                />
               </label>
 
               {provider === "custom" ? (
@@ -497,7 +528,10 @@ export function ProviderCredentialPage() {
                       required
                     />
                   </label>
-                  <label className={styles.field} htmlFor="provider-base-url">
+                  <label
+                    className={`${styles.field} ${styles.customEndpointField}`}
+                    htmlFor="provider-base-url"
+                  >
                     API Base URL
                     <Input
                       className={styles.technicalInput}
@@ -513,7 +547,13 @@ export function ProviderCredentialPage() {
                       aria-label="API Base URL"
                       aria-describedby="provider-base-url-help"
                       value={baseUrl}
-                      onChange={(event) => setBaseUrl(event.target.value)}
+                      onChange={(event) => {
+                        setBaseUrl(event.target.value);
+                        setApiKey("");
+                        invalidateModelCatalog();
+                        setError(null);
+                        setMessage(null);
+                      }}
                       disabled={isSaving || isDeleting}
                       required
                     />
@@ -528,6 +568,97 @@ export function ProviderCredentialPage() {
                   <code>{selectedBaseUrl}</code>
                 </div>
               )}
+            </div>
+
+            <div className={styles.secretRow}>
+              <label className={styles.field} htmlFor="provider-api-key">
+                {keyLabel}
+                <Input
+                  className={styles.technicalInput}
+                  id="provider-api-key"
+                  name="provider-api-key"
+                  type="password"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={8192}
+                  aria-describedby="provider-key-help"
+                  value={apiKey}
+                  onChange={(event) => {
+                    setApiKey(event.target.value);
+                    invalidateModelCatalog();
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  disabled={isSaving || isDeleting}
+                  required
+                />
+              </label>
+              <Button
+                htmlType="button"
+                loading={isLoadingModels}
+                disabled={!canLoadModels || isSaving || isDeleting}
+                onClick={() => void loadModelCatalog()}
+              >
+                读取模型列表
+              </Button>
+            </div>
+
+            {catalogError ? (
+              <Alert
+                className={styles.catalogNotice}
+                type="error"
+                showIcon
+                title={catalogError}
+                role="alert"
+              />
+            ) : null}
+
+            <div className={styles.modelSettings}>
+              <label className={styles.field} htmlFor="provider-model">
+                模型
+                <Select
+                  id="provider-model"
+                  aria-label="模型"
+                  aria-describedby="provider-model-help"
+                  className={styles.technicalSelect}
+                  showSearch
+                  allowClear
+                  optionFilterProp="label"
+                  options={modelCatalog.map((modelId) => ({
+                    value: modelId,
+                    label: modelId,
+                    title: modelId,
+                  }))}
+                  placeholder="先读取模型列表"
+                  notFoundContent={
+                    modelCatalog.length === 0 ? "请先读取模型列表" : "没有匹配的模型"
+                  }
+                  value={model || undefined}
+                  onChange={(nextModel: string | undefined) => {
+                    const selectedModel = nextModel ?? "";
+                    setModel(selectedModel);
+                    setThinkingEnabled(
+                      provider === "deepseek"
+                      && selectedModel === "deepseek-reasoner",
+                    );
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  disabled={(
+                    isSaving
+                    || isDeleting
+                    || isLoadingModels
+                    || modelCatalog.length === 0
+                    || (provider === "deepseek" && thinkingEnabled)
+                  )}
+                />
+                <span className={styles.fieldHelp} id="provider-model-help" role="status">
+                  {modelCatalog.length > 0
+                    ? `已读取 ${modelCatalog.length} 个模型；只能保存当前列表中的模型。`
+                    : "输入当前 Provider 的 API Key，读取列表后再选择模型。"}
+                </span>
+              </label>
 
               <div className={styles.thinkingSetting}>
                 <div>
@@ -551,7 +682,12 @@ export function ProviderCredentialPage() {
                     onChange={(checked) => {
                       setThinkingEnabled(checked);
                       if (provider === "deepseek") {
-                        setModel(checked ? "deepseek-reasoner" : "deepseek-chat");
+                        const nextModel = checked
+                          ? "deepseek-reasoner"
+                          : "deepseek-chat";
+                        if (modelCatalog.includes(nextModel)) {
+                          setModel(nextModel);
+                        }
                       }
                     }}
                     disabled={thinkingControlDisabled}
@@ -560,36 +696,19 @@ export function ProviderCredentialPage() {
               </div>
             </div>
 
-            <div className={styles.secretRow}>
-              <label className={styles.field} htmlFor="provider-api-key">
-                {keyLabel}
-                <Input
-                  className={styles.technicalInput}
-                  id="provider-api-key"
-                  name="provider-api-key"
-                  type="password"
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  maxLength={8192}
-                  aria-describedby="provider-key-help"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  disabled={isSaving || isDeleting}
-                  required
-                />
-              </label>
+            <div className={styles.saveRow}>
               <Button
                 type="primary"
                 htmlType="submit"
                 loading={isSaving}
                 disabled={(
                   apiKey.trim() === ""
-                  || model.trim() === ""
+                  || !selectedModelAvailable
                   || (
                     provider === "custom"
                     && (customName.trim() === "" || baseUrl.trim() === "")
                   )
+                  || isLoadingModels
                   || isDeleting
                 )}
               >

@@ -815,6 +815,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/provider-credential/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discover Provider Models */
+        post: operations["discover_provider_models_api_v1_me_provider_credential_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/provider-credential/usage": {
         parameters: {
             query?: never;
@@ -1767,7 +1784,7 @@ export interface components {
             /** Custom Name */
             custom_name?: string | null;
             /** Model */
-            model?: string | null;
+            model: string;
             /** @default openai_compatible */
             provider: components["schemas"]["ProviderKind"];
             /**
@@ -1783,7 +1800,7 @@ export interface components {
             /** Configured */
             configured: boolean;
             /** Model */
-            model: string;
+            model: string | null;
             provider: components["schemas"]["ProviderKind"];
             /** Provider Name */
             provider_name: string;
@@ -1802,6 +1819,23 @@ export interface components {
         };
         /** @enum {string} */
         ProviderKind: "openai_compatible" | "deepseek" | "kimi" | "custom";
+        /** ProviderModelsRequest */
+        ProviderModelsRequest: {
+            /**
+             * Api Key
+             * Format: password
+             */
+            api_key: string;
+            /** Base Url */
+            base_url?: string | null;
+            provider: components["schemas"]["ProviderKind"];
+        };
+        /** ProviderModelsResponse */
+        ProviderModelsResponse: {
+            /** Models */
+            models: string[];
+            provider: components["schemas"]["ProviderKind"];
+        };
         /** ProviderUsageTotalsResponse */
         ProviderUsageTotalsResponse: {
             /** Completion Tokens */
@@ -8623,6 +8657,129 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    discover_provider_models_api_v1_me_provider_credential_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderModelsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

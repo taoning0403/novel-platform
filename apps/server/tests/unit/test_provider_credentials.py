@@ -9,11 +9,16 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from fastapi.responses import JSONResponse
 from pydantic import SecretStr, ValidationError
 from sqlalchemy import CheckConstraint, Table
 
 from novel_platform import relay as provider_relay_module
-from novel_platform.api.schemas import ProviderCredentialPut
+from novel_platform.api.schemas import (
+    ProviderCredentialPut,
+    ProviderModelsRequest,
+    ProviderModelsResponse,
+)
 from novel_platform.application.errors import ApplicationError
 from novel_platform.application.provider_credentials.service import (
     ALGORITHM,
@@ -263,7 +268,7 @@ def test_legacy_v1_run_snapshot_ignores_migrated_routing_and_thinking_columns() 
 
 
 @pytest.mark.asyncio
-async def test_new_openai_configuration_and_empty_status_ignore_legacy_upstream() -> None:
+async def test_new_openai_configuration_requires_model_and_empty_status_has_none() -> None:
     service = object.__new__(ProviderCredentialService)
     service.settings = Settings(
         provider_relay_upstream_base_url="https://legacy-operator.example/v1",
@@ -280,20 +285,29 @@ async def test_new_openai_configuration_and_empty_status_ignore_legacy_upstream(
         ),
     )
 
+    with pytest.raises(ApplicationError) as missing_model:
+        service._provider_configuration(
+            provider="openai_compatible",
+            provider_name=None,
+            base_url=None,
+            model=None,
+            thinking_enabled=False,
+        )
+    assert missing_model.value.code == "invalid_provider_configuration"
     configuration = service._provider_configuration(
         provider="openai_compatible",
         provider_name=None,
         base_url=None,
-        model=None,
+        model="gpt-discovered",
         thinking_enabled=False,
     )
     status = await service.status(uuid4())
 
     assert configuration.base_url == "https://api.openai.com/v1"
-    assert configuration.model == "gpt-4.1-mini"
+    assert configuration.model == "gpt-discovered"
     assert status.configured is False
     assert status.base_url == "https://api.openai.com/v1"
-    assert status.model == "gpt-4.1-mini"
+    assert status.model is None
 
     legacy = ProviderCredentialVersionModel(
         id=uuid4(),
@@ -366,7 +380,7 @@ def test_v2_run_snapshot_projects_non_empty_provider_display_name(
     assert snapshot["credential_provider_name"] == display_name
 
 
-def test_orm_custom_provider_constraint_requires_non_null_name() -> None:
+def test_orm_custom_provider_constraint_and_routing_require_explicit_values() -> None:
     table = cast(Table, ProviderCredentialVersionModel.__table__)
     constraint = next(
         item
@@ -376,12 +390,21 @@ def test_orm_custom_provider_constraint_requires_non_null_name() -> None:
     )
 
     assert "provider_name IS NOT NULL" in str(constraint.sqltext)
+    assert table.c.base_url.default is None
+    assert table.c.base_url.server_default is None
+    assert table.c.model.default is None
+    assert table.c.model.server_default is None
 
 
 def test_provider_payload_requires_custom_fields_and_rejects_them_for_presets() -> None:
-    default = ProviderCredentialPut.model_validate({"api_key": "sk-default"})
+    with pytest.raises(ValidationError, match="model"):
+        ProviderCredentialPut.model_validate({"api_key": "sk-default"})
+
+    default = ProviderCredentialPut.model_validate(
+        {"model": "gpt-discovered", "api_key": "sk-default"}
+    )
     assert default.provider == "openai_compatible"
-    assert default.model is None
+    assert default.model == "gpt-discovered"
     assert default.thinking_enabled is False
 
     custom = ProviderCredentialPut.model_validate(
@@ -400,8 +423,8 @@ def test_provider_payload_requires_custom_fields_and_rejects_them_for_presets() 
         ProviderCredentialPut.model_validate(
             {
                 "provider": "custom",
-                "custom_name": "私有模型",
                 "base_url": "https://provider.example/v1",
+                "model": "custom-model",
                 "api_key": "sk-custom",
             }
         )
@@ -410,7 +433,44 @@ def test_provider_payload_requires_custom_fields_and_rejects_them_for_presets() 
             {
                 "provider": "deepseek",
                 "base_url": "https://attacker.example/v1",
+                "model": "deepseek-chat",
                 "api_key": "sk-deepseek",
+            }
+        )
+
+
+def test_provider_models_api_schemas_expose_only_the_bounded_contract() -> None:
+    request = ProviderModelsRequest.model_validate(
+        {
+            "provider": "custom",
+            "base_url": " https://provider.example/v1 ",
+            "api_key": "sk-discovery",
+        }
+    )
+    assert request.provider == "custom"
+    assert request.base_url == "https://provider.example/v1"
+    assert request.api_key.get_secret_value() == "sk-discovery"
+    assert ProviderModelsRequest.model_json_schema()["properties"]["api_key"]["writeOnly"] is True
+
+    response = ProviderModelsResponse(
+        provider="deepseek",
+        models=["deepseek-chat", "deepseek-reasoner"],
+    )
+    assert response.model_dump() == {
+        "provider": "deepseek",
+        "models": ["deepseek-chat", "deepseek-reasoner"],
+    }
+
+    with pytest.raises(ValidationError, match="provider"):
+        ProviderModelsRequest.model_validate({"api_key": "sk-discovery"})
+    with pytest.raises(ValidationError, match="requires base_url"):
+        ProviderModelsRequest.model_validate({"provider": "custom", "api_key": "sk-discovery"})
+    with pytest.raises(ValidationError, match="do not accept base_url"):
+        ProviderModelsRequest.model_validate(
+            {
+                "provider": "kimi",
+                "base_url": "https://attacker.example/v1",
+                "api_key": "sk-discovery",
             }
         )
 
@@ -428,6 +488,191 @@ def test_custom_provider_base_url_allowlist_is_normalized_and_https_in_staging()
             provider_relay_service_secret=SecretStr("relay-secret-" + ("r" * 32)),
             provider_relay_custom_allowed_base_urls=["http://provider.example/v1"],
         )
+
+
+@pytest.mark.asyncio
+async def test_model_discovery_uses_bound_targets_and_returns_all_valid_unique_ids() -> None:
+    service = object.__new__(ProviderCredentialService)
+    service.settings = Settings(
+        provider_relay_upstream_base_url="https://legacy-operator.example/v1",
+        provider_relay_custom_allowed_base_urls=["https://provider.example/v1"],
+    )
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.method == "GET"
+        assert request.headers["Authorization"] == "Bearer sk-discovery"
+        assert request.headers["Accept"] == "application/json"
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            json={
+                "object": "list",
+                "data": [
+                    {"id": "z-model"},
+                    {"id": "a-model"},
+                    {"id": "z-model"},
+                    {"id": ""},
+                    {"id": " padded-model "},
+                    {"id": "line\nbreak"},
+                    {"id": "x" * 121},
+                    {"id": 42},
+                    {"missing": "id"},
+                    "not-an-object",
+                ],
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    openai = await service.discover_models(
+        provider="openai_compatible",
+        base_url=None,
+        api_key="sk-discovery",
+        transport=transport,
+    )
+    custom = await service.discover_models(
+        provider="custom",
+        base_url="https://provider.example/v1/",
+        api_key="sk-discovery",
+        transport=transport,
+    )
+
+    assert openai.provider == "openai_compatible"
+    assert openai.models == ["a-model", "z-model"]
+    assert custom.provider == "custom"
+    assert custom.models == ["a-model", "z-model"]
+    assert [str(request.url) for request in requests] == [
+        "https://api.openai.com/v1/models",
+        "https://provider.example/v1/models",
+    ]
+
+    with pytest.raises(ApplicationError) as denied:
+        await service.discover_models(
+            provider="custom",
+            base_url="https://attacker.example/v1",
+            api_key="sk-discovery",
+            transport=transport,
+        )
+    assert denied.value.code == "provider_base_url_not_allowed"
+    assert len(requests) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(
+            302,
+            headers={
+                "Location": "https://attacker.example/models",
+                "Content-Type": "application/json",
+            },
+            json={"data": []},
+        ),
+        httpx.Response(
+            200,
+            headers={"Content-Type": "text/plain"},
+            text="upstream-secret-body",
+        ),
+        httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            content=b"not-json",
+        ),
+        httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            json={"models": []},
+        ),
+        httpx.Response(
+            401,
+            headers={"Content-Type": "application/json"},
+            json={"error": "sk-reflected must not escape"},
+        ),
+        httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            json={"data": [{"id": "sk-reflected"}]},
+        ),
+    ],
+)
+async def test_model_discovery_rejects_unsafe_upstream_responses_without_details(
+    response: httpx.Response,
+) -> None:
+    service = object.__new__(ProviderCredentialService)
+    service.settings = Settings()
+
+    with pytest.raises(ApplicationError) as failure:
+        await service.discover_models(
+            provider="kimi",
+            base_url=None,
+            api_key="sk-reflected",
+            transport=httpx.MockTransport(lambda _request: response),
+        )
+
+    assert failure.value.code == "provider_models_invalid_response"
+    rendered = f"{failure.value.message} {failure.value.details}"
+    assert "sk-reflected" not in rendered
+    assert "upstream-secret-body" not in rendered
+    assert "attacker.example" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_model_discovery_bounds_response_and_suppresses_transport_details() -> None:
+    service = object.__new__(ProviderCredentialService)
+    service.settings = Settings(provider_relay_max_response_bytes=32)
+
+    with pytest.raises(ApplicationError) as oversized:
+        await service.discover_models(
+            provider="deepseek",
+            base_url=None,
+            api_key="sk-bounded",
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(
+                    200,
+                    headers={"Content-Type": "application/json"},
+                    json={"data": [{"id": "model-that-makes-the-response-too-large"}]},
+                )
+            ),
+        )
+    assert oversized.value.code == "provider_models_invalid_response"
+
+    def malformed_encoding(request: httpx.Request) -> httpx.Response:
+        raise httpx.DecodingError(
+            "sk-bounded malformed compression from private-upstream.example",
+            request=request,
+        )
+
+    with pytest.raises(ApplicationError) as invalid_encoding:
+        await service.discover_models(
+            provider="deepseek",
+            base_url=None,
+            api_key="sk-bounded",
+            transport=httpx.MockTransport(malformed_encoding),
+        )
+    assert invalid_encoding.value.code == "provider_models_invalid_response"
+    rendered = f"{invalid_encoding.value.message} {invalid_encoding.value.details}"
+    assert "sk-bounded" not in rendered
+    assert "private-upstream.example" not in rendered
+
+    def unavailable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            "sk-bounded https://private-upstream.example",
+            request=request,
+        )
+
+    with pytest.raises(ApplicationError) as transport_failure:
+        await service.discover_models(
+            provider="deepseek",
+            base_url=None,
+            api_key="sk-bounded",
+            transport=httpx.MockTransport(unavailable),
+        )
+    assert transport_failure.value.code == "provider_models_unavailable"
+    rendered = f"{transport_failure.value.message} {transport_failure.value.details}"
+    assert "sk-bounded" not in rendered
+    assert "private-upstream.example" not in rendered
 
 
 def test_v2_relay_destination_rechecks_bound_provider_policy() -> None:
@@ -582,10 +827,38 @@ async def test_kimi_relay_injects_explicit_bound_thinking_mode(
     assert captured["thinking"] == {"type": expected_type}
 
 
+@pytest.mark.asyncio
+async def test_relay_classifies_malformed_provider_encoding_as_protocol_error() -> None:
+    def malformed_encoding(request: httpx.Request) -> httpx.Response:
+        raise httpx.DecodingError(
+            "sk-relay malformed compression from private-upstream.example",
+            request=request,
+        )
+
+    result = await _call_upstream(
+        ChatCompletionRequest.model_validate(
+            {
+                "model": "lingua-ingress-model",
+                "messages": [{"role": "user", "content": "正文"}],
+            }
+        ),
+        "sk-relay",
+        ProviderRelaySettings(),
+        transport=httpx.MockTransport(malformed_encoding),
+    )
+
+    assert isinstance(result, JSONResponse)
+    assert result.status_code == 502
+    rendered = bytes(result.body).decode()
+    assert "provider_protocol_error" in rendered
+    assert "sk-relay" not in rendered
+    assert "private-upstream.example" not in rendered
+
+
 def test_provider_key_validation_errors_do_not_render_the_secret() -> None:
     secret = "sk-" + ("sensitive" * 2000)
     with pytest.raises(ValidationError) as failure:
-        ProviderCredentialPut.model_validate({"api_key": secret})
+        ProviderCredentialPut.model_validate({"model": "gpt-discovered", "api_key": secret})
     assert secret not in str(failure.value)
 
 

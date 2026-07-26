@@ -40,6 +40,15 @@ upstream call. Redirects remain disabled. Adding an allowed custom destination i
 explicit deployment decision, not authority for a reader to make the Relay contact an arbitrary
 host.
 
+The product does not maintain or preselect a Provider model catalogue. Before saving, the reader
+submits the write-only key to an authenticated Server model-discovery endpoint. The Server makes
+one bounded, no-redirect `GET /models` request to the same preset or exact-allowlisted destination
+and returns only unique, validated model IDs from the Provider's response. It does not persist the
+key or raw response, and it rejects a response that reflects the key. The browser must invalidate
+the transient list whenever Provider, custom base URL or key changes and must submit an explicit
+selection from the freshly loaded list. Existing bound versions keep their stored model even if a
+later Provider catalogue changes.
+
 Thinking mode defaults to disabled and is never inferred from a generic browser boolean:
 
 - DeepSeek enables thinking exactly when the bound model is `deepseek-reasoner`; disabled
@@ -76,6 +85,10 @@ a shared/site-funded fallback and does not grant translation authority.
 
 - OpenAI, DeepSeek and Kimi work as first-class choices while custom OpenAI-compatible services
   require an explicit operator allow-list entry.
+- Model choices come from the selected Provider at configuration time rather than a
+  product-maintained default list. Model discovery therefore requires a valid supplied key and an
+  available compatible `/models` endpoint; it does not prove that every listed model supports the
+  translation Chat Completions workload.
 - One User cannot keep several simultaneously current keys or choose a different Provider per Run;
   selecting another Provider rotates the current configuration.
 - Thinking remains off unless a supported DeepSeek/Kimi configuration is explicitly saved; an

@@ -5,9 +5,12 @@ from fastapi import APIRouter, Depends, Response, status
 from novel_platform.api.dependencies.auth import CurrentAuth
 from novel_platform.api.dependencies.database import DatabaseSession
 from novel_platform.api.schemas import (
+    ErrorResponse,
     ProviderCredentialPut,
     ProviderCredentialStatusResponse,
     ProviderCredentialUsageResponse,
+    ProviderModelsRequest,
+    ProviderModelsResponse,
     ProviderUsageTotalsResponse,
 )
 from novel_platform.application.access import LibraryAccessService
@@ -77,11 +80,13 @@ async def get_provider_credential(
 )
 async def put_provider_credential(
     payload: ProviderCredentialPut,
+    response: Response,
     session: DatabaseSession,
     auth: CurrentAuth,
     settings: ProviderSettings,
 ) -> ProviderCredentialStatusResponse:
     await _require_translation(session, auth)
+    response.headers["Cache-Control"] = "no-store"
     return _status_response(
         await ProviderCredentialService(session, settings).rotate(
             auth,
@@ -93,6 +98,31 @@ async def put_provider_credential(
             thinking_enabled=payload.thinking_enabled,
         )
     )
+
+
+@router.post(
+    "/provider-credential/models",
+    response_model=ProviderModelsResponse,
+    responses={
+        status.HTTP_502_BAD_GATEWAY: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+async def discover_provider_models(
+    payload: ProviderModelsRequest,
+    response: Response,
+    session: DatabaseSession,
+    auth: CurrentAuth,
+    settings: ProviderSettings,
+) -> ProviderModelsResponse:
+    await _require_translation(session, auth)
+    response.headers["Cache-Control"] = "no-store"
+    result = await ProviderCredentialService(session, settings).discover_models(
+        provider=payload.provider,
+        base_url=payload.base_url,
+        api_key=payload.api_key.get_secret_value(),
+    )
+    return ProviderModelsResponse(provider=result.provider, models=result.models)
 
 
 @router.get(

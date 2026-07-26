@@ -70,29 +70,29 @@ def upgrade() -> None:
     )
 
     op.create_check_constraint(
-        "ck_provider_credential_versions_provider_known",
+        "provider_known",
         "provider_credential_versions",
         "provider IN ('openai_compatible', 'deepseek', 'kimi', 'custom')",
     )
     op.create_check_constraint(
-        "ck_provider_credential_versions_provider_name_matches_provider",
+        "provider_name_matches_provider",
         "provider_credential_versions",
         "(provider = 'custom' AND provider_name IS NOT NULL "
         "AND length(btrim(provider_name)) > 0) "
         "OR (provider <> 'custom' AND provider_name IS NULL)",
     )
     op.create_check_constraint(
-        "ck_provider_credential_versions_base_url_not_blank",
+        "base_url_not_blank",
         "provider_credential_versions",
         "length(btrim(base_url)) > 0",
     )
     op.create_check_constraint(
-        "ck_provider_credential_versions_model_not_blank",
+        "model_not_blank",
         "provider_credential_versions",
         "length(btrim(model)) > 0",
     )
     op.create_check_constraint(
-        "ck_provider_credential_versions_algorithm_supported",
+        "algorithm_supported",
         "provider_credential_versions",
         "algorithm IN ('aes-256-gcm-v1', 'aes-256-gcm-v2')",
     )
@@ -113,6 +113,20 @@ def upgrade() -> None:
         "algorithm",
         server_default="aes-256-gcm-v2",
         existing_type=sa.String(length=32),
+        existing_nullable=False,
+    )
+    op.alter_column(
+        "provider_credential_versions",
+        "base_url",
+        server_default=None,
+        existing_type=sa.String(length=2048),
+        existing_nullable=False,
+    )
+    op.alter_column(
+        "provider_credential_versions",
+        "model",
+        server_default=None,
+        existing_type=sa.String(length=120),
         existing_nullable=False,
     )
 
@@ -175,12 +189,12 @@ def downgrade() -> None:
         type_="check",
     )
     op.create_check_constraint(
-        "ck_provider_credential_versions_provider_openai_compatible",
+        "provider_openai_compatible",
         "provider_credential_versions",
         "provider = 'openai_compatible'",
     )
     op.create_check_constraint(
-        "ck_provider_credential_versions_algorithm_aes_256_gcm_v1",
+        "algorithm_aes_256_gcm_v1",
         "provider_credential_versions",
         "algorithm = 'aes-256-gcm-v1'",
     )

@@ -848,12 +848,38 @@ async def test_multi_provider_migration_preserves_legacy_credential_semantics() 
                     "AND column_name='algorithm'"
                 )
             )
+            routing_defaults = dict(
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT column_name, column_default "
+                            "FROM information_schema.columns "
+                            "WHERE table_schema='public' "
+                            "AND table_name='provider_credential_versions' "
+                            "AND column_name IN ('base_url', 'model')"
+                        )
+                    )
+                ).all()
+            )
             version_constraint = await connection.scalar(
                 text(
                     "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
                     "WHERE conrelid='provider_credential_versions'::regclass "
                     "AND conname='uq_provider_credential_versions_user_version'"
                 )
+            )
+            check_constraints = set(
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT conname FROM pg_constraint "
+                            "WHERE conrelid='provider_credential_versions'::regclass "
+                            "AND contype='c'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
             )
             current_index = await connection.scalar(
                 text(
@@ -877,7 +903,15 @@ async def test_multi_provider_migration_preserves_legacy_credential_semantics() 
         }
         assert algorithm_default is not None
         assert "aes-256-gcm-v2" in algorithm_default
+        assert routing_defaults == {"base_url": None, "model": None}
         assert version_constraint == "UNIQUE (user_id, version)"
+        assert {
+            "ck_provider_credential_versions_provider_known",
+            "ck_provider_credential_versions_provider_name_matches_provider",
+            "ck_provider_credential_versions_base_url_not_blank",
+            "ck_provider_credential_versions_model_not_blank",
+            "ck_provider_credential_versions_algorithm_supported",
+        } <= check_constraints
         assert current_index is not None
         assert "UNIQUE INDEX" in current_index
         assert "USING btree (user_id)" in current_index
@@ -903,8 +937,10 @@ async def test_multi_provider_migration_downgrade_refuses_incompatible_rows() ->
             await connection.execute(
                 text(
                     "INSERT INTO provider_credential_versions "
-                    "(id, user_id, provider, version, nonce, ciphertext) "
-                    "VALUES (:id, :user, 'openai_compatible', 1, :nonce, :ciphertext)"
+                    "(id, user_id, provider, base_url, model, version, nonce, ciphertext) "
+                    "VALUES (:id, :user, 'openai_compatible', "
+                    "'https://api.openai.com/v1', 'explicit-test-model', "
+                    "1, :nonce, :ciphertext)"
                 ),
                 {
                     "id": credential_id,
@@ -933,9 +969,10 @@ async def test_multi_provider_migration_downgrade_refuses_incompatible_rows() ->
             await connection.execute(
                 text(
                     "INSERT INTO provider_credential_versions "
-                    "(id, user_id, provider, version, algorithm, nonce, ciphertext) "
-                    "VALUES (:id, :user, 'deepseek', 1, 'aes-256-gcm-v1', "
-                    ":nonce, :ciphertext)"
+                    "(id, user_id, provider, base_url, model, version, algorithm, "
+                    "nonce, ciphertext) "
+                    "VALUES (:id, :user, 'deepseek', 'https://api.deepseek.com/v1', "
+                    "'deepseek-chat', 1, 'aes-256-gcm-v1', :nonce, :ciphertext)"
                 ),
                 {
                     "id": credential_id,

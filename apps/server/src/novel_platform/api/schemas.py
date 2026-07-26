@@ -410,12 +410,12 @@ class ProviderCredentialPut(StrictModel):
     provider: ProviderKind = "openai_compatible"
     custom_name: str | None = Field(default=None, min_length=1, max_length=120)
     base_url: str | None = Field(default=None, min_length=1, max_length=2048)
-    model: str | None = Field(default=None, min_length=1, max_length=120)
+    model: str = Field(min_length=1, max_length=120)
     thinking_enabled: bool = False
     api_key: SecretStr = Field(
         min_length=1,
         max_length=8192,
-        json_schema_extra={"format": "password"},
+        json_schema_extra={"format": "password", "writeOnly": True},
     )
 
     @model_validator(mode="after")
@@ -428,11 +428,39 @@ class ProviderCredentialPut(StrictModel):
                     raise ValueError(f"{field_name} must not be blank")
                 setattr(self, field_name, normalized)
         if self.provider == "custom":
-            if self.custom_name is None or self.base_url is None or self.model is None:
-                raise ValueError("custom Provider requires custom_name, base_url, and model")
+            if self.custom_name is None or self.base_url is None:
+                raise ValueError("custom Provider requires custom_name and base_url")
         elif self.custom_name is not None or self.base_url is not None:
             raise ValueError("preset Providers do not accept custom_name or base_url")
         return self
+
+
+class ProviderModelsRequest(StrictModel):
+    provider: ProviderKind
+    base_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    api_key: SecretStr = Field(
+        min_length=1,
+        max_length=8192,
+        json_schema_extra={"format": "password", "writeOnly": True},
+    )
+
+    @model_validator(mode="after")
+    def validate_provider_configuration(self) -> "ProviderModelsRequest":
+        if self.base_url is not None:
+            self.base_url = self.base_url.strip()
+            if not self.base_url:
+                raise ValueError("base_url must not be blank")
+        if self.provider == "custom":
+            if self.base_url is None:
+                raise ValueError("custom Provider requires base_url")
+        elif self.base_url is not None:
+            raise ValueError("preset Providers do not accept base_url")
+        return self
+
+
+class ProviderModelsResponse(BaseModel):
+    provider: ProviderKind
+    models: list[str]
 
 
 class ProviderUsageTotalsResponse(BaseModel):
@@ -452,7 +480,7 @@ class ProviderCredentialStatusResponse(BaseModel):
     provider: ProviderKind
     provider_name: str
     base_url: str
-    model: str
+    model: str | None
     thinking_enabled: bool
     version: int | None
     updated_at: datetime | None

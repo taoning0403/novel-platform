@@ -14,9 +14,9 @@ const steps = [];
 
 const criterionLabels = [
   "不覆盖历史证据地重放适用的 v0.9 capability、贡献者、翻译、认证与 Reader 回归",
-  "个人 Provider 凭据加密、轮换、移除、用量与 Run 固定版本/作用域",
+  "Provider 实时模型目录、个人凭据加密/轮换/移除/用量与 Run 固定版本/作用域",
   "私有 Relay 的服务认证、版本绑定 Provider/模型/思考策略、边界、脱敏与 token 用量记录",
-  "Web 凭据管理、无共享 Key 回退的启动门禁与翻译工作区交互",
+  "Web 实时模型选择、凭据管理、无共享 Key 回退的启动门禁与翻译工作区交互",
   "v0.10.0 package/API 版本、BYOK OpenAPI 路径与非秘密响应契约",
   "LinguaSpindle v0.3.2 兼容、Relay 私网拓扑与 Provider 秘密泄漏防护",
 ];
@@ -305,7 +305,7 @@ async function main() {
         ],
         { cwd: path.join(root, "apps", "server") },
       );
-      mark([2], "focused vault/Relay/LinguaSpindle unit suite");
+      mark([2], "focused live-model/vault/Relay/LinguaSpindle unit suite");
       addEvidence([3, 6], "focused vault/Relay/LinguaSpindle unit suite");
     });
 
@@ -326,7 +326,7 @@ async function main() {
           "tests/AuthFlow.test.tsx",
         ],
       );
-      mark([4], "focused credential page, launch gate, workspace, API and route suite");
+      mark([4], "focused live-model credential page, launch gate, workspace, API and route suite");
     });
 
     await step("Verify v0.10 package, API and non-secret BYOK contracts", async () => {
@@ -365,6 +365,7 @@ async function main() {
       const openapi = JSON.parse(openapiText);
       assert(openapi.info?.version === "0.10.0", "OpenAPI version is not 0.10.0");
       const credentialPath = openapi.paths?.["/api/v1/me/provider-credential"];
+      const modelsPath = openapi.paths?.["/api/v1/me/provider-credential/models"];
       const usagePath = openapi.paths?.["/api/v1/me/provider-credential/usage"];
       assert(
         credentialPath?.get && credentialPath?.put && credentialPath?.delete,
@@ -375,11 +376,21 @@ async function main() {
         "Provider credential removal does not retain the empty 204 contract",
       );
       assert(usagePath?.get, "Provider credential usage GET contract is missing");
+      assert(modelsPath?.post, "Provider live-model discovery POST contract is missing");
       assert(
         schemaRefName(
           credentialPath.put.requestBody?.content?.["application/json"]?.schema,
         ) === "ProviderCredentialPut",
         "Provider credential PUT is not bound to the Provider configuration input schema",
+      );
+      assert(
+        schemaRefName(
+          modelsPath.post.requestBody?.content?.["application/json"]?.schema,
+        ) === "ProviderModelsRequest" &&
+          schemaRefName(
+            modelsPath.post.responses?.["200"]?.content?.["application/json"]?.schema,
+          ) === "ProviderModelsResponse",
+        "Provider model discovery is not bound to the narrow write-only-key catalogue contract",
       );
       assert(
         schemaRefName(
@@ -395,6 +406,7 @@ async function main() {
       );
 
       const putProperties = schemaProperties(openapi, "ProviderCredentialPut");
+      const putRequired = openapi.components?.schemas?.ProviderCredentialPut?.required ?? [];
       assert(
         Object.keys(putProperties).sort().join(",") ===
             "api_key,base_url,custom_name,model,provider,thinking_enabled" &&
@@ -402,15 +414,35 @@ async function main() {
           putProperties.api_key?.format === "password" &&
           putProperties.api_key?.writeOnly === true &&
           putProperties.provider?.default === "openai_compatible" &&
+          putRequired.includes("api_key") &&
+          putRequired.includes("model") &&
           putProperties.thinking_enabled?.type === "boolean" &&
           putProperties.thinking_enabled?.default === false,
         "Provider credential write contract lacks routing fields or the default-off thinking switch",
+      );
+      const modelsRequestProperties = schemaProperties(openapi, "ProviderModelsRequest");
+      const modelsResponseProperties = schemaProperties(openapi, "ProviderModelsResponse");
+      const modelsRequestRequired =
+        openapi.components?.schemas?.ProviderModelsRequest?.required ?? [];
+      assert(
+        Object.keys(modelsRequestProperties).sort().join(",") ===
+            "api_key,base_url,provider" &&
+          modelsRequestProperties.api_key?.type === "string" &&
+          modelsRequestProperties.api_key?.format === "password" &&
+          modelsRequestProperties.api_key?.writeOnly === true &&
+          modelsRequestRequired.includes("provider") &&
+          modelsRequestRequired.includes("api_key") &&
+          Object.keys(modelsResponseProperties).sort().join(",") === "models,provider" &&
+          modelsResponseProperties.models?.type === "array" &&
+          modelsResponseProperties.models?.items?.type === "string",
+        "Provider model discovery contract exposes more than Provider/base/key or lacks model IDs",
       );
       const statusProperties = schemaProperties(openapi, "ProviderCredentialStatusResponse");
       assert(
         ["provider", "provider_name", "base_url", "model", "thinking_enabled"].every(
           (name) => Object.hasOwn(statusProperties, name),
         ) &&
+          statusProperties.model?.anyOf?.some((item) => item.type === "null") &&
           openapi.components?.schemas?.ProviderKind?.enum?.join(",") ===
             "openai_compatible,deepseek,kimi,custom",
         "Provider credential status/enum contract lacks multi-Provider routing metadata",
@@ -451,12 +483,15 @@ async function main() {
       );
       assert(
         generatedSchema.includes('"/api/v1/me/provider-credential"') &&
+          generatedSchema.includes('"/api/v1/me/provider-credential/models"') &&
           generatedSchema.includes('"/api/v1/me/provider-credential/usage"') &&
           generatedSchema.includes(
             'ProviderKind: "openai_compatible" | "deepseek" | "kimi" | "custom"',
           ) &&
+          generatedSchema.includes("ProviderModelsRequest:") &&
+          generatedSchema.includes("ProviderModelsResponse:") &&
           generatedSchema.includes("thinking_enabled: boolean"),
-        "generated TypeScript schema lacks BYOK routing/thinking contracts",
+        "generated TypeScript schema lacks live-model/BYOK routing/thinking contracts",
       );
       assert(
         !generatedSchema.includes("credential_scope"),

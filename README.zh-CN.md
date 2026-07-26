@@ -13,8 +13,10 @@ Edition，管理员还可按凭证分别授予文件上传或 TXT 小说翻译�
 v0.10.0 保留 v0.9 的 capability、贡献归属和生成 Edition 模型，并引入阅读者自有的
 Provider 凭据。每位翻译发起人把一个当前 OpenAI、DeepSeek、Kimi 或管理员允许的自定义
 配置及只写 Key 保存为不可变的 AES-256-GCM 加密版本；Run 全程固定该版本承担用量，并可
-查看脱敏的请求/Token 汇总。LinguaSpindle v0.3.2 只接收不透明凭据 scope，再调用固定策略
-的私有 Relay；LinguaSpindle 与浏览器都拿不到上游 Key，系统也不会回退到管理员或共享 Key。
+查看脱敏的请求/Token 汇总。配置时使用只写 Key 读取所选 Provider 的实时 `/models` 目录并
+要求显式选择，漫读不维护或预选模型列表。LinguaSpindle v0.3.2 只接收不透明凭据 scope，
+再调用固定策略的私有 Relay；LinguaSpindle 与浏览器都拿不到上游 Key，系统也不会回退到
+管理员或共享 Key。
 
 已部署的 v0.10.0 基线已经完成；当前源码树包含尚未分配下一发布版本号的 post-v0.10
 Provider 路由增量，package/API metadata 暂时仍为 v0.10.0。候选与部署证据必须标明精确 commit，
@@ -265,13 +267,19 @@ v0.4 已验收的 Reader、文件修订、Edition 身份、source/supersedes、�
 
 当前具备 `translation.use` 的 actor 只能通过 `/api/v1/me/provider-credential` 管理自己的
 一个当前 OpenAI、DeepSeek、Kimi 或管理员 allowlist 中的自定义 OpenAI-compatible 配置。
-原始 Key 只由 PUT 接收，以唯一 nonce 及绑定所有者、版本、路由、模型和思考状态的认证数据
-加密；Web 提交后清空表单，服务不会返回 Key、提示、哈希或其他可逆/派生信息，也不会写入
-浏览器存储。思考模式默认关闭：DeepSeek 与 `deepseek-reasoner` 严格对应，Kimi
+原始 Key 只作为只写值由临时模型目录请求和凭据 PUT 接收；只有 PUT 会用唯一 nonce 及绑定
+所有者、版本、路由、模型和思考状态的认证数据加密。Web 保存前会清空表单，服务不会返回
+Key、提示、哈希或其他可逆/派生信息，也不会写入浏览器存储。思考模式默认关闭：DeepSeek
+与 `deepseek-reasoner` 严格对应，Kimi
 `kimi-k2.5` 会收到显式 enabled/disabled 字段，OpenAI、自定义及不支持的 Kimi 模型不能
 打开这个通用开关。轮换、切换 Provider 或改变思考状态都会创建新的不可变 current 版本并
 退休旧版本；已创建 Run 始终固定原版本。删除会撤销该 User 的全部版本，包括尚未完成 Run
 所绑定的版本。
+
+读取模型目录时，已认证页面把尚未保存的只写 Key 提交给 Server；Server 只对所选预设地址或
+精确命中 allowlist 的自定义地址执行一次有大小上限、禁止重定向的 `GET /models`。浏览器只
+收到去重并校验过的模型 ID，Key 和原始 Provider 响应不会持久化或返回。Provider、自定义
+Base URL 或 Key 任一变化都会使临时列表失效，保存前必须重新读取并从该列表选择。
 
 启动翻译必须同时具备当前翻译权限和当前个人凭据。凭据缺失、撤销、无法解密或绑定不符均
 失败关闭，绝不回退管理员或站点出资 Key。Relay 只接受固定 Chat Completions 路径、服务

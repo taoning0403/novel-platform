@@ -91,13 +91,24 @@ export function TranslationLaunchModal({
     };
   }, [book.canonical_title, edition, isRetranslation, open]);
 
+  const usableCredential = credential?.configured === true
+    && typeof credential.model === "string"
+    && credential.model.trim() !== ""
+    ? {
+        providerName: credential.provider_name,
+        model: credential.model,
+        thinkingEnabled: credential.thinking_enabled,
+        version: credential.version,
+      }
+    : null;
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
       source === null
       || clientRequestId === ""
       || service?.available !== true
-      || credential?.configured !== true
+      || usableCredential === null
     ) return;
     setIsSubmitting(true);
     setError(null);
@@ -118,7 +129,7 @@ export function TranslationLaunchModal({
           provider: "openai_compatible",
           provider_name: "OpenAI",
           base_url: "https://api.openai.com/v1",
-          model: "gpt-4.1-mini",
+          model: null,
           thinking_enabled: false,
           version: null,
           updated_at: null,
@@ -188,8 +199,8 @@ export function TranslationLaunchModal({
               <small>
                 LinguaSpindle {service.version ?? "未知版本"} · {service.pipeline_key}
                 {service.pipeline_version ? ` ${service.pipeline_version}` : ""}
-                {credential?.configured
-                  ? ` · ${credential.provider_name} · ${credential.model}${credential.thinking_enabled ? " · 思考模式" : ""} · 个人凭据 v${credential.version ?? "—"}`
+                {usableCredential
+                  ? ` · ${usableCredential.providerName} · ${usableCredential.model}${usableCredential.thinkingEnabled ? " · 思考模式" : ""} · 个人凭据 v${usableCredential.version ?? "—"}`
                   : ""}
               </small>
             ) : null}
@@ -203,7 +214,7 @@ export function TranslationLaunchModal({
             />
           ) : null}
 
-          {!isChecking && credential?.configured === false ? (
+          {!isChecking && credential !== null && usableCredential === null ? (
             <Alert
               type="warning"
               showIcon
@@ -259,7 +270,7 @@ export function TranslationLaunchModal({
               disabled={(
                 source === null
                 || service?.available !== true
-                || credential?.configured !== true
+                || usableCredential === null
               )}
             >
               {isRetranslation ? "创建重译任务" : "创建翻译任务"}

@@ -122,9 +122,11 @@ unchanged.
 - Thinking defaults off. DeepSeek enables it only through exact `deepseek-reasoner` equivalence;
   Kimi injects an explicit enabled/disabled field only for `kimi-k2.5`; OpenAI, custom and
   unsupported Kimi models cannot enable the generic switch.
-- The personal credential page configures Provider/model/custom metadata and exposes only
-  non-secret status. Translation launch and task detail show the bound Provider/model/thinking
-  snapshot without allowing per-Run switching.
+- The personal credential page loads the selected Provider's live `/models` catalogue with the
+  write-only key through POST `/api/v1/me/provider-credential/models`, requires a model selection
+  from that transient list, and maintains no product-selected model default. It exposes only
+  non-secret saved status. Translation launch and task detail show the bound
+  Provider/model/thinking snapshot without allowing per-Run switching.
 - Alembic `20260726_0008` adds the routing/thinking columns, one current version and one monotonic
   per-User version sequence. Backup manifests declare the custom-route allow-list as an external
   configuration dependency, and isolated restore verifies the 0008 constraints and invariants.
@@ -146,8 +148,8 @@ unchanged.
   paid request or user-content egress was used.
 - Historical acceptance scripts/evidence remain intact. v0.10 does not rewrite v0.9 evidence to
   claim that operator-funded/shared-key translation remains supported.
-- The Provider-routing increment passes Server lint/format/type checks, 101 unit tests and 31
-  PostgreSQL integration tests plus Web lint, 56 tests, production build, generated-contract
+- The Provider-routing increment passes Server lint/format/type checks, 111 unit tests and 32
+  PostgreSQL integration tests plus Web lint, 59 tests, production build, generated-contract
   refresh, Compose validation and script syntax checks. Its exact-commit
   `acceptance-v0100-provider-routing*` gate and external 0008 deployment verification remain
   pending until the candidate is committed.

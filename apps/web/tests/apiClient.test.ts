@@ -99,11 +99,22 @@ describe("authenticated API client", () => {
       init?: RequestInit,
     ) => {
       const url = String(input);
-      expect(url).toMatch(/\/api\/v1\/me\/provider-credential$/);
       expect(url).not.toContain(providerKey);
       expect(new Headers(init?.headers).get("Authorization")).toBe(
         "Bearer current-access-token",
       );
+      if (url.endsWith("/api/v1/me/provider-credential/models")) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          provider: "deepseek",
+          api_key: providerKey,
+        });
+        return jsonResponse({
+          provider: "deepseek",
+          models: ["deepseek-chat", "deepseek-reasoner"],
+        });
+      }
+      expect(url).toMatch(/\/api\/v1\/me\/provider-credential$/);
       if (init?.method === "PUT") {
         expect(JSON.parse(String(init.body))).toEqual({
           api_key: providerKey,
@@ -144,7 +155,7 @@ describe("authenticated API client", () => {
         provider: "openai_compatible",
         provider_name: "OpenAI",
         base_url: "https://api.openai.com/v1",
-        model: "gpt-4.1-mini",
+        model: null,
         thinking_enabled: false,
         version: null,
         updated_at: null,
@@ -168,6 +179,15 @@ describe("authenticated API client", () => {
 
     expect(await api.getProviderCredential()).toMatchObject({ configured: false });
     expect(
+      await api.listProviderModels({
+        provider: "deepseek",
+        api_key: providerKey,
+      }),
+    ).toEqual({
+      provider: "deepseek",
+      models: ["deepseek-chat", "deepseek-reasoner"],
+    });
+    expect(
       await api.updateProviderCredential({
         api_key: providerKey,
         provider: "deepseek",
@@ -177,7 +197,7 @@ describe("authenticated API client", () => {
     ).toMatchObject({ configured: true, version: 1 });
     await api.deleteProviderCredential();
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(Object.values(window.localStorage)).not.toContain(providerKey);
   });
 

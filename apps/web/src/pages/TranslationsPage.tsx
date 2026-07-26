@@ -361,7 +361,7 @@ export function TranslationsPage() {
             {credentialError
               ? `${credentialError} 发起新任务前请进入凭据设置重试。`
               : credential?.configured
-                ? `新任务使用 ${credential.provider_name} · ${credential.model}${credential.thinking_enabled ? " · 思考模式" : ""} · 凭据 v${credential.version ?? "—"}；Token 费用计入你的 Provider 账户。`
+                ? `新任务使用 ${credential.provider_name} · ${credential.model ?? "未记录"}${credential.thinking_enabled ? " · 思考模式" : ""} · 凭据 v${credential.version ?? "—"}；Token 费用计入你的 Provider 账户。`
                 : "漫读不会回退到管理员 Key。请先选择 Provider、模型并加密保存自己的 API Key。"}
           </small>
         </div>

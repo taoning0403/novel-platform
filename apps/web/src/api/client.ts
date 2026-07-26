@@ -23,6 +23,8 @@ import type {
   ProfilePayload,
   ProviderCredentialStatus,
   ProviderCredentialUpdate,
+  ProviderModelCatalogRequest,
+  ProviderModelCatalogResponse,
   PublicSiteSettings,
   ReaderCreatePayload,
   ReaderIdentity,
@@ -365,6 +367,11 @@ export const api = {
     request<User>("/api/v1/users/me", { method: "PATCH", body: JSON.stringify(payload) }),
   getProviderCredential: () =>
     request<ProviderCredentialStatus>("/api/v1/me/provider-credential"),
+  listProviderModels: (payload: ProviderModelCatalogRequest) =>
+    request<ProviderModelCatalogResponse>("/api/v1/me/provider-credential/models", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateProviderCredential: (payload: ProviderCredentialUpdate) =>
     request<ProviderCredentialStatus>("/api/v1/me/provider-credential", {
       method: "PUT",

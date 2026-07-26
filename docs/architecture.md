@@ -259,12 +259,17 @@ OpenAI credentials fix the preset to its official base URL; the separately confi
 URL is retained only to preserve legacy v1 routing. The browser saves one current credential
 configuration through the self-service
 endpoint: OpenAI, DeepSeek, Kimi, or an operator-allowlisted custom OpenAI-compatible base URL,
-plus the upstream model and an explicit thinking-mode switch that defaults off. Thinking is
-supported only as a strict DeepSeek `deepseek-reasoner` mapping or the explicit Kimi `kimi-k2.5`
-request field; OpenAI, custom routes and unsupported Kimi models cannot enable it. The browser
-does not choose these values per Run or submit a profile/download URL. The raw key is accepted
-only as a write-only `SecretStr`, encrypted with AES-256-GCM and never returned. Both clients
-follow no redirects, do not propagate raw remote response bodies, and sanitize error details.
+plus an upstream model selected from that Provider's live model catalogue and an explicit
+thinking-mode switch that defaults off. The authenticated catalogue endpoint uses the unsaved
+write-only key for one bounded, no-redirect `GET /models` call to the same validated destination,
+then returns only unique validated model IDs; it neither persists the key/raw response nor
+maintains a product model list. Provider/base URL/key changes invalidate the browser's transient
+catalogue. Thinking is supported only as a strict DeepSeek `deepseek-reasoner` mapping or the
+explicit Kimi `kimi-k2.5` request field; OpenAI, custom routes and unsupported Kimi models cannot
+enable it. The browser does not choose these values per Run or submit a profile/download URL. The
+raw key is accepted only as a write-only `SecretStr`, encrypted with AES-256-GCM on save and never
+returned. Both Provider clients follow no redirects, bound response sizes, do not propagate raw
+remote response bodies, reject reflected keys and sanitize error details.
 
 The first Provider request can race the Novel Platform Job-creation response. A partial unique
 index permits only one uncorrelated `preparing` Run per credential version; the Relay row-locks

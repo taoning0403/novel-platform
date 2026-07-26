@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Final, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
+import httpx
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import SecretStr
@@ -16,6 +17,10 @@ from novel_platform.application.auth.context import AuthContext
 from novel_platform.application.errors import ApplicationError
 from novel_platform.config import Settings, normalize_provider_base_url
 from novel_platform.infrastructure.database.models import ProviderCredentialVersionModel
+from novel_platform.infrastructure.integrations.provider_http import (
+    bounded_response_body,
+    contains_secret,
+)
 from novel_platform.infrastructure.repositories.auth import AuthRepository
 from novel_platform.infrastructure.repositories.provider_credentials import (
     PROVIDER_ID,
@@ -39,11 +44,9 @@ SUPPORTED_PROVIDERS = frozenset(
 )
 type ProviderKind = Literal["openai_compatible", "deepseek", "kimi", "custom"]
 OPENAI_BASE_URL: Final = "https://api.openai.com/v1"
-OPENAI_DEFAULT_MODEL: Final = "gpt-4.1-mini"
 DEEPSEEK_BASE_URL: Final = "https://api.deepseek.com/v1"
-DEEPSEEK_DEFAULT_MODEL: Final = "deepseek-chat"
 KIMI_BASE_URL: Final = "https://api.moonshot.cn/v1"
-KIMI_DEFAULT_MODEL: Final = "kimi-k2.5"
+KIMI_THINKING_MODEL: Final = "kimi-k2.5"
 PROVIDER_DISPLAY_NAMES: Final[dict[ProviderKind, str]] = {
     OPENAI_COMPATIBLE_PROVIDER: "OpenAI",
     DEEPSEEK_PROVIDER: "DeepSeek",
@@ -71,7 +74,7 @@ class ProviderCredentialStatus:
     provider: ProviderKind
     provider_name: str
     base_url: str
-    model: str
+    model: str | None
     thinking_enabled: bool
     version: int | None
     updated_at: datetime | None
@@ -86,6 +89,12 @@ class ProviderConfiguration:
     base_url: str
     model: str
     thinking_enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderModels:
+    provider: ProviderKind
+    models: list[str]
 
 
 class ProviderCredentialCipher:
@@ -237,7 +246,7 @@ class ProviderCredentialService:
         )
         if projected is None:
             projected_base_url = OPENAI_BASE_URL
-            projected_model = OPENAI_DEFAULT_MODEL
+            projected_model = None
         elif projected.algorithm == LEGACY_ALGORITHM:
             projected_base_url = self.settings.provider_relay_upstream_base_url
             projected_model = self.settings.provider_relay_allowed_models[0]
@@ -266,6 +275,76 @@ class ProviderCredentialService:
             all_time=all_time,
             current_month=current_month,
         )
+
+    async def discover_models(
+        self,
+        *,
+        provider: str,
+        base_url: str | None,
+        api_key: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> ProviderModels:
+        value = self._validate_api_key(api_key)
+        provider_kind, target_base_url = self._model_discovery_destination(
+            provider=provider,
+            base_url=base_url,
+        )
+        timeout = httpx.Timeout(
+            connect=self.settings.provider_relay_connect_timeout_seconds,
+            read=self.settings.provider_relay_read_timeout_seconds,
+            write=self.settings.provider_relay_read_timeout_seconds,
+            pool=self.settings.provider_relay_connect_timeout_seconds,
+        )
+        try:
+            async with httpx.AsyncClient(
+                base_url=f"{target_base_url}/",
+                timeout=timeout,
+                follow_redirects=False,
+                trust_env=False,
+                transport=transport,
+            ) as client:
+                async with client.stream(
+                    "GET",
+                    "models",
+                    headers={
+                        "Authorization": f"Bearer {value}",
+                        "Accept": "application/json",
+                    },
+                ) as response:
+                    response_body = await bounded_response_body(
+                        response,
+                        self.settings.provider_relay_max_response_bytes,
+                    )
+                    if (
+                        response_body is None
+                        or response.status_code < 200
+                        or response.status_code >= 300
+                        or (
+                            response.headers.get("Content-Type", "")
+                            .split(";", 1)[0]
+                            .strip()
+                            .lower()
+                            != "application/json"
+                        )
+                    ):
+                        raise self._model_discovery_failed()
+        except httpx.DecodingError as exc:
+            raise self._model_discovery_failed() from exc
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            raise ApplicationError(
+                "provider_models_unavailable",
+                "模型服务暂时不可用。",
+                status_code=503,
+            ) from exc
+
+        try:
+            payload = json.loads(response_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise self._model_discovery_failed() from exc
+        if contains_secret(payload, value):
+            raise self._model_discovery_failed()
+        models = self._selectable_models(payload)
+        return ProviderModels(provider=provider_kind, models=models)
 
     async def rotate(
         self,
@@ -407,27 +486,13 @@ class ProviderCredentialService:
             raise self._invalid_provider_configuration()
 
         normalized_model = self._normalize_model(model)
+        if normalized_model is None:
+            raise self._invalid_provider_configuration()
         if provider == CUSTOM_PROVIDER:
             normalized_name = self._normalize_provider_name(provider_name)
             if base_url is None:
                 raise self._invalid_provider_configuration()
-            try:
-                normalized_base_url = normalize_provider_base_url(
-                    base_url,
-                    protected_environment=self.settings.environment.lower()
-                    in {"production", "staging"},
-                    setting_name="custom Provider base URL",
-                )
-            except ValueError as exc:
-                raise self._invalid_provider_configuration() from exc
-            if normalized_base_url not in self.settings.provider_relay_custom_allowed_base_urls:
-                raise ApplicationError(
-                    "provider_base_url_not_allowed",
-                    "该自定义模型服务地址未获服务器允许。",
-                    status_code=422,
-                )
-            if normalized_model is None:
-                raise self._invalid_provider_configuration()
+            normalized_base_url = self._custom_base_url(base_url)
             self._validate_thinking_configuration(
                 provider=CUSTOM_PROVIDER,
                 model=normalized_model,
@@ -444,24 +509,95 @@ class ProviderCredentialService:
         if provider_name is not None or base_url is not None:
             raise self._invalid_provider_configuration()
         presets = {
-            OPENAI_COMPATIBLE_PROVIDER: (OPENAI_BASE_URL, OPENAI_DEFAULT_MODEL),
-            DEEPSEEK_PROVIDER: (DEEPSEEK_BASE_URL, DEEPSEEK_DEFAULT_MODEL),
-            KIMI_PROVIDER: (KIMI_BASE_URL, KIMI_DEFAULT_MODEL),
+            OPENAI_COMPATIBLE_PROVIDER: OPENAI_BASE_URL,
+            DEEPSEEK_PROVIDER: DEEPSEEK_BASE_URL,
+            KIMI_PROVIDER: KIMI_BASE_URL,
         }
-        preset_base_url, default_model = presets[provider]
-        effective_model = normalized_model or default_model
+        preset_base_url = presets[provider]
         provider_kind = cast(ProviderKind, provider)
         self._validate_thinking_configuration(
             provider=provider_kind,
-            model=effective_model,
+            model=normalized_model,
             thinking_enabled=thinking_enabled,
         )
         return ProviderConfiguration(
             provider=provider_kind,
             provider_name=None,
             base_url=preset_base_url,
-            model=effective_model,
+            model=normalized_model,
             thinking_enabled=thinking_enabled,
+        )
+
+    def _model_discovery_destination(
+        self,
+        *,
+        provider: str,
+        base_url: str | None,
+    ) -> tuple[ProviderKind, str]:
+        normalized_provider = provider.strip()
+        if normalized_provider not in SUPPORTED_PROVIDERS:
+            raise self._invalid_provider_configuration()
+        provider_kind = cast(ProviderKind, normalized_provider)
+        if provider_kind == CUSTOM_PROVIDER:
+            if base_url is None:
+                raise self._invalid_provider_configuration()
+            return provider_kind, self._custom_base_url(base_url)
+        if base_url is not None:
+            raise self._invalid_provider_configuration()
+        preset_base_urls = {
+            OPENAI_COMPATIBLE_PROVIDER: OPENAI_BASE_URL,
+            DEEPSEEK_PROVIDER: DEEPSEEK_BASE_URL,
+            KIMI_PROVIDER: KIMI_BASE_URL,
+        }
+        return provider_kind, preset_base_urls[provider_kind]
+
+    def _custom_base_url(self, value: str) -> str:
+        try:
+            normalized = normalize_provider_base_url(
+                value,
+                protected_environment=self.settings.environment.lower()
+                in {"production", "staging"},
+                setting_name="custom Provider base URL",
+            )
+        except ValueError as exc:
+            raise self._invalid_provider_configuration() from exc
+        if normalized not in self.settings.provider_relay_custom_allowed_base_urls:
+            raise ApplicationError(
+                "provider_base_url_not_allowed",
+                "该自定义模型服务地址未获服务器允许。",
+                status_code=422,
+            )
+        return normalized
+
+    @staticmethod
+    def _selectable_models(payload: object) -> list[str]:
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise ProviderCredentialService._model_discovery_failed()
+        models: list[str] = []
+        seen: set[str] = set()
+        for item in payload["data"]:
+            if not isinstance(item, dict):
+                continue
+            model = item.get("id")
+            if (
+                not isinstance(model, str)
+                or not model
+                or model != model.strip()
+                or len(model) > 120
+                or not model.isprintable()
+                or model in seen
+            ):
+                continue
+            seen.add(model)
+            models.append(model)
+        return sorted(models)
+
+    @staticmethod
+    def _model_discovery_failed() -> ApplicationError:
+        return ApplicationError(
+            "provider_models_invalid_response",
+            "模型服务未返回可用的模型列表。",
+            status_code=502,
         )
 
     @staticmethod
@@ -490,7 +626,7 @@ class ProviderCredentialService:
                     status_code=422,
                 )
             return
-        if thinking_enabled and model != KIMI_DEFAULT_MODEL:
+        if thinking_enabled and model != KIMI_THINKING_MODEL:
             raise ApplicationError(
                 "provider_thinking_not_supported",
                 "仅 kimi-k2.5 支持可验证的思考模式开关。",

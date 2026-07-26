@@ -14,6 +14,10 @@ from sqlalchemy import func, select
 from novel_platform import relay as provider_relay_module
 from novel_platform.api.dependencies.translation import get_linguaspindle_client
 from novel_platform.application.auth.admin_service import AdminService
+from novel_platform.application.provider_credentials.service import (
+    ProviderCredentialService,
+    ProviderModels,
+)
 from novel_platform.config import ProviderRelaySettings, get_settings
 from novel_platform.domain.editions.models import (
     ContentRole,
@@ -238,7 +242,10 @@ async def create_reader_login(
         configured = await app_harness.client.put(
             "/api/v1/me/provider-credential",
             headers=headers,
-            json={"api_key": f"sk-test-{uuid4()}"},
+            json={
+                "model": "gpt-4.1-mini",
+                "api_key": f"sk-test-{uuid4()}",
+            },
         )
         assert configured.status_code == 200, configured.text
     return cast(dict[str, Any], created.json()["reader"]), headers
@@ -310,6 +317,123 @@ async def create_run(
         headers=headers,
         json=payload,
     )
+
+
+@pytest.mark.integration
+async def test_provider_model_discovery_contract_capability_and_no_persistence(
+    app_harness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeLinguaSpindle()
+    configure_fake(app_harness, fake)
+    admin = await app_harness.provision_admin()
+    reader, translator_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="模型发现译者",
+        capabilities=["library.read", "translation.use"],
+    )
+    _, read_only_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="模型发现受限读者",
+        capabilities=["library.read"],
+    )
+    captured: list[dict[str, str | None]] = []
+
+    async def discover_models(
+        _service: ProviderCredentialService,
+        *,
+        provider: str,
+        base_url: str | None,
+        api_key: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> ProviderModels:
+        assert transport is None
+        captured.append(
+            {
+                "provider": provider,
+                "base_url": base_url,
+                "api_key": api_key,
+            }
+        )
+        return ProviderModels(
+            provider=cast(Any, provider),
+            models=["model-a", "model-b"],
+        )
+
+    monkeypatch.setattr(ProviderCredentialService, "discover_models", discover_models)
+
+    unauthenticated = await app_harness.client.post(
+        "/api/v1/me/provider-credential/models",
+        json={"provider": "deepseek", "api_key": "sk-unauthenticated"},
+    )
+    assert unauthenticated.status_code == 401
+    assert "sk-unauthenticated" not in unauthenticated.text
+
+    forbidden = await app_harness.client.post(
+        "/api/v1/me/provider-credential/models",
+        headers=read_only_headers,
+        json={"provider": "deepseek", "api_key": "sk-forbidden"},
+    )
+    assert forbidden.status_code == 403
+    assert "sk-forbidden" not in forbidden.text
+
+    invalid_preset = await app_harness.client.post(
+        "/api/v1/me/provider-credential/models",
+        headers=translator_headers,
+        json={
+            "provider": "kimi",
+            "base_url": "https://attacker.example/v1",
+            "api_key": "sk-invalid-preset",
+        },
+    )
+    assert invalid_preset.status_code == 422
+    assert "sk-invalid-preset" not in invalid_preset.text
+    assert "attacker.example" not in invalid_preset.text
+
+    discovered = await app_harness.client.post(
+        "/api/v1/me/provider-credential/models",
+        headers=translator_headers,
+        json={
+            "provider": "custom",
+            "base_url": " https://provider.example/v1 ",
+            "api_key": "sk-transient-discovery",
+        },
+    )
+    assert discovered.status_code == 200, discovered.text
+    assert discovered.headers["Cache-Control"] == "no-store"
+    assert discovered.json() == {
+        "provider": "custom",
+        "models": ["model-a", "model-b"],
+    }
+    assert "sk-transient-discovery" not in discovered.text
+    assert captured == [
+        {
+            "provider": "custom",
+            "base_url": "https://provider.example/v1",
+            "api_key": "sk-transient-discovery",
+        }
+    ]
+
+    missing_model = await app_harness.client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={
+            "provider": "openai_compatible",
+            "api_key": "sk-missing-explicit-model",
+        },
+    )
+    assert missing_model.status_code == 422
+    assert "sk-missing-explicit-model" not in missing_model.text
+
+    async with app_harness.session_factory() as session:
+        version_count = await session.scalar(
+            select(func.count())
+            .select_from(ProviderCredentialVersionModel)
+            .where(ProviderCredentialVersionModel.user_id == UUID(reader["id"]))
+        )
+    assert version_count == 1
 
 
 @pytest.mark.integration
@@ -410,10 +534,12 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
         headers=translator_headers,
         json={
             "provider": "deepseek",
+            "model": "deepseek-chat",
             "api_key": "sk-rotated-never-return-this-value",
         },
     )
     assert rotated.status_code == 200, rotated.text
+    assert rotated.headers["Cache-Control"] == "no-store"
     assert rotated.json()["version"] == 2
     assert rotated.json()["provider"] == "deepseek"
     assert rotated.json()["provider_name"] == "DeepSeek"
@@ -501,6 +627,7 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
         headers=translator_headers,
         json={
             "provider": "kimi",
+            "model": "kimi-k2.5",
             "api_key": "sk-kimi-never-return",
             "thinking_enabled": True,
         },

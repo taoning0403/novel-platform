@@ -268,18 +268,8 @@ class ProviderCredentialVersionModel(Base):
         String(32), nullable=False, default="openai_compatible", server_default="openai_compatible"
     )
     provider_name: Mapped[str | None] = mapped_column(String(120))
-    base_url: Mapped[str] = mapped_column(
-        String(2048),
-        nullable=False,
-        default="https://api.openai.com/v1",
-        server_default="https://api.openai.com/v1",
-    )
-    model: Mapped[str] = mapped_column(
-        String(120),
-        nullable=False,
-        default="gpt-4.1-mini",
-        server_default="gpt-4.1-mini",
-    )
+    base_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
     thinking_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

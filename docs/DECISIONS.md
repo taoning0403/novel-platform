@@ -25,7 +25,7 @@ current consolidated design.
 | [0017 — Credential capabilities and contributor-attributed library](adr/0017-credential-capabilities-and-contributor-library.md) | Accepted | Keep one library owner, attach immutable read/upload/translation capabilities to each invited credential, attribute durable content to its actual User, enforce creator-aware mutation, and remove fileless public creation. |
 | [0018 — Private LinguaSpindle translation orchestration](adr/0018-private-linguaspindle-translation-orchestration.md) | Superseded in part by 0019 | Retain private HTTP orchestration, recoverable actor-scoped Runs and verified generated-Edition ingestion; 0019 replaces the operator-owned Provider-secret boundary. |
 | [0019 — Reader-owned Provider credentials and private relay](adr/0019-reader-owned-provider-credentials-and-private-relay.md) | Superseded in part by 0020 | Retain encrypted reader-owned credential versions, exact Run binding, the private scoped Relay and no shared-key fallback; 0020 replaces the single fixed upstream and credential kind. |
-| [0020 — Versioned reader-selected Provider routing](adr/0020-versioned-provider-routing.md) | Accepted | Let one current immutable reader credential version select OpenAI, DeepSeek, Kimi or an operator-allowlisted custom OpenAI-compatible route and model while preserving scoped Relay authorization and exact Run binding. |
+| [0020 — Versioned reader-selected Provider routing](adr/0020-versioned-provider-routing.md) | Accepted | Let one current immutable reader credential version select OpenAI, DeepSeek, Kimi or an operator-allowlisted custom route and a live Provider-catalogue model while preserving scoped Relay authorization and exact Run binding. |
 
 ## Recording a decision
 

@@ -163,6 +163,13 @@ and decryptable. The Relay service secret must differ from the vault key and all
 secrets. Protected configuration and staging preflight both reject the known all-zero
 development master key.
 
+The credential page obtains choices from each selected Provider's live `/models` endpoint; there
+is no deployment-managed model catalogue. This discovery request leaves the Server directly for
+the fixed preset or exact custom allow-list destination, uses the unsaved write-only reader key,
+follows no redirect and returns only bounded validated model IDs. Confirm that Server egress can
+reach the intended Provider origins without adding a Provider key to host configuration. A custom
+destination must support an OpenAI-compatible `/models` response as well as Chat Completions.
+
 Keep `LINGUASPINDLE_ENABLED=false` until LinguaSpindle has been upgraded and its separate backup
 and restore have passed. Once enabled, `scripts/healthcheck-staging.sh` fails closed unless the
 fixed external network maps the configured DNS alias to exactly one LinguaSpindle container, that
@@ -375,8 +382,9 @@ needed, an explicitly isolated offline Mock Provider:
 - a `translation.use` actor without a personal credential cannot launch translation and never
   consumes an administrator/shared key;
 - configure OpenAI/DeepSeek/Kimi and one offline allowlisted custom destination; verify default-off
-  thinking, DeepSeek reasoner equivalence, Kimi enabled/disabled payloads, and rejection of
-  unsupported combinations without making a paid call;
+  thinking, live model-directory loading without Key/raw-response persistence, DeepSeek reasoner
+  equivalence, Kimi enabled/disabled payloads, and rejection of unsupported combinations without
+  making a paid call;
 - configure/rotate/remove returns only non-secret route/model/thinking/status/version/usage;
   rotation keeps an existing Run on its old version and removal makes later calls fail closed;
 - LinguaSpindle `>=0.3.2,<0.4.0` persists the opaque scope across restart, separates Job

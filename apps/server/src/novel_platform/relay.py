@@ -23,8 +23,8 @@ from novel_platform.application.provider_credentials.service import (
     DEEPSEEK_BASE_URL,
     DEEPSEEK_PROVIDER,
     KIMI_BASE_URL,
-    KIMI_DEFAULT_MODEL,
     KIMI_PROVIDER,
+    KIMI_THINKING_MODEL,
     LEGACY_ALGORITHM,
     OPENAI_BASE_URL,
     OPENAI_COMPATIBLE_PROVIDER,
@@ -34,6 +34,10 @@ from novel_platform.application.provider_credentials.service import (
 )
 from novel_platform.config import ProviderRelaySettings, get_provider_relay_settings
 from novel_platform.infrastructure.database.models import ProviderCredentialVersionModel
+from novel_platform.infrastructure.integrations.provider_http import (
+    bounded_response_body,
+    contains_secret,
+)
 from novel_platform.infrastructure.repositories.provider_credentials import (
     ProviderCredentialRepository,
 )
@@ -241,7 +245,7 @@ async def _call_upstream(
     upstream_model = model or payload.model
     outbound_payload = payload.model_dump(exclude_none=True)
     outbound_payload["model"] = upstream_model
-    if provider == KIMI_PROVIDER and upstream_model == KIMI_DEFAULT_MODEL:
+    if provider == KIMI_PROVIDER and upstream_model == KIMI_THINKING_MODEL:
         outbound_payload["thinking"] = {"type": "enabled" if thinking_enabled else "disabled"}
     timeout = httpx.Timeout(
         connect=relay_settings.provider_relay_connect_timeout_seconds,
@@ -269,7 +273,7 @@ async def _call_upstream(
             ) as response:
                 if 300 <= response.status_code < 400:
                     return _error(502, "provider_protocol_error")
-                response_body = await _bounded_response_body(
+                response_body = await bounded_response_body(
                     response,
                     relay_settings.provider_relay_max_response_bytes,
                 )
@@ -282,6 +286,8 @@ async def _call_upstream(
                 )
                 if response_type not in _JSON_CONTENT_TYPES:
                     return _error(502, "provider_protocol_error")
+    except httpx.DecodingError:
+        return _error(502, "provider_protocol_error")
     except (httpx.TimeoutException, httpx.TransportError):
         return _error(503, "provider_unavailable")
 
@@ -302,7 +308,7 @@ def _sanitize_upstream_response(
     requested_model: str,
     forbidden_secret: str,
 ) -> tuple[dict[str, Any], dict[str, int] | None]:
-    if _contains_secret(payload, forbidden_secret):
+    if contains_secret(payload, forbidden_secret):
         raise ValueError("response contains forbidden secret")
     if not isinstance(payload, dict):
         raise ValueError("response must be an object")
@@ -345,19 +351,6 @@ def _sanitize_upstream_response(
     return sanitized, usage
 
 
-def _contains_secret(value: object, secret: str) -> bool:
-    if isinstance(value, str):
-        return secret in value
-    if isinstance(value, dict):
-        return any(
-            _contains_secret(key, secret) or _contains_secret(item, secret)
-            for key, item in value.items()
-        )
-    if isinstance(value, (list, tuple)):
-        return any(_contains_secret(item, secret) for item in value)
-    return False
-
-
 def _sanitize_usage(value: object) -> dict[str, int] | None:
     if not isinstance(value, dict):
         return None
@@ -386,22 +379,6 @@ async def _bounded_request_body(request: Request, max_bytes: int) -> bytes | Non
             return None
     body = bytearray()
     async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > max_bytes:
-            return None
-    return bytes(body)
-
-
-async def _bounded_response_body(response: httpx.Response, max_bytes: int) -> bytes | None:
-    declared = response.headers.get("Content-Length")
-    if declared is not None:
-        try:
-            if int(declared) < 0 or int(declared) > max_bytes:
-                return None
-        except ValueError:
-            return None
-    body = bytearray()
-    async for chunk in response.aiter_bytes():
         body.extend(chunk)
         if len(body) > max_bytes:
             return None
@@ -467,7 +444,7 @@ def _thinking_configuration_allowed(
     if credential.provider == DEEPSEEK_PROVIDER:
         return credential.thinking_enabled == (credential.model == "deepseek-reasoner")
     if credential.provider == KIMI_PROVIDER:
-        return not credential.thinking_enabled or credential.model == KIMI_DEFAULT_MODEL
+        return not credential.thinking_enabled or credential.model == KIMI_THINKING_MODEL
     return False
 
 

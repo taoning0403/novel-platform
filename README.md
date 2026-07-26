@@ -16,9 +16,11 @@ v0.10.0 retains the v0.9 capability, contributor and generated-Edition model, an
 Provider credentials. Each translating actor stores one current OpenAI, DeepSeek, Kimi or
 operator-allowlisted custom configuration as an immutable AES-256-GCM-encrypted version, pays
 through that exact version for the lifetime of a Run, and can inspect sanitized request/Token
-totals. LinguaSpindle v0.3.2 receives only an opaque credential scope and calls a fixed-policy
-private Relay; neither LinguaSpindle nor the browser receives the upstream key, and there is no
-administrator/shared-key fallback.
+totals. Configuration loads the selected Provider's live `/models` catalogue with the write-only
+key and requires an explicit model selection; 漫读 maintains no preset model list. LinguaSpindle
+v0.3.2 receives only an opaque credential scope and calls a fixed-policy private Relay; neither
+LinguaSpindle nor the browser receives the upstream key, and there is no administrator/shared-key
+fallback.
 
 The deployed v0.10.0 baseline is complete; this source tree contains a post-v0.10 Provider-routing
 increment whose next release number has not been assigned. Package/API metadata therefore remains
@@ -290,15 +292,22 @@ and Series invariants remain unchanged.
 
 A current `translation.use` actor manages one current OpenAI, DeepSeek, Kimi or custom
 OpenAI-compatible configuration under `/api/v1/me/provider-credential`. The raw key is accepted
-only by PUT, encrypted with a unique nonce and authenticated ownership/version/routing data,
-cleared from the Web form, and never returned, hinted, hashed into a response, or stored in
-browser storage. Provider kind, display name, base URL, model and thinking-mode state are
-non-secret status metadata. Thinking defaults off; DeepSeek maps it strictly to
+as a write-only value by transient model discovery and credential PUT; only PUT encrypts it with a
+unique nonce and authenticated ownership/version/routing data. It is cleared from the Web form
+before saving and is never returned, hinted, hashed into a response, or stored in browser storage.
+Provider kind, display name, base URL, model and thinking-mode state are non-secret status
+metadata. Thinking defaults off; DeepSeek maps it strictly to
 `deepseek-reasoner`, Kimi `kimi-k2.5` receives an explicit enabled/disabled field, and
 OpenAI/custom configurations cannot enable the non-portable generic switch. Rotation, switching
 Provider or changing thinking state creates a new immutable current version and retires the
 previous one; an already-created Run remains bound to its original version. Removal revokes every
 version for that User, including versions bound to unfinished work.
+
+The authenticated model-catalogue action sends the unsaved write-only key to the Server for one
+bounded, no-redirect `GET /models` call against the selected preset or exact-allowlisted custom
+destination. Only unique validated model IDs return to the browser; the key and raw Provider
+response are not persisted or returned. Changing the Provider, custom base URL, or key invalidates
+the transient list, and saving requires an explicit selection from the newly loaded catalogue.
 
 Launching translation requires both current translation authority and a current personal
 credential. Missing, revoked, undecryptable, mismatched or disallowed-route credentials fail

@@ -36,18 +36,31 @@ const configuredCredential: ProviderCredentialStatus = {
   },
 };
 
+async function chooseProvider(title: string) {
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Provider" }));
+  fireEvent.click(await screen.findByTitle(title));
+}
+
+async function chooseModel(model: string) {
+  const modelSelect = screen.getByRole("combobox", { name: "模型" });
+  await waitFor(() => expect(modelSelect).toBeEnabled());
+  fireEvent.mouseDown(modelSelect);
+  fireEvent.click(await screen.findByTitle(model));
+}
+
+function expectModelIsEmpty() {
+  const modelSelect = screen.getByRole("combobox", { name: "模型" });
+  expect(modelSelect).toBeDisabled();
+  expect(modelSelect.closest(".ant-select")).toHaveTextContent("先读取模型列表");
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("ProviderCredentialPage", () => {
-  it("shows only safe status metadata and clears the key before a rotation completes", async () => {
+  it("shows the configured model only in status and requires a fresh catalog selection", async () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
-    let resolveUpdate!: (value: ProviderCredentialStatus) => void;
-    const pendingUpdate = new Promise<ProviderCredentialStatus>((resolve) => {
-      resolveUpdate = resolve;
-    });
-    const update = vi.spyOn(api, "updateProviderCredential").mockReturnValue(pendingUpdate);
 
     render(<ProviderCredentialPage />);
 
@@ -58,21 +71,56 @@ describe("ProviderCredentialPage", () => {
     expect(screen.getByText("累计请求").nextSibling).toHaveTextContent("12");
     expect(screen.getByText("累计总 Token").nextSibling).toHaveTextContent("3,456");
     expect(screen.queryByText(/预计|人民币|美元|¥|\$/)).not.toBeInTheDocument();
-    expect(screen.getAllByText("https://api.openai.com/v1").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("gpt-4.1-mini").length).toBeGreaterThan(0);
-    expect(screen.getByText("关闭")).toBeInTheDocument();
-    const thinkingSwitch = screen.getByRole("switch", { name: "思考模式" });
-    expect(thinkingSwitch).not.toBeChecked();
-    expect(thinkingSwitch).toBeDisabled();
-    expect(thinkingSwitch.closest("label")).toHaveAttribute("data-disabled", "true");
-    expect(screen.getByText(/当前 Provider 没有可验证的统一开关/))
-      .toBeInTheDocument();
-    const input = screen.getByLabelText("OpenAI API Key");
-    expect(input).toHaveAttribute("type", "password");
-    expect(input).toHaveAttribute("autocomplete", "off");
+    expect(screen.getByText("gpt-4.1-mini")).toBeInTheDocument();
+    expectModelIsEmpty();
 
-    fireEvent.change(input, { target: { value: "unit-test-provider-credential" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
+    const keyInput = screen.getByLabelText("OpenAI API Key");
+    expect(keyInput).toHaveAttribute("type", "password");
+    expect(keyInput).toHaveAttribute("autocomplete", "off");
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "思考模式" })).toBeDisabled();
+  });
+
+  it("loads every model with the current key, keeps the key, and clears it before saving", async () => {
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+    const listModels = vi.spyOn(api, "listProviderModels").mockResolvedValue({
+      provider: "openai_compatible",
+      models: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o-mini"],
+    });
+    let resolveUpdate!: (value: ProviderCredentialStatus) => void;
+    const pendingUpdate = new Promise<ProviderCredentialStatus>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    const update = vi.spyOn(api, "updateProviderCredential").mockReturnValue(pendingUpdate);
+
+    render(<ProviderCredentialPage />);
+    await screen.findByRole("heading", { name: "凭据已配置" });
+
+    const keyInput = screen.getByLabelText("OpenAI API Key");
+    const saveButton = screen.getByRole("button", { name: "保存新版本" });
+    fireEvent.change(keyInput, { target: { value: "unit-test-provider-credential" } });
+    expect(saveButton).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+
+    await waitFor(() => expect(listModels).toHaveBeenCalledWith({
+      provider: "openai_compatible",
+      api_key: "unit-test-provider-credential",
+    }));
+    expect(keyInput).toHaveValue("unit-test-provider-credential");
+    expect(await screen.findByText(/已读取 3 个模型/)).toBeInTheDocument();
+    const modelSelect = screen.getByRole("combobox", { name: "模型" });
+    expect(modelSelect).toBeEnabled();
+    expect(modelSelect).toHaveAttribute("aria-autocomplete", "list");
+
+    fireEvent.mouseDown(modelSelect);
+    expect(await screen.findByTitle("gpt-4.1")).toBeInTheDocument();
+    expect(screen.getByTitle("gpt-4.1-mini")).toBeInTheDocument();
+    expect(screen.getByTitle("gpt-4o-mini")).toBeInTheDocument();
+    fireEvent.change(modelSelect, { target: { value: "mini" } });
+    fireEvent.click(await screen.findByTitle("gpt-4.1-mini"));
+
+    expect(saveButton).toBeEnabled();
+    fireEvent.click(saveButton);
 
     expect(update).toHaveBeenCalledWith({
       api_key: "unit-test-provider-credential",
@@ -80,10 +128,9 @@ describe("ProviderCredentialPage", () => {
       model: "gpt-4.1-mini",
       thinking_enabled: false,
     });
-    expect(input).toHaveValue("");
-    expect(
-      screen.queryByDisplayValue("unit-test-provider-credential"),
-    ).not.toBeInTheDocument();
+    expect(keyInput).toHaveValue("");
+    expect(screen.queryByDisplayValue("unit-test-provider-credential")).not.toBeInTheDocument();
+    expectModelIsEmpty();
 
     await act(async () => {
       resolveUpdate({
@@ -95,30 +142,15 @@ describe("ProviderCredentialPage", () => {
     });
     expect(await screen.findByText(/新的 OpenAI 凭据版本已加密保存/)).toBeInTheDocument();
     expect(screen.getByText("v5")).toBeInTheDocument();
-    expect(input).toHaveValue("");
+    expect(keyInput).toHaveValue("");
   });
 
-  it("restores an enabled DeepSeek thinking configuration in status and form", async () => {
-    vi.spyOn(api, "getProviderCredential").mockResolvedValue({
-      ...configuredCredential,
-      provider: "deepseek",
-      provider_name: "DeepSeek",
-      base_url: "https://api.deepseek.com/v1",
-      model: "deepseek-reasoner",
-      thinking_enabled: true,
-    });
-
-    render(<ProviderCredentialPage />);
-
-    await screen.findByRole("heading", { name: "凭据已配置" });
-    expect(screen.getByText("开启")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "思考模式" })).toBeChecked();
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-reasoner");
-    expect(screen.getByLabelText("模型")).toBeDisabled();
-  });
-
-  it("offers preset providers and submits custom configuration only for custom", async () => {
+  it("uses the normalized custom Base URL for catalog loading and saving", async () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+    const listModels = vi.spyOn(api, "listProviderModels").mockResolvedValue({
+      provider: "custom",
+      models: ["novel-model", "novel-model-pro"],
+    });
     const customCredential: ProviderCredentialStatus = {
       ...configuredCredential,
       provider: "custom",
@@ -130,65 +162,26 @@ describe("ProviderCredentialPage", () => {
     const update = vi.spyOn(api, "updateProviderCredential").mockResolvedValue(customCredential);
 
     render(<ProviderCredentialPage />);
-
     await screen.findByRole("heading", { name: "凭据已配置" });
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Provider" }));
-    expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
-    expect(screen.getByText("Kimi")).toBeInTheDocument();
-    fireEvent.click(await screen.findByTitle("DeepSeek"));
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-chat");
-    expect(screen.getByLabelText("DeepSeek API Key")).toBeInTheDocument();
-    const thinkingSwitch = screen.getByRole("switch", { name: "思考模式" });
-    expect(thinkingSwitch).toBeEnabled();
-    const thinkingTarget = thinkingSwitch.closest("label");
-    expect(thinkingTarget).toHaveAttribute("data-disabled", "false");
-    fireEvent.click(thinkingTarget as HTMLLabelElement);
-    expect(thinkingSwitch).toBeChecked();
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-reasoner");
-    expect(screen.getByLabelText("模型")).toBeDisabled();
-    fireEvent.click(thinkingSwitch);
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-chat");
-    fireEvent.change(screen.getByLabelText("模型"), {
-      target: { value: "deepseek-reasoner" },
-    });
-    expect(thinkingSwitch).toBeChecked();
-    expect(screen.getByLabelText("模型")).toBeDisabled();
-    fireEvent.click(thinkingSwitch);
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-chat");
+    await chooseProvider("自定义 Provider");
 
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Provider" }));
-    fireEvent.click(await screen.findByTitle("Kimi"));
-    expect(screen.getByLabelText("模型")).toHaveValue("kimi-k2.5");
-    expect(screen.getByLabelText("Kimi API Key")).toBeInTheDocument();
-    expect(screen.getAllByText("https://api.moonshot.cn/v1").length).toBeGreaterThan(0);
-    fireEvent.click(thinkingSwitch);
-    expect(thinkingSwitch).toBeChecked();
-    expect(screen.getByLabelText("模型")).toHaveValue("kimi-k2.5");
-    fireEvent.change(screen.getByLabelText("模型"), {
-      target: { value: "moonshot-v1-8k" },
-    });
-    expect(thinkingSwitch).not.toBeChecked();
-    expect(thinkingSwitch).toBeDisabled();
-    expect(screen.getByText(/Kimi 仅在模型为 kimi-k2.5 时支持思考模式/))
-      .toBeInTheDocument();
-
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Provider" }));
-    fireEvent.click(await screen.findByTitle("自定义 Provider"));
-    expect(thinkingSwitch).not.toBeChecked();
-    expect(thinkingSwitch).toBeDisabled();
-
-    expect(screen.getByLabelText(/^API Base URL/)).toHaveAttribute("type", "url");
-    fireEvent.change(screen.getByLabelText("模型"), {
-      target: { value: "novel-model" },
-    });
     fireEvent.change(screen.getByLabelText("自定义名称"), {
       target: { value: "我的兼容服务" },
     });
-    fireEvent.change(screen.getByLabelText(/^API Base URL/), {
+    fireEvent.change(screen.getByLabelText("API Base URL"), {
       target: { value: "https://provider.example.com/v1/" },
     });
     const keyInput = screen.getByLabelText("我的兼容服务 API Key");
     fireEvent.change(keyInput, { target: { value: "custom-provider-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+
+    await waitFor(() => expect(listModels).toHaveBeenCalledWith({
+      provider: "custom",
+      api_key: "custom-provider-key",
+      base_url: "https://provider.example.com/v1",
+    }));
+    expect(keyInput).toHaveValue("custom-provider-key");
+    await chooseModel("novel-model");
     fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith({
@@ -204,8 +197,58 @@ describe("ProviderCredentialPage", () => {
       .toBeInTheDocument();
   });
 
-  it("normalizes a typed DeepSeek reasoner model to thinking mode", async () => {
+  it("invalidates the catalog when the provider, custom URL, or API key changes", async () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+    const listModels = vi.spyOn(api, "listProviderModels").mockResolvedValue({
+      provider: "custom",
+      models: ["model-for-invalidation"],
+    });
+
+    render(<ProviderCredentialPage />);
+    await screen.findByRole("heading", { name: "凭据已配置" });
+    await chooseProvider("自定义 Provider");
+    fireEvent.change(screen.getByLabelText("自定义名称"), {
+      target: { value: "测试服务" },
+    });
+    const baseUrlInput = screen.getByLabelText("API Base URL");
+    fireEvent.change(baseUrlInput, {
+      target: { value: "https://provider.example.com/v1" },
+    });
+    const keyInput = screen.getByLabelText("测试服务 API Key");
+    fireEvent.change(keyInput, { target: { value: "catalog-key-1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    await chooseModel("model-for-invalidation");
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeEnabled();
+
+    fireEvent.change(baseUrlInput, {
+      target: { value: "https://provider.example.com/v2" },
+    });
+    expect(keyInput).toHaveValue("");
+    expectModelIsEmpty();
+    expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
+
+    fireEvent.change(keyInput, { target: { value: "catalog-key-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    await chooseModel("model-for-invalidation");
+    fireEvent.change(keyInput, { target: { value: "catalog-key-3" } });
+    expectModelIsEmpty();
+
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    await chooseModel("model-for-invalidation");
+    await chooseProvider("DeepSeek");
+    expect(screen.getByLabelText("DeepSeek API Key")).toHaveValue("");
+    expectModelIsEmpty();
+    expect(screen.getByRole("switch", { name: "思考模式" })).not.toBeChecked();
+    expect(listModels).toHaveBeenCalledTimes(3);
+  });
+
+  it("maps DeepSeek catalog selections and the switch to the matching thinking model", async () => {
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+    vi.spyOn(api, "listProviderModels").mockResolvedValue({
+      provider: "deepseek",
+      models: ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
+    });
     const update = vi.spyOn(api, "updateProviderCredential").mockResolvedValue({
       ...configuredCredential,
       provider: "deepseek",
@@ -217,18 +260,27 @@ describe("ProviderCredentialPage", () => {
     });
 
     render(<ProviderCredentialPage />);
-
     await screen.findByRole("heading", { name: "凭据已配置" });
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Provider" }));
-    fireEvent.click(await screen.findByTitle("DeepSeek"));
-    fireEvent.change(screen.getByLabelText("模型"), {
-      target: { value: "deepseek-reasoner" },
-    });
-    expect(screen.getByRole("switch", { name: "思考模式" })).toBeChecked();
+    await chooseProvider("DeepSeek");
+    const keyInput = screen.getByLabelText("DeepSeek API Key");
+    fireEvent.change(keyInput, { target: { value: "deepseek-provider-key" } });
+    const thinkingSwitch = screen.getByRole("switch", { name: "思考模式" });
+    expect(thinkingSwitch).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("DeepSeek API Key"), {
-      target: { value: "deepseek-provider-key" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    await chooseModel("deepseek-reasoner");
+    expect(thinkingSwitch).toBeChecked();
+    expect(thinkingSwitch).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "模型" })).toBeDisabled();
+
+    fireEvent.click(thinkingSwitch);
+    expect(thinkingSwitch).not.toBeChecked();
+    expect(screen.getAllByTitle("deepseek-chat").length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "模型" })).toBeEnabled();
+
+    fireEvent.click(thinkingSwitch);
+    expect(thinkingSwitch).toBeChecked();
+    expect(screen.getAllByTitle("deepseek-reasoner").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith({
@@ -239,34 +291,40 @@ describe("ProviderCredentialPage", () => {
     }));
   });
 
-  it("never submits thinking mode for another Kimi model", async () => {
+  it("enables Kimi thinking only for kimi-k2.5", async () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+    vi.spyOn(api, "listProviderModels").mockResolvedValue({
+      provider: "kimi",
+      models: ["kimi-k2.5", "moonshot-v1-8k"],
+    });
     const update = vi.spyOn(api, "updateProviderCredential").mockResolvedValue({
       ...configuredCredential,
       provider: "kimi",
       provider_name: "Kimi",
       base_url: "https://api.moonshot.cn/v1",
       model: "moonshot-v1-8k",
-      thinking_enabled: false,
       version: 5,
     });
 
     render(<ProviderCredentialPage />);
-
     await screen.findByRole("heading", { name: "凭据已配置" });
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Provider" }));
-    fireEvent.click(await screen.findByTitle("Kimi"));
-    const thinkingSwitch = screen.getByRole("switch", { name: "思考模式" });
-    fireEvent.click(thinkingSwitch);
-    expect(thinkingSwitch).toBeChecked();
-    fireEvent.change(screen.getByLabelText("模型"), {
-      target: { value: "moonshot-v1-8k" },
-    });
-    expect(thinkingSwitch).not.toBeChecked();
-    expect(thinkingSwitch).toBeDisabled();
-
+    await chooseProvider("Kimi");
     const keyInput = screen.getByLabelText("Kimi API Key");
     fireEvent.change(keyInput, { target: { value: "kimi-provider-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+
+    await chooseModel("kimi-k2.5");
+    const thinkingSwitch = screen.getByRole("switch", { name: "思考模式" });
+    expect(thinkingSwitch).toBeEnabled();
+    expect(thinkingSwitch).not.toBeChecked();
+    fireEvent.click(thinkingSwitch);
+    expect(thinkingSwitch).toBeChecked();
+
+    await chooseModel("moonshot-v1-8k");
+    expect(thinkingSwitch).not.toBeChecked();
+    expect(thinkingSwitch).toBeDisabled();
+    expect(screen.getByText(/Kimi 仅在模型为 kimi-k2.5 时支持思考模式/))
+      .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledWith({
@@ -277,7 +335,39 @@ describe("ProviderCredentialPage", () => {
     }));
   });
 
-  it("revokes with confirmation and resets DeepSeek reasoner before a new save", async () => {
+  it("rejects mismatched, empty, and failed model catalogs without clearing the key", async () => {
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+    vi.spyOn(api, "listProviderModels")
+      .mockResolvedValueOnce({ provider: "deepseek", models: ["deepseek-chat"] })
+      .mockResolvedValueOnce({ provider: "openai_compatible", models: [] })
+      .mockRejectedValueOnce(new Error("模型目录读取失败"));
+
+    render(<ProviderCredentialPage />);
+    await screen.findByRole("heading", { name: "凭据已配置" });
+    const keyInput = screen.getByLabelText("OpenAI API Key");
+    const saveButton = screen.getByRole("button", { name: "保存新版本" });
+
+    fireEvent.change(keyInput, { target: { value: "catalog-key-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    expect(await screen.findByText(/模型目录与当前 Provider 不一致/)).toBeInTheDocument();
+    expect(keyInput).toHaveValue("catalog-key-1");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(keyInput, { target: { value: "catalog-key-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    expect(await screen.findByText(/未返回可用模型/)).toBeInTheDocument();
+    expect(keyInput).toHaveValue("catalog-key-2");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(keyInput, { target: { value: "catalog-key-3" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取模型列表" }));
+    expect(await screen.findByText(/模型目录读取失败/)).toBeInTheDocument();
+    expect(keyInput).toHaveValue("catalog-key-3");
+    expect(saveButton).toBeDisabled();
+    expectModelIsEmpty();
+  });
+
+  it("revokes with confirmation and leaves an unconfigured form without a model", async () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue({
       ...configuredCredential,
       provider: "deepseek",
@@ -287,23 +377,17 @@ describe("ProviderCredentialPage", () => {
       thinking_enabled: true,
     });
     const remove = vi.spyOn(api, "deleteProviderCredential").mockResolvedValue();
-    const update = vi.spyOn(api, "updateProviderCredential").mockResolvedValue({
-      ...configuredCredential,
-      provider: "deepseek",
-      provider_name: "DeepSeek",
-      base_url: "https://api.deepseek.com/v1",
-      model: "deepseek-chat",
-      thinking_enabled: false,
-      version: 5,
-    });
 
     render(<ProviderCredentialPage />);
 
     await screen.findByRole("heading", { name: "凭据已配置" });
-    expect(screen.getByRole("switch", { name: "思考模式" })).toBeChecked();
+    expect(screen.getByText("deepseek-reasoner")).toBeInTheDocument();
+    expect(screen.getByText("开启")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "思考模式" })).not.toBeChecked();
+    expectModelIsEmpty();
     expect(screen.getByText(/Token 费用计入你的 Provider 账户/)).toBeInTheDocument();
-    expect(screen.getByText(/已创建的任务继续使用创建时绑定的旧版本/)).toBeInTheDocument();
-    expect(screen.getByText(/未完成任务的后续 Provider 调用将失败/)).toBeInTheDocument();
+    expect(screen.getByText(/已创建的任务继续使用创建时绑定的旧版本/))
+      .toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "删除 Provider 凭据" }));
     expect(remove).not.toHaveBeenCalled();
@@ -311,32 +395,19 @@ describe("ProviderCredentialPage", () => {
 
     await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("heading", { name: "尚未配置凭据" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByRole("switch", { name: "思考模式" })).not.toBeChecked();
-    });
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-chat");
+    expect(screen.getByRole("switch", { name: "思考模式" })).not.toBeChecked();
+    expectModelIsEmpty();
     expect(screen.getByText(/Provider 凭据已撤销/)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("DeepSeek API Key"), {
-      target: { value: "new-deepseek-key" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存并启用" }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({
-      api_key: "new-deepseek-key",
-      provider: "deepseek",
-      model: "deepseek-chat",
-      thinking_enabled: false,
-    }));
   });
 
-  it("keeps a clear zero state when the Relay has recorded no usage", async () => {
+  it("keeps a clear zero state when the Relay has no usage or historical model", async () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue({
       configured: false,
       provider: "deepseek",
       provider_name: "DeepSeek",
       base_url: "https://api.deepseek.com/v1",
-      model: "deepseek-reasoner",
-      thinking_enabled: true,
+      model: null,
+      thinking_enabled: false,
       version: null,
       updated_at: null,
       usage: {
@@ -363,6 +434,6 @@ describe("ProviderCredentialPage", () => {
     expect(screen.getByText("本月请求").nextSibling).toHaveTextContent("0");
     expect(screen.getByText("累计总 Token").nextSibling).toHaveTextContent("0");
     expect(screen.getByRole("switch", { name: "思考模式" })).not.toBeChecked();
-    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-chat");
+    expectModelIsEmpty();
   });
 });

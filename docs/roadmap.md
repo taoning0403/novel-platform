@@ -35,7 +35,8 @@
 
 - Post-v0.10 Provider routing increment: one current immutable configuration per translating User,
   with OpenAI, DeepSeek, Kimi and operator-allowlisted custom OpenAI-compatible choices; v2
-  authenticated routing metadata; and Relay selection from the exact Run-bound version.
+  authenticated routing metadata; live Provider model-catalogue selection without product
+  defaults; and Relay selection from the exact Run-bound version.
 
 The implementation, focused verification, revision-0008 migration and external deployment
 verification must be consolidated before assigning the next release version.

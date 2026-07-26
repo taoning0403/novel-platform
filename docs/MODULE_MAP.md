@@ -47,7 +47,7 @@ migrations, and tests.
 | `api/routes/books.py`, `editions.py`, `series.py` | Capability/creator-aware Book/Edition mutation, admin-only Series, and authenticated readable queries. |
 | `api/routes/imports.py`, `files.py` | Actor-isolated admin/`library.upload` imports, admin raw downloads and protected cover delivery. |
 | `api/routes/translations.py` | Actor-scoped Translation Run status/create/list/control/sync/preview plus administrator publish. |
-| `api/routes/provider_credentials.py` | `translation.use`-gated self credential status/rotate/remove and sanitized monthly/all-time usage endpoints. |
+| `api/routes/provider_credentials.py` | `translation.use`-gated live Provider model discovery plus self credential status/rotate/remove and sanitized monthly/all-time usage endpoints. |
 | `api/routes/reader.py`, `preferences.py` | Safe publication projection and viewer-private reading state. |
 | `api/schemas.py`, `api/serializers.py`, `api/errors/` | Strict non-secret contracts, reader projections, and stable errors. |
 | `application/access.py` | Separates site library owner, authenticated actor, current credential capabilities and resource creator policy. |
@@ -62,12 +62,13 @@ migrations, and tests.
 | `application/books/`, `editions/`, `series/` | Readable, owner/creator-aware library orchestration and deletion dependencies. |
 | `application/library/` | Actor-attributed EPUB/TXT inspect/commit/revision, generated ingestion reuse and safe storage lifecycle. |
 | `application/translations/` | Run state machine/orchestration, deterministic remote correlation, sync/control/cleanup and atomic generated ingestion. |
-| `application/provider_credentials/` | AES-256-GCM credential encryption, immutable version lifecycle, configuration fail-closed behavior and safe status projection. |
+| `application/provider_credentials/` | Bounded live model discovery, AES-256-GCM credential encryption, immutable version lifecycle, configuration fail-closed behavior and safe status projection. |
 | `application/reader/` | Safe EPUB/TXT projection, protected resources, progress/settings/recent state. |
 | `infrastructure/repositories/credentials.py` | Credential capability, Passkey, challenge and device-secret lookups/counting plus bounded challenge deletion. |
 | `infrastructure/repositories/{books,editions,series,reader,translations}.py` | Explicit library owner, actor creator and viewer query boundaries. |
 | `infrastructure/repositories/provider_credentials.py` | Per-User current/version resolution, Run/Job-bound Relay authorization and sanitized usage aggregation. |
 | `infrastructure/integrations/linguaspindle.py` | Narrow, same-origin, no-redirect, bounded-streaming `>=0.3.2,<0.4.0` private HTTP client with private credential scope. |
+| `infrastructure/integrations/provider_http.py` | Shared bounded Provider response reader and recursive reflected-secret detector used by model discovery and Relay sanitization. |
 | `infrastructure/database/models.py` | Identity/capability, creator-attributed library, credential-version/usage, scoped Translation Run, auth and reader mappings. |
 | `infrastructure/storage/local.py` | Random-key private local storage with checksum and bounded-path enforcement. |
 | `migrations/versions/20260715_0005_private_reading_access.py` | v0.5.0 authentication/site schema. |
@@ -80,7 +81,7 @@ migrations, and tests.
 | `tests/unit/test_auth_cookies.py` | Device-Cookie issuance, renewal, and independent lifetime. |
 | `tests/integration/test_api_workflow.py`, `test_contributor_library.py` | Legacy API removal, shared visibility, attribution and contributor permission/deletion matrix. |
 | `tests/integration/test_migrations.py` | Empty/v0.4/v0.9/v0.10 upgrades, destructive count/preservation, capability/creator backfill and fail-closed unscoped-Run preflight. |
-| `tests/unit/test_provider_credentials.py` | Vault/routing/thinking configuration, v1/v2 encryption compatibility and Relay payload/response sanitization units. |
+| `tests/unit/test_provider_credentials.py` | Live model discovery, vault/routing/thinking configuration, v1/v2 encryption compatibility and Relay payload/response sanitization units. |
 | `tests/unit/test_linguaspindle_client.py`, `tests/integration/test_translation_runs.py` | Private client hardening plus scoped credential lifecycle/isolation, Relay ASGI authorization/usage, and Run idempotency/control/cleanup/ingestion/draft/retranslation behavior. |
 
 ## Web and shared client
@@ -107,7 +108,7 @@ migrations, and tests.
 | `apps/web/src/pages/LibraryPage.tsx`, `BookDetailPage.tsx` | Collection discovery plus server-projected creator/capability actions and translation launch. |
 | `apps/web/src/features/editions/EditionCard.tsx` | Reader-safe actions plus projected upload/generated mutation and translate/retranslate controls. |
 | `apps/web/src/features/translations/`, `pages/TranslationsPage.tsx` | Narrow launch modal and Quiet Trace actor-scoped master-detail workspace with polling and draft publish. |
-| `apps/web/src/pages/ProviderCredentialPage.tsx` | Quiet Trace personal write-only Provider-key configure/rotate/remove and sanitized usage view. |
+| `apps/web/src/pages/ProviderCredentialPage.tsx` | Quiet Trace write-only Provider-key flow with live model-catalogue selection, configure/rotate/remove and sanitized usage view. |
 | `apps/web/src/pages/Series*.tsx`, `UploadPage.tsx` | Readable Series/admin Series mutation plus capability-aware file-backed imports. |
 | `apps/web/src/pages/ReaderPage.tsx` | Responsive safe Reader with edge progress, TOC/settings, recoverable quiet chrome, restore, synchronization, conflict, and Edition switch. |
 | `apps/web/src/pages/{Devices,Sessions,Profile}Page.tsx` | Viewer-private identity, device, and Session controls. |

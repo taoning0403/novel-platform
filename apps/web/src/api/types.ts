@@ -71,5 +71,7 @@ export type SecurityAuditEvent = Schemas["SecurityAuditEventResponse"];
 export type ProviderKind = Schemas["ProviderKind"];
 export type ProviderCredentialStatus = Schemas["ProviderCredentialStatusResponse"];
 export type ProviderCredentialUpdate = Schemas["ProviderCredentialPut"];
+export type ProviderModelCatalogRequest = Schemas["ProviderModelsRequest"];
+export type ProviderModelCatalogResponse = Schemas["ProviderModelsResponse"];
 export type ProviderUsageTotals = Schemas["ProviderUsageTotalsResponse"];
 export type ProviderCredentialUsage = Schemas["ProviderCredentialUsageResponse"];

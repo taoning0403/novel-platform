@@ -181,7 +181,12 @@ eligible Run that already references it. Revocation is final.
 
 Preset routes are Server-normalized. A custom base URL must exactly match the deployment
 allow-list when saved and again when used by the Relay; staging/production custom routes use
-HTTPS. Thinking is false by default: DeepSeek requires exact equivalence with
+HTTPS. `model` is the explicit ID selected from the Provider's transient `/models` response at
+configuration time; the catalogue itself is neither product-maintained nor persisted, and later
+Provider catalogue changes do not mutate a stored version. The persistent `base_url` and `model`
+columns have no application or database defaults; every new version must bind both explicitly.
+Thinking is false by default:
+DeepSeek requires exact equivalence with
 `deepseek-reasoner`; Kimi permits true only for `kimi-k2.5` and then receives an explicit
 enabled/disabled request field; OpenAI and custom routes cannot enable the generic switch. The
 non-secret self-status projection may return Provider kind/name, base URL, model, thinking state,
