@@ -82,7 +82,8 @@ SELECT json_build_object(
     ) FROM provider_usage_records), '') || '|' ||
     coalesce((SELECT string_agg(
       id::text || ':' || provider_credential_version_id::text || ':' ||
-      md5(configuration::text) || ':' || status || ':' || cleanup_status,
+      configuration_fingerprint || ':' || md5(configuration_snapshot::text) || ':' ||
+      status || ':' || cleanup_status,
       ',' ORDER BY id
     ) FROM edition_translation_runs), '')
   )

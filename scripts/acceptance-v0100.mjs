@@ -519,6 +519,7 @@ async function main() {
         stagingBackup,
         stagingArtifactScan,
         stagingArtifactScanRunner,
+        stagingPersistenceState,
       ] = await Promise.all([
         readFile(path.join(root, "apps/server/src/novel_platform/config.py"), "utf8"),
         readFile(
@@ -549,6 +550,7 @@ async function main() {
         readFile(path.join(root, "scripts/backup-library.sh"), "utf8"),
         readFile(path.join(root, "scripts/scan-staging-artifacts.mjs"), "utf8"),
         readFile(path.join(root, "scripts/scan-staging-artifacts.sh"), "utf8"),
+        readFile(path.join(root, "scripts/verify-staging-persistence-state.sh"), "utf8"),
       ]);
       run(
         "parse the fail-closed staging healthcheck",
@@ -559,6 +561,17 @@ async function main() {
         "parse disabled-Relay cleanup in the staging deploy script",
         "bash",
         ["-n", "scripts/deploy-staging.sh"],
+      );
+      run(
+        "parse the staging persistence fingerprint verifier",
+        "bash",
+        ["-n", "scripts/verify-staging-persistence-state.sh"],
+      );
+      assert(
+        stagingPersistenceState.includes("configuration_fingerprint") &&
+          stagingPersistenceState.includes("configuration_snapshot::text") &&
+          !stagingPersistenceState.includes("md5(configuration::text)"),
+        "staging persistence fingerprint does not use the current Translation Run schema",
       );
       assert(
         configSource.includes('">=0.3.2,<0.4.0"') &&
