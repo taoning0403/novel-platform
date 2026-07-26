@@ -21,6 +21,8 @@ docker run --rm \
   -e AUTH_JWT_SECRET \
   -e AUTH_HASH_SECRET \
   -e AUTH_CREDENTIAL_HASH_SECRET \
+  -e PROVIDER_CREDENTIAL_MASTER_KEY \
+  -e PROVIDER_RELAY_SERVICE_SECRET \
   -v "$REPOSITORY_ROOT:/work:ro" \
   -v "$report_directory:/reports" \
   node:22.17.1-alpine \

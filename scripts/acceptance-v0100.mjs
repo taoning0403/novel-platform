@@ -4,9 +4,10 @@ import path from "node:path";
 
 const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
-const jsonPath = path.join(artifacts, "acceptance-v0100.json");
-const markdownPath = path.join(artifacts, "acceptance-v0100.md");
-const actionLogPath = path.join(artifacts, "acceptance-v0100-actions.log");
+const candidateTag = "v0100-provider-routing";
+const jsonPath = path.join(artifacts, `acceptance-${candidateTag}.json`);
+const markdownPath = path.join(artifacts, `acceptance-${candidateTag}.md`);
+const actionLogPath = path.join(artifacts, `acceptance-${candidateTag}-actions.log`);
 const started = new Date();
 const actions = [];
 const steps = [];
@@ -14,7 +15,7 @@ const steps = [];
 const criterionLabels = [
   "不覆盖历史证据地重放适用的 v0.9 capability、贡献者、翻译、认证与 Reader 回归",
   "个人 Provider 凭据加密、轮换、移除、用量与 Run 固定版本/作用域",
-  "私有 Relay 的服务认证、固定上游策略、边界、脱敏与 token 用量记录",
+  "私有 Relay 的服务认证、版本绑定 Provider/模型/思考策略、边界、脱敏与 token 用量记录",
   "Web 凭据管理、无共享 Key 回退的启动门禁与翻译工作区交互",
   "v0.10.0 package/API 版本、BYOK OpenAPI 路径与非秘密响应契约",
   "LinguaSpindle v0.3.2 兼容、Relay 私网拓扑与 Provider 秘密泄漏防护",
@@ -170,7 +171,7 @@ async function writeReports(status, inherited, failure) {
   await mkdir(artifacts, { recursive: true });
   await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
   const markdown = [
-    "# Novel Platform v0.10.0 local acceptance",
+    "# Novel Platform post-v0.10 Provider-routing local acceptance",
     "",
     `- Status: **${status}**`,
     "- Deployment: **DEPLOYMENT_PENDING**",
@@ -213,7 +214,7 @@ async function writeReports(status, inherited, failure) {
   await writeFile(
     actionLogPath,
     [
-      "Novel Platform v0.10.0 sanitized acceptance action log",
+      "Novel Platform post-v0.10 Provider-routing sanitized acceptance action log",
       "Only action labels are recorded; arguments, outputs, secrets, content, IDs, URLs, and paths are omitted.",
       "",
       ...actions.map((label) => `[ACTION] ${label}`),
@@ -238,10 +239,10 @@ async function main() {
           env: {
             ...process.env,
             ACCEPTANCE_VERSION: "0.10.0",
-            ACCEPTANCE_TAG: "v0100-regression",
-            ACCEPTANCE_INHERITED_TAG: "v0100-regression-v080",
+            ACCEPTANCE_TAG: `${candidateTag}-regression`,
+            ACCEPTANCE_INHERITED_TAG: `${candidateTag}-regression-v080`,
             ACCEPTANCE_COMMAND: "acceptance:v0100",
-            ACCEPTANCE_EXPECTED_REVISION: "20260726_0007",
+            ACCEPTANCE_EXPECTED_REVISION: "20260726_0008",
             ACCEPTANCE_LINGUASPINDLE_VERSION: "0.3.2",
             ACCEPTANCE_LINGUASPINDLE_VERSION_RANGE: ">=0.3.2,<0.4.0",
             ACCEPTANCE_PROVIDER_CREDENTIAL_MASTER_KEY:
@@ -251,17 +252,17 @@ async function main() {
         },
       );
       const regression = JSON.parse(
-        await readFile(path.join(artifacts, "acceptance-v0100-regression.json"), "utf8"),
+        await readFile(path.join(artifacts, `acceptance-${candidateTag}-regression.json`), "utf8"),
       );
       const inheritedV080 = JSON.parse(
         await readFile(
-          path.join(artifacts, "acceptance-v0100-regression-v080.json"),
+          path.join(artifacts, `acceptance-${candidateTag}-regression-v080.json`),
           "utf8",
         ),
       );
       const inheritedCore = JSON.parse(
         await readFile(
-          path.join(artifacts, "acceptance-v0100-regression-v080-core.json"),
+          path.join(artifacts, `acceptance-${candidateTag}-regression-v080-core.json`),
           "utf8",
         ),
       );
@@ -284,9 +285,9 @@ async function main() {
       inherited = {
         status: regression.status,
         criteria_count: regression.criteria.length,
-        artifact: "artifacts/acceptance-v0100-regression.json",
-        v080_artifact: "artifacts/acceptance-v0100-regression-v080.json",
-        core_artifact: "artifacts/acceptance-v0100-regression-v080-core.json",
+        artifact: `artifacts/acceptance-${candidateTag}-regression.json`,
+        v080_artifact: `artifacts/acceptance-${candidateTag}-regression-v080.json`,
+        core_artifact: `artifacts/acceptance-${candidateTag}-regression-v080-core.json`,
       };
       mark([1], "v0100 regression replay: 84 core + 9 hardening + 11 v0.9 criteria");
       addEvidence([2], "isolated PostgreSQL replay includes scoped Run and Relay lifecycle tests");
@@ -378,7 +379,7 @@ async function main() {
         schemaRefName(
           credentialPath.put.requestBody?.content?.["application/json"]?.schema,
         ) === "ProviderCredentialPut",
-        "Provider credential PUT is not bound to the narrow key input schema",
+        "Provider credential PUT is not bound to the Provider configuration input schema",
       );
       assert(
         schemaRefName(
@@ -395,13 +396,25 @@ async function main() {
 
       const putProperties = schemaProperties(openapi, "ProviderCredentialPut");
       assert(
-        Object.keys(putProperties).length === 1 &&
+        Object.keys(putProperties).sort().join(",") ===
+            "api_key,base_url,custom_name,model,provider,thinking_enabled" &&
           putProperties.api_key?.type === "string" &&
           putProperties.api_key?.format === "password" &&
-          putProperties.api_key?.writeOnly === true,
-        "Provider credential write contract is not one password-formatted API key",
+          putProperties.api_key?.writeOnly === true &&
+          putProperties.provider?.default === "openai_compatible" &&
+          putProperties.thinking_enabled?.type === "boolean" &&
+          putProperties.thinking_enabled?.default === false,
+        "Provider credential write contract lacks routing fields or the default-off thinking switch",
       );
       const statusProperties = schemaProperties(openapi, "ProviderCredentialStatusResponse");
+      assert(
+        ["provider", "provider_name", "base_url", "model", "thinking_enabled"].every(
+          (name) => Object.hasOwn(statusProperties, name),
+        ) &&
+          openapi.components?.schemas?.ProviderKind?.enum?.join(",") ===
+            "openai_compatible,deepseek,kimi,custom",
+        "Provider credential status/enum contract lacks multi-Provider routing metadata",
+      );
       const usageProperties = schemaProperties(openapi, "ProviderCredentialUsageResponse");
       const totalsProperties = schemaProperties(openapi, "ProviderUsageTotalsResponse");
       const responsePropertyNames = [
@@ -438,8 +451,12 @@ async function main() {
       );
       assert(
         generatedSchema.includes('"/api/v1/me/provider-credential"') &&
-          generatedSchema.includes('"/api/v1/me/provider-credential/usage"'),
-        "generated TypeScript schema lacks BYOK paths",
+          generatedSchema.includes('"/api/v1/me/provider-credential/usage"') &&
+          generatedSchema.includes(
+            'ProviderKind: "openai_compatible" | "deepseek" | "kimi" | "custom"',
+          ) &&
+          generatedSchema.includes("thinking_enabled: boolean"),
+        "generated TypeScript schema lacks BYOK routing/thinking contracts",
       );
       assert(
         !generatedSchema.includes("credential_scope"),
@@ -463,6 +480,10 @@ async function main() {
         stagingHealthcheck,
         stagingDeploy,
         stagingLibrary,
+        stagingRestore,
+        stagingBackup,
+        stagingArtifactScan,
+        stagingArtifactScanRunner,
       ] = await Promise.all([
         readFile(path.join(root, "apps/server/src/novel_platform/config.py"), "utf8"),
         readFile(
@@ -489,6 +510,10 @@ async function main() {
         readFile(path.join(root, "scripts/healthcheck-staging.sh"), "utf8"),
         readFile(path.join(root, "scripts/deploy-staging.sh"), "utf8"),
         readFile(path.join(root, "scripts/staging-lib.sh"), "utf8"),
+        readFile(path.join(root, "scripts/restore-library.sh"), "utf8"),
+        readFile(path.join(root, "scripts/backup-library.sh"), "utf8"),
+        readFile(path.join(root, "scripts/scan-staging-artifacts.mjs"), "utf8"),
+        readFile(path.join(root, "scripts/scan-staging-artifacts.sh"), "utf8"),
       ]);
       run(
         "parse the fail-closed staging healthcheck",
@@ -547,6 +572,10 @@ async function main() {
         "provider-relay does not require both vault and service secrets",
       );
       assert(
+        relay.includes("PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS"),
+        "provider-relay does not receive the custom Provider destination allow-list",
+      );
+      assert(
         serviceBlock(baseCompose, "server")?.includes(
           "${PROVIDER_CREDENTIAL_MASTER_KEY:?",
         ) &&
@@ -566,6 +595,37 @@ async function main() {
       assert(
         !serverDeployment.includes("PROVIDER_RELAY_SERVICE_SECRET"),
         "public Server received the Relay service secret",
+      );
+      for (const [name, source] of [
+        ["local Server", serviceBlock(baseCompose, "server")],
+        ["staging Server", serviceBlock(stagingCompose, "server")],
+      ]) {
+        assert(
+          source?.includes("PROVIDER_RELAY_UPSTREAM_BASE_URL") &&
+            source.includes("PROVIDER_RELAY_ALLOWED_MODELS") &&
+            source.includes("PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS"),
+          `${name} does not receive the complete Provider routing policy`,
+        );
+      }
+      assert(
+        localEnvironment.includes("PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS='[]'") &&
+          stagingEnvironment.includes("PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS='[]'") &&
+          stagingLibrary.includes("validate_custom_provider_base_url_allowlist") &&
+          stagingHealthcheck.includes(
+            "settings.provider_relay_custom_allowed_base_urls == expected_custom",
+          ) &&
+          stagingRestore.includes("pg_get_expr(") &&
+          stagingRestore.includes("thinking_enabled IS DISTINCT FROM false") &&
+          stagingRestore.includes("provider_thinking_violations") &&
+          stagingRestore.includes("deepseek-reasoner") &&
+          stagingRestore.includes("kimi-k2.5") &&
+          stagingBackup.includes('"required_external_configuration"') &&
+          stagingBackup.includes("provider_relay_custom_allowed_base_urls") &&
+          stagingArtifactScan.includes('"PROVIDER_CREDENTIAL_MASTER_KEY"') &&
+          stagingArtifactScan.includes('"PROVIDER_RELAY_SERVICE_SECRET"') &&
+          stagingArtifactScanRunner.includes("-e PROVIDER_CREDENTIAL_MASTER_KEY") &&
+          stagingArtifactScanRunner.includes("-e PROVIDER_RELAY_SERVICE_SECRET"),
+        "deployment routing/thinking defaults or runtime checks are incomplete",
       );
       const nonSecretServices = [
         serviceBlock(baseCompose, "web"),

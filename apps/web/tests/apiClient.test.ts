@@ -105,10 +105,19 @@ describe("authenticated API client", () => {
         "Bearer current-access-token",
       );
       if (init?.method === "PUT") {
-        expect(JSON.parse(String(init.body))).toEqual({ api_key: providerKey });
+        expect(JSON.parse(String(init.body))).toEqual({
+          api_key: providerKey,
+          provider: "deepseek",
+          model: "deepseek-reasoner",
+          thinking_enabled: true,
+        });
         return jsonResponse({
           configured: true,
-          provider: "openai_compatible",
+          provider: "deepseek",
+          provider_name: "DeepSeek",
+          base_url: "https://api.deepseek.com/v1",
+          model: "deepseek-reasoner",
+          thinking_enabled: true,
           version: 1,
           updated_at: "2026-07-25T09:30:00Z",
           usage: {
@@ -133,6 +142,10 @@ describe("authenticated API client", () => {
       return jsonResponse({
         configured: false,
         provider: "openai_compatible",
+        provider_name: "OpenAI",
+        base_url: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        thinking_enabled: false,
         version: null,
         updated_at: null,
         usage: {
@@ -155,7 +168,12 @@ describe("authenticated API client", () => {
 
     expect(await api.getProviderCredential()).toMatchObject({ configured: false });
     expect(
-      await api.updateProviderCredential({ api_key: providerKey }),
+      await api.updateProviderCredential({
+        api_key: providerKey,
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        thinking_enabled: true,
+      }),
     ).toMatchObject({ configured: true, version: 1 });
     await api.deleteProviderCredential();
 

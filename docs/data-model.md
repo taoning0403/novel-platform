@@ -160,19 +160,32 @@ reader projections.
 ## Provider credentials and usage
 
 `provider_credential_versions` retains immutable OpenAI-compatible credential versions for one
-User. `(user_id, provider, version)` is unique and a partial unique index permits at most one
-current non-retired/non-revoked version. Each row stores:
+User. `(user_id, version)` is unique and a partial unique index permits at most one current
+non-retired/non-revoked version across OpenAI, DeepSeek, Kimi and custom Provider kinds. Each row
+stores:
 
 - random UUID used as the opaque integration scope;
-- owner User, fixed Provider kind and positive per-User version;
-- fixed `aes-256-gcm-v1` algorithm, 12-byte random nonce and authenticated ciphertext; and
+- owner User, Provider kind, optional custom display name, normalized base URL, model,
+  `thinking_enabled` defaulting to false, and positive per-User version;
+- `aes-256-gcm-v2` for new rows, a 12-byte random nonce and authenticated ciphertext; and
 - creation, retirement and revocation times.
 
-The AES key is environment-only and the authenticated data binds User, credential UUID, Provider
-and version, so moving ciphertext between rows fails decryption. No raw key, suffix, plaintext
-hash or upstream authorization value has a column. Rotation retires the prior current row and
-creates another; removal revokes all non-revoked history. Retired ciphertext remains usable only
-through an eligible Run that already references it. Revocation is final.
+The AES key is environment-only. v2 authenticated data binds User, credential UUID, version,
+Provider kind/name, base URL, model and thinking state, so moving ciphertext or changing its
+routing metadata fails decryption. Existing `aes-256-gcm-v1` OpenAI-compatible rows retain their
+original fixed-upstream/model behavior, force thinking off and are not re-encrypted by migration.
+No raw key, suffix, plaintext hash or upstream authorization value has a column. Rotation,
+switching Provider or changing thinking state retires the prior current row and creates another;
+removal revokes all non-revoked history. Retired ciphertext remains usable only through an
+eligible Run that already references it. Revocation is final.
+
+Preset routes are Server-normalized. A custom base URL must exactly match the deployment
+allow-list when saved and again when used by the Relay; staging/production custom routes use
+HTTPS. Thinking is false by default: DeepSeek requires exact equivalence with
+`deepseek-reasoner`; Kimi permits true only for `kimi-k2.5` and then receives an explicit
+enabled/disabled request field; OpenAI and custom routes cannot enable the generic switch. The
+non-secret self-status projection may return Provider kind/name, base URL, model, thinking state,
+version and lifecycle time but never the credential scope or encrypted fields.
 
 `provider_usage_records` contains one sanitized successful Relay call record: credential version,
 bounded model name, optional LinguaSpindle Job correlation, nonnegative prompt/completion/total
@@ -188,8 +201,8 @@ It stores:
 - library owner, actor, Book, fixed source Edition + EditionFile + revision + SHA-256 + `txt`;
 - exact non-null Provider credential-version foreign key;
 - target language, requested title, optional same-Book generated Edition to supersede;
-- non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs and
-  safe credential version number);
+- non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs,
+  bound Provider routing/thinking metadata and safe credential version number);
 - actor-scoped `client_request_id` and remote Project/Job/Artifact/request IDs;
 - local/remote status, progress, sanitized error, retry, cleanup and timestamps;
 - optional generated Edition ID (`ON DELETE SET NULL`) so Run history survives Edition deletion.

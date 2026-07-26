@@ -27,6 +27,7 @@ load_staging_environment() {
   # shellcheck disable=SC1090
   source "$STAGING_ENV_FILE"
   set +a
+  export PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS="${PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS:-[]}"
 }
 
 require_environment_value() {
@@ -78,9 +79,55 @@ value = json.loads(os.environ["PROVIDER_RELAY_ALLOWED_MODELS"])
 if (
     not isinstance(value, list)
     or not value
-    or len(value) != len(set(value))
     or any(not isinstance(item, str) or not item.strip() or len(item) > 120 for item in value)
 ):
+    raise SystemExit(1)
+models = [item.strip() for item in value]
+if len(models) != len(set(models)):
+    raise SystemExit(1)
+PY
+}
+
+validate_custom_provider_base_url_allowlist() {
+  command -v python3 >/dev/null 2>&1 || die "required command is unavailable: python3"
+  python3 <<'PY' \
+    || die "PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS must be a JSON list of at most" \
+      "100 unique valid HTTP(S) base URLs (HTTPS in staging/production)"
+import json
+import os
+from urllib.parse import urlsplit
+
+try:
+    values = json.loads(os.environ["PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS"])
+except (KeyError, TypeError, ValueError):
+    raise SystemExit(1)
+if not isinstance(values, list) or len(values) > 100:
+    raise SystemExit(1)
+
+protected = os.environ.get("ENVIRONMENT", "").lower() in {"staging", "production"}
+normalized_values = []
+for value in values:
+    if not isinstance(value, str) or not value or not value.isprintable():
+        raise SystemExit(1)
+    normalized = value.strip().rstrip("/")
+    try:
+        parsed = urlsplit(normalized)
+        invalid = (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or bool(parsed.query)
+            or bool(parsed.fragment)
+            or ".." in parsed.path.split("/")
+            or (protected and parsed.scheme != "https")
+        )
+    except (TypeError, ValueError):
+        raise SystemExit(1)
+    if invalid:
+        raise SystemExit(1)
+    normalized_values.append(normalized)
+if len(normalized_values) != len(set(normalized_values)):
     raise SystemExit(1)
 PY
 }
@@ -92,7 +139,8 @@ validate_staging_environment() {
     OPENAPI_ENABLED LINGUASPINDLE_ENABLED LINGUASPINDLE_BASE_URL \
     LINGUASPINDLE_VERSION_RANGE LINGUASPINDLE_PROVIDER_ID \
     LINGUASPINDLE_MAX_DOWNLOAD_BYTES MAX_UPLOAD_BYTES \
-    PROVIDER_CREDENTIAL_MASTER_KEY PROVIDER_RELAY_INTERNAL_URL; do
+    PROVIDER_CREDENTIAL_MASTER_KEY PROVIDER_RELAY_INTERNAL_URL \
+    PROVIDER_RELAY_UPSTREAM_BASE_URL PROVIDER_RELAY_ALLOWED_MODELS; do
     require_environment_value "$name"
   done
   if [[ "${NOVEL_ACCEPTANCE_LOCAL:-0}" == "1" ]]; then
@@ -142,13 +190,15 @@ validate_staging_environment() {
     || die "LINGUASPINDLE_MAX_DOWNLOAD_BYTES cannot exceed MAX_UPLOAD_BYTES"
   [[ "$PROVIDER_RELAY_INTERNAL_URL" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]+)?$ ]] \
     || die "PROVIDER_RELAY_INTERNAL_URL must be one fixed HTTP(S) origin"
+  validate_model_allowlist
+  validate_custom_provider_base_url_allowlist
+  [[ "$PROVIDER_RELAY_UPSTREAM_BASE_URL" =~ ^https://[A-Za-z0-9._-]+(:[0-9]+)?(/[^?#]*)?$ ]] \
+    || die "staging Provider relay legacy upstream must be one fixed HTTPS base URL"
   if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
-    for name in PROVIDER_RELAY_SERVICE_SECRET PROVIDER_RELAY_UPSTREAM_BASE_URL \
-      PROVIDER_RELAY_ALLOWED_MODELS; do
+    for name in PROVIDER_RELAY_SERVICE_SECRET; do
       require_environment_value "$name"
     done
     validate_secret PROVIDER_RELAY_SERVICE_SECRET
-    validate_model_allowlist
     [[ "$PROVIDER_RELAY_SERVICE_SECRET" != "$AUTH_JWT_SECRET" \
       && "$PROVIDER_RELAY_SERVICE_SECRET" != "$AUTH_HASH_SECRET" \
       && "$PROVIDER_RELAY_SERVICE_SECRET" != "$AUTH_CREDENTIAL_HASH_SECRET" \
@@ -162,8 +212,6 @@ validate_staging_environment() {
       && "$LINGUASPINDLE_BASE_URL" != "http://127.0.0.1:"* \
       && "$LINGUASPINDLE_BASE_URL" != "http://[::1]:"* ]] \
       || die "enabled LinguaSpindle cannot use a loopback origin"
-    [[ "$PROVIDER_RELAY_UPSTREAM_BASE_URL" =~ ^https://[A-Za-z0-9._-]+(:[0-9]+)?(/[^?#]*)?$ ]] \
-      || die "staging Provider relay upstream must be one fixed HTTPS base URL"
   fi
 }
 

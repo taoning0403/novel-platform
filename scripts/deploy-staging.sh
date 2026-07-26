@@ -94,8 +94,9 @@ if [[ "$before_revision" == "20260715_0005" ]]; then
     || die "the supplied isolated-restore report is not PASS"
 elif [[ -n "$before_revision" \
   && "$before_revision" != "20260723_0006" \
-  && "$before_revision" != "20260726_0007" ]]; then
-  die "existing database revision is not a supported v0.10 upgrade source"
+  && "$before_revision" != "20260726_0007" \
+  && "$before_revision" != "20260726_0008" ]]; then
+  die "existing database revision is not a supported upgrade source"
 fi
 if [[ "$before_revision" == "20260723_0006" ]]; then
   unscoped_runs="$(compose exec -T postgres sh -c \

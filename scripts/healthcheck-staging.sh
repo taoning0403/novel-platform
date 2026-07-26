@@ -433,14 +433,28 @@ PY
 
   docker exec -i "$server_container" python - \
     "$LINGUASPINDLE_BASE_URL" \
-    "$PROVIDER_RELAY_INTERNAL_URL" <<'PY' \
+    "$PROVIDER_RELAY_INTERNAL_URL" \
+    "$PROVIDER_RELAY_UPSTREAM_BASE_URL" \
+    "$PROVIDER_RELAY_ALLOWED_MODELS" \
+    "$PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS" <<'PY' \
     || die "Server translation runtime configuration differs from the protected host configuration"
+import json
 import sys
 
 try:
     from novel_platform.config import Settings
 
-    expected_lingua, expected_relay = sys.argv[1:]
+    (
+        expected_lingua,
+        expected_relay,
+        expected_upstream,
+        expected_models_json,
+        expected_custom_json,
+    ) = sys.argv[1:]
+    expected_models = [item.strip() for item in json.loads(expected_models_json)]
+    expected_custom = [
+        item.strip().rstrip("/") for item in json.loads(expected_custom_json)
+    ]
     settings = Settings()
     valid = (
         settings.linguaspindle_enabled
@@ -448,6 +462,9 @@ try:
         and settings.linguaspindle_version_range == ">=0.3.2,<0.4.0"
         and settings.linguaspindle_provider_id == "openai-compatible"
         and settings.provider_relay_internal_url == expected_relay.rstrip("/")
+        and settings.provider_relay_upstream_base_url == expected_upstream.rstrip("/")
+        and settings.provider_relay_allowed_models == expected_models
+        and settings.provider_relay_custom_allowed_base_urls == expected_custom
     )
 except Exception:
     raise SystemExit(1)
@@ -456,7 +473,8 @@ PY
 
   docker exec -i "$relay_container" python - \
     "$PROVIDER_RELAY_UPSTREAM_BASE_URL" \
-    "$PROVIDER_RELAY_ALLOWED_MODELS" <<'PY' \
+    "$PROVIDER_RELAY_ALLOWED_MODELS" \
+    "$PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS" <<'PY' \
     || die "Provider Relay runtime configuration differs from the protected host configuration"
 import json
 import sys
@@ -464,12 +482,16 @@ import sys
 try:
     from novel_platform.config import ProviderRelaySettings
 
-    expected_upstream, expected_models_json = sys.argv[1:]
+    expected_upstream, expected_models_json, expected_custom_json = sys.argv[1:]
     expected_models = [item.strip() for item in json.loads(expected_models_json)]
+    expected_custom = [
+        item.strip().rstrip("/") for item in json.loads(expected_custom_json)
+    ]
     settings = ProviderRelaySettings()
     valid = (
         settings.provider_relay_upstream_base_url == expected_upstream.rstrip("/")
         and settings.provider_relay_allowed_models == expected_models
+        and settings.provider_relay_custom_allowed_base_urls == expected_custom
     )
 except Exception:
     raise SystemExit(1)

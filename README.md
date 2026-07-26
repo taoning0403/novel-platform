@@ -13,16 +13,19 @@ It intentionally has no public registration/catalogue, public raw download, user
 login, comments, social features, payments, advertising, or public publishing.
 
 v0.10.0 retains the v0.9 capability, contributor and generated-Edition model, and adds reader-owned
-OpenAI-compatible Provider credentials. Each translating actor stores a write-only key as an
-immutable AES-256-GCM-encrypted version, pays through that exact version for the lifetime of a Run,
-and can inspect sanitized request/Token totals. LinguaSpindle v0.3.2 receives only an opaque
-credential scope and calls a fixed-policy private Relay; neither LinguaSpindle nor the browser
-receives the upstream key, and there is no administrator/shared-key fallback.
+Provider credentials. Each translating actor stores one current OpenAI, DeepSeek, Kimi or
+operator-allowlisted custom configuration as an immutable AES-256-GCM-encrypted version, pays
+through that exact version for the lifetime of a Run, and can inspect sanitized request/Token
+totals. LinguaSpindle v0.3.2 receives only an opaque credential scope and calls a fixed-policy
+private Relay; neither LinguaSpindle nor the browser receives the upstream key, and there is no
+administrator/shared-key fallback.
 
-The source tree currently targets the v0.10.0 release candidate and remains pre-1.0 software.
-Final release-gate evidence and external deployment verification are still candidate work. Review
-the [current project state](docs/PROJECT_STATE.md) and
-[deployment runbook](docs/staging-deployment.md) before exposing an installation to the Internet.
+The deployed v0.10.0 baseline is complete; this source tree contains a post-v0.10 Provider-routing
+increment whose next release number has not been assigned. Package/API metadata therefore remains
+v0.10.0 for now, and candidate/deployment evidence must identify the exact commit without
+overwriting the archived v0.10 evidence. The project remains pre-1.0 software. Review the
+[current project state](docs/PROJECT_STATE.md) and [deployment runbook](docs/staging-deployment.md)
+before exposing an installation to the Internet.
 
 ## Highlights
 
@@ -60,7 +63,7 @@ Browser
           -> optional private HTTP -> LinguaSpindle >=0.3.2
                                       -> private Provider Relay
                                           -> encrypted credential lookup in PostgreSQL
-                                          -> fixed OpenAI-compatible upstream
+                                          -> version-bound approved OpenAI-compatible upstream
 ```
 
 LinguaSpindle retains its own SQLite and Artifact volume and knows no Novel Platform User or
@@ -285,20 +288,27 @@ and Series invariants remain unchanged.
 
 ## Reader-owned Provider credential boundary
 
-A current `translation.use` actor manages only their own OpenAI-compatible key under
-`/api/v1/me/provider-credential`. The raw value is accepted only by PUT, encrypted with a unique
-nonce and authenticated ownership/version data, cleared from the Web form, and never returned,
-hinted, hashed into a response, or stored in browser storage. Rotation creates a new immutable
-current version and retires the previous one; an already-created Run remains bound to its original
-version. Removal revokes every version for that User, including versions bound to unfinished work.
+A current `translation.use` actor manages one current OpenAI, DeepSeek, Kimi or custom
+OpenAI-compatible configuration under `/api/v1/me/provider-credential`. The raw key is accepted
+only by PUT, encrypted with a unique nonce and authenticated ownership/version/routing data,
+cleared from the Web form, and never returned, hinted, hashed into a response, or stored in
+browser storage. Provider kind, display name, base URL, model and thinking-mode state are
+non-secret status metadata. Thinking defaults off; DeepSeek maps it strictly to
+`deepseek-reasoner`, Kimi `kimi-k2.5` receives an explicit enabled/disabled field, and
+OpenAI/custom configurations cannot enable the non-portable generic switch. Rotation, switching
+Provider or changing thinking state creates a new immutable current version and retires the
+previous one; an already-created Run remains bound to its original version. Removal revokes every
+version for that User, including versions bound to unfinished work.
 
 Launching translation requires both current translation authority and a current personal
-credential. Missing, revoked, undecryptable, or mismatched credentials fail closed; the system
-never falls back to an administrator or site-funded key. The Relay accepts only its fixed Chat
-Completions path, service Bearer, opaque scope, LinguaSpindle Job ID, allowlisted model, and fixed
-HTTPS upstream. It replaces the service Bearer with the decrypted actor key only at the upstream
-boundary and stores integer Provider-reported token usage without prompts, translations, raw
-responses, prices, or cost estimates.
+credential. Missing, revoked, undecryptable, mismatched or disallowed-route credentials fail
+closed; the system never falls back to an administrator or site-funded key. The Relay accepts
+only its fixed Chat Completions path, service Bearer, opaque scope, LinguaSpindle Job ID and
+allowlisted inbound adapter model. It then routes to the preset upstream or an exact
+operator-allowlisted custom HTTPS base URL and substitutes the model bound to that credential
+version. It replaces the service Bearer with the decrypted actor key only at the selected
+upstream boundary and stores integer Provider-reported token usage without prompts, translations,
+raw responses, prices, or cost estimates.
 
 `PROVIDER_CREDENTIAL_MASTER_KEY` must be strict Base64 decoding to exactly 32 bytes and must be
 backed up separately from the database. `PROVIDER_RELAY_SERVICE_SECRET` must be independent of the
@@ -323,10 +333,17 @@ v0.9 Run has no truthful payer/key binding, so migration 0007 refuses if any Run
 not delete the Run or fabricate a scope. Back up first, then explicitly archive/remove those test
 Runs or restore/reset the exact disposable environment before retrying.
 
+Alembic `20260726_0008` adds immutable Provider kind/name/base URL/model/thinking metadata, one
+current configuration and one per-User version sequence. It preserves existing v1 OpenAI
+ciphertext and uses v2 authenticated data for new versions.
+
 Stop writers, create a coordinated `scripts/backup-library.sh` backup, and pass an isolated
 `scripts/restore-library.sh --test` before migration. Keep the matching
 `PROVIDER_CREDENTIAL_MASTER_KEY` in a separate protected backup: the PostgreSQL dump includes
 credential ciphertext and usage, while the master key and Relay service secret are excluded.
+For backups containing custom credentials, preserve the exact
+`PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS` generation separately as well; the manifest declares
+this external requirement without recording its values.
 Deploy LinguaSpindle `>=0.3.2,<0.4.0`; configure its OpenAI-compatible base URL to the private
 Relay `/v1`, its runtime API key to the Relay service secret, and its model to an operator
 allowlisted Relay model. Relay, LinguaSpindle, API and database ports must remain unexposed.
@@ -423,9 +440,10 @@ and rejects mismatched database/file references before publishing the backup dir
 includes credentials and capability rows, Passkeys, devices, Sessions, site settings, audit rows,
 Books, Editions, contributor attribution, Translation Runs, file revisions, Series, preferences,
 settings, progress, encrypted Provider credential versions, and sanitized usage records. The
-manifest explicitly excludes the vault master key, Relay service secret, and all LinguaSpindle
-data and resources. A usable credential restore requires the separately protected matching master
-key.
+manifest explicitly excludes the vault master key, custom Provider allow-list values, Relay
+service secret, and all LinguaSpindle data and resources. A usable credential restore requires the
+separately protected matching master key and, for custom routes, the reviewed matching allow-list
+generation.
 
 Always restore-test into isolated resources first:
 
@@ -494,18 +512,20 @@ pnpm acceptance:v0100
 ```
 
 The gate preserves the 84 applicable v0.5 core, 9 v0.8 hardening, and 11 v0.9 criteria without
-rewriting their historical artifacts. Six v0.10 criteria cover the inherited replay; encrypted
-credential lifecycle/usage and Run scope binding; Relay authentication/fixed-upstream/redaction;
-Web credential management and no-fallback launch gating; v0.10 package/OpenAPI contracts; and
-LinguaSpindle v0.3.2/private-topology/leak boundaries.
+rewriting their historical artifacts. Six extended criteria cover the inherited replay; encrypted
+credential lifecycle/usage and Run scope binding; Relay authentication, version-bound routing/
+thinking and redaction; Web credential management and no-fallback launch gating; v0.10
+package/OpenAPI contracts; and LinguaSpindle v0.3.2/private-topology/leak boundaries.
 
-Sanitized outputs are `artifacts/acceptance-v0100.{md,json}` and inherited replay evidence is
-written under `artifacts/acceptance-v0100-regression*`. Synthetic/fake transport is mandatory.
+Sanitized outputs for this increment are
+`artifacts/acceptance-v0100-provider-routing.{md,json}` and inherited replay evidence is written
+under `artifacts/acceptance-v0100-provider-routing-regression*`; the archived v0.10 outputs are
+not overwritten. Synthetic/fake transport is mandatory.
 Real LinguaSpindle v0.3.2 + Mock Provider and real OpenAI-compatible Provider calls remain
 `PENDING_OPERATOR_CONFIG`; real paid calls and content egress are not executed. Remote migration,
 secret injection, network changes, HTTPS/Passkey, persistence and cleanup checks remain
-`DEPLOYMENT_PENDING`. At this documentation refresh, the final v0.10 candidate gate report and
-external deployment result are still pending confirmation. Set
+`DEPLOYMENT_PENDING`. The Provider-routing increment remains pending until its exact-commit local
+report and external deployment result are recorded. Set
 `KEEP_ACCEPTANCE_ENV=1` only when preserving a failed isolated environment for local diagnosis.
 
 Historical gates `acceptance:v010` through `acceptance:v090` remain directly runnable with their

@@ -77,6 +77,32 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                     "provider_usage_records",
                 )
             }
+            credential_columns = set(
+                (
+                    await connection.scalars(
+                        text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema='public' "
+                            "AND table_name='provider_credential_versions'"
+                        )
+                    )
+                ).all()
+            )
+            thinking_column = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT is_nullable, column_default "
+                            "FROM information_schema.columns "
+                            "WHERE table_schema='public' "
+                            "AND table_name='provider_credential_versions' "
+                            "AND column_name='thinking_enabled'"
+                        )
+                    )
+                )
+                .mappings()
+                .one()
+            )
             site = (
                 (
                     await connection.execute(
@@ -90,8 +116,16 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                 .mappings()
                 .one()
             )
-        assert revision == "20260726_0007"
+        assert revision == "20260726_0008"
         assert all(value is not None for value in tables.values())
+        assert {
+            "provider_name",
+            "base_url",
+            "model",
+            "thinking_enabled",
+        } <= credential_columns
+        assert thinking_column["is_nullable"] == "NO"
+        assert thinking_column["column_default"] == "false"
         assert site["site_name"] == "个人数字阅读与藏书整理"
         assert site["icp_registration_number"] is None
         assert site["default_reader_max_devices"] == 3
@@ -518,7 +552,7 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                 .one()
             )
         await engine.dispose()
-        assert v090["revision"] == "20260726_0007"
+        assert v090["revision"] == "20260726_0008"
         assert v090["book_creator"] == target_admin
         assert v090["edition_creator"] == target_admin
         assert v090["file_creator"] == target_admin
@@ -625,7 +659,7 @@ async def test_v090_migration_blocks_active_import_and_backfills_read_capability
                 .one()
             )
         await engine.dispose()
-        assert migrated["version_num"] == "20260726_0007"
+        assert migrated["version_num"] == "20260726_0008"
         assert migrated["capability"] == "library.read"
         assert migrated["requested_by_user_id"] == admin_id
     finally:
@@ -757,5 +791,169 @@ async def test_provider_credential_migration_refuses_and_preserves_unscoped_runs
         assert state["revision"] == "20260723_0006"
         assert state["run_count"] == 1
         assert state["credential_table"] is None
+    finally:
+        await drop_migration_database(database_name, admin_url)
+
+
+@pytest.mark.integration
+async def test_multi_provider_migration_preserves_legacy_credential_semantics() -> None:
+    base_url = os.getenv("TEST_DATABASE_URL")
+    if not base_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    database_name, admin_url, database_url = await create_migration_database(base_url)
+    owner_id = UUID("00000000-0000-0000-0000-000000000001")
+    credential_id = UUID("87000000-0000-0000-0000-000000000001")
+    try:
+        run_alembic(database_url, "upgrade", "20260726_0007")
+        engine = create_async_engine(database_url)
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO provider_credential_versions "
+                    "(id, user_id, provider, version, algorithm, nonce, ciphertext) "
+                    "VALUES (:id, :user, 'openai_compatible', 1, "
+                    "'aes-256-gcm-v1', :nonce, :ciphertext)"
+                ),
+                {
+                    "id": credential_id,
+                    "user": owner_id,
+                    "nonce": bytes(12),
+                    "ciphertext": b"x" * 17,
+                },
+            )
+        await engine.dispose()
+
+        run_alembic(database_url, "upgrade", "head")
+        engine = create_async_engine(database_url)
+        async with engine.connect() as connection:
+            migrated = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT provider, provider_name, base_url, model, "
+                            "thinking_enabled, algorithm "
+                            "FROM provider_credential_versions WHERE id=:id"
+                        ),
+                        {"id": credential_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            algorithm_default = await connection.scalar(
+                text(
+                    "SELECT column_default FROM information_schema.columns "
+                    "WHERE table_schema='public' "
+                    "AND table_name='provider_credential_versions' "
+                    "AND column_name='algorithm'"
+                )
+            )
+            version_constraint = await connection.scalar(
+                text(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conrelid='provider_credential_versions'::regclass "
+                    "AND conname='uq_provider_credential_versions_user_version'"
+                )
+            )
+            current_index = await connection.scalar(
+                text(
+                    "SELECT indexdef FROM pg_indexes "
+                    "WHERE schemaname='public' "
+                    "AND tablename='provider_credential_versions' "
+                    "AND indexname='uq_provider_credential_versions_current'"
+                )
+            )
+            revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
+        await engine.dispose()
+
+        assert revision == "20260726_0008"
+        assert dict(migrated) == {
+            "provider": "openai_compatible",
+            "provider_name": None,
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4.1-mini",
+            "thinking_enabled": False,
+            "algorithm": "aes-256-gcm-v1",
+        }
+        assert algorithm_default is not None
+        assert "aes-256-gcm-v2" in algorithm_default
+        assert version_constraint == "UNIQUE (user_id, version)"
+        assert current_index is not None
+        assert "UNIQUE INDEX" in current_index
+        assert "USING btree (user_id)" in current_index
+        assert "retired_at IS NULL" in current_index
+        assert "revoked_at IS NULL" in current_index
+    finally:
+        await drop_migration_database(database_name, admin_url)
+
+
+@pytest.mark.integration
+async def test_multi_provider_migration_downgrade_refuses_incompatible_rows() -> None:
+    base_url = os.getenv("TEST_DATABASE_URL")
+    if not base_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    database_name, admin_url, database_url = await create_migration_database(base_url)
+    owner_id = UUID("00000000-0000-0000-0000-000000000001")
+    credential_id = UUID("87000000-0000-0000-0000-000000000002")
+    try:
+        run_alembic(database_url, "upgrade", "head")
+        engine = create_async_engine(database_url)
+
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "INSERT INTO provider_credential_versions "
+                    "(id, user_id, provider, version, nonce, ciphertext) "
+                    "VALUES (:id, :user, 'openai_compatible', 1, :nonce, :ciphertext)"
+                ),
+                {
+                    "id": credential_id,
+                    "user": owner_id,
+                    "nonce": bytes(12),
+                    "ciphertext": b"x" * 17,
+                },
+            )
+            algorithm = await connection.scalar(
+                text("SELECT algorithm FROM provider_credential_versions WHERE id=:id"),
+                {"id": credential_id},
+            )
+        assert algorithm == "aes-256-gcm-v2"
+
+        with pytest.raises(subprocess.CalledProcessError) as v2_failure:
+            run_alembic(database_url, "downgrade", "20260726_0007")
+        assert "v0100_multi_provider_credentials_cannot_downgrade" in (
+            (v2_failure.value.stdout or "") + (v2_failure.value.stderr or "")
+        )
+
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("DELETE FROM provider_credential_versions WHERE id=:id"),
+                {"id": credential_id},
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO provider_credential_versions "
+                    "(id, user_id, provider, version, algorithm, nonce, ciphertext) "
+                    "VALUES (:id, :user, 'deepseek', 1, 'aes-256-gcm-v1', "
+                    ":nonce, :ciphertext)"
+                ),
+                {
+                    "id": credential_id,
+                    "user": owner_id,
+                    "nonce": bytes(12),
+                    "ciphertext": b"x" * 17,
+                },
+            )
+
+        with pytest.raises(subprocess.CalledProcessError) as provider_failure:
+            run_alembic(database_url, "downgrade", "20260726_0007")
+        assert "v0100_multi_provider_credentials_cannot_downgrade" in (
+            (provider_failure.value.stdout or "") + (provider_failure.value.stderr or "")
+        )
+
+        async with engine.connect() as connection:
+            revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
+        await engine.dispose()
+        assert revision == "20260726_0008"
     finally:
         await drop_migration_database(database_name, admin_url)

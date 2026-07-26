@@ -11,12 +11,12 @@ migrations, and tests.
 | `LICENSE`, `NOTICE`, `SECURITY.md`, `SECURITY.zh-CN.md` | Apache-2.0 project license, Psycopg LGPL third-party notice, and bilingual private vulnerability-reporting policy. |
 | `AGENTS.md`, `.agents/skills/repo-context/` | Required repository workflow and context-first navigation. |
 | `.agents/skills/novel-platform-design-system/` | Approved 漫读 Quiet Trace tokens, layout, interaction, accessibility, and verification constraints for Web UI work. |
-| `docs/PROJECT_STATE.md` | Current v0.10.0 BYOK/private-Relay candidate scope, verification, omissions, and deployment state. |
+| `docs/PROJECT_STATE.md` | Deployed v0.10.0 baseline plus current post-v0.10 Provider-routing scope, verification, omissions, and deployment state. |
 | `docs/architecture.md`, `docs/data-model.md` | Boundaries, flows, relationships, and invariants. |
-| `docs/DECISIONS.md`, `docs/adr/0012-*` through `0019-*` | Authentication, capability/contributor library, Quiet Trace, proxy hardening, private translation and reader-owned Provider-credential decisions. |
+| `docs/DECISIONS.md`, `docs/adr/0012-*` through `0020-*` | Authentication, capability/contributor library, Quiet Trace, proxy hardening, private translation, reader-owned credentials and version-bound Provider-routing decisions. |
 | `compose.yaml` | Isolated local PostgreSQL, migration, API, library volume, and Web topology. |
 | `compose.staging.yml`, `.env.staging.example`, `compose.translation.yml` | HTTPS/WebAuthn single-host contract plus optional Server and database-connected Relay overlay on external `linguaspindle-private`; Relay has no host/proxy port. |
-| `scripts/acceptance-v0100.mjs` | Current candidate gate: v0.9 replay into v0.10-only evidence plus six encrypted-BYOK/Relay/Web/version/topology criteria. |
+| `scripts/acceptance-v0100.mjs` | Current Provider-routing candidate gate: v0.9 replay plus six extended encrypted-BYOK/multi-Provider/thinking/Relay/Web/version/topology criteria. |
 | `scripts/acceptance-v090.mjs`, `acceptance-v090.database.yml` | Historical/currently replayed v0.9 gate: applicable 84-core + 9-hardening replay and 11 capability/contributor/translation/operations criteria in isolated resources. |
 | `scripts/acceptance-v080.mjs` | Historical v0.8 gate, parameterized only so v0.9 can replay it into new evidence without overwriting historical artifacts. |
 | `scripts/acceptance-v080.chain.yml`, `acceptance-v080-edge.conf` | Isolated two-hop chain (simulated host edge → staging Nginx → API) with fixed test addresses used only by the v0.8.0 gate. |
@@ -26,18 +26,18 @@ migrations, and tests.
 | `scripts/acceptance-v010..v040.mjs` | Historical gates retained for evidence; password/ownership assertions are superseded. |
 | `scripts/report-web-bundle.mjs` | Current production chunk inventory, route-scope comparison, accepted baseline sizes, and unchanged 200 kB entry gzip budget. |
 | `scripts/deploy-staging.sh` | Backup, Alembic, explicit auth conversion, volume audit, and safe service start. |
-| `scripts/backup-library.sh`, `restore-library.sh` | Coordinated Novel Platform database/library backup and isolated v0.10 restore verification; includes encrypted Provider rows/usage, requires the separately protected master key for usable credentials, and excludes Relay/LinguaSpindle secrets/resources. |
+| `scripts/backup-library.sh`, `restore-library.sh` | Coordinated Novel Platform database/library backup and isolated v0.10 restore verification; includes encrypted Provider rows/usage, declares the separately protected master key and custom-route allow-list as external requirements, and excludes Relay/LinguaSpindle secrets/resources. |
 | `scripts/acceptance-staging-persistence.sh` | Sanitized table/fingerprint persistence across service/database/Compose recreation. |
-| `scripts/{report-staging-resources,scan-staging-artifacts,generate-staging-deployment-report}.sh` | v0.5 resource, leak, and deployment evidence without credentials or host paths. |
+| `scripts/{report-staging-resources,scan-staging-artifacts,generate-staging-deployment-report}.sh` | Resource, authentication/Provider-secret leak, and deployment evidence without credentials or host paths. |
 | `docs/staging-deployment.md` | HTTPS, v0.9/v0.10 guarded migration, vault/Relay secret boundary, private translation topology, backup/restore, verification and rollback runbook. |
 
 ## Server (`apps/server`)
 
 | Path | Responsibility |
 | --- | --- |
-| `src/novel_platform/config.py` | Auth/WebAuthn/CORS/proxy/storage limits plus fail-closed LinguaSpindle, encrypted-vault and fixed-upstream Relay settings/secret validation. |
+| `src/novel_platform/config.py` | Auth/WebAuthn/CORS/proxy/storage limits plus fail-closed LinguaSpindle, encrypted-vault, legacy-upstream and custom-destination Relay settings/secret validation. |
 | `src/novel_platform/main.py` | FastAPI/OpenAPI construction, middleware, routing, and noindex policy. |
-| `src/novel_platform/relay.py` | Dedicated private OpenAI-compatible Relay ASGI app: service/scope/Job authorization, bounded fixed-upstream forwarding, response sanitization and usage persistence. |
+| `src/novel_platform/relay.py` | Dedicated private OpenAI-compatible Relay ASGI app: service/scope/Job authorization, version-bound approved routing/model/thinking mapping, bounded forwarding, response sanitization and usage persistence. |
 | `src/novel_platform/cli.py` | Administrator, migration, integrity-audit, and retention-cleanup CLI. |
 | `api/dependencies/auth.py` | Database-backed User/credential capability/device/Session/Passkey checks and recovery restriction. |
 | `api/routes/auth.py` | Unified credential login, Passkey registration/authentication, device-bound refresh with fail-closed Origin, logout, Sessions. |
@@ -73,13 +73,14 @@ migrations, and tests.
 | `migrations/versions/20260715_0005_private_reading_access.py` | v0.5.0 authentication/site schema. |
 | `migrations/versions/20260723_0006_capabilities_contributors_translations.py` | Destructive fileless cleanup, creator/capability backfill and Translation Run schema; no downgrade. |
 | `migrations/versions/20260726_0007_provider_credentials_and_relay.py` | Encrypted credential/usage schema and non-null Run binding; fails closed rather than assigning or deleting existing unscoped v0.9 Runs. |
+| `migrations/versions/20260726_0008_multi_provider_credentials.py` | Adds immutable Provider name/base/model/default-off thinking metadata, one current version per User and v1/v2 authenticated-cipher compatibility. |
 | `tests/integration/test_auth_and_isolation.py` | Credential capabilities/state, device concurrency, recovery/reset/lock and private isolation. |
 | `tests/integration/test_auth_hardening.py` | Device-bound refresh, uniform failure, replay revocation, fail-closed Origin, and device-Cookie renewal. |
 | `tests/integration/test_challenge_cleanup.py` | Bounded expired-challenge deletion, valid-row preservation, and concurrent single-use verification. |
 | `tests/unit/test_auth_cookies.py` | Device-Cookie issuance, renewal, and independent lifetime. |
 | `tests/integration/test_api_workflow.py`, `test_contributor_library.py` | Legacy API removal, shared visibility, attribution and contributor permission/deletion matrix. |
 | `tests/integration/test_migrations.py` | Empty/v0.4/v0.9/v0.10 upgrades, destructive count/preservation, capability/creator backfill and fail-closed unscoped-Run preflight. |
-| `tests/unit/test_provider_credentials.py` | Vault configuration/encryption and Relay payload/response sanitization units. |
+| `tests/unit/test_provider_credentials.py` | Vault/routing/thinking configuration, v1/v2 encryption compatibility and Relay payload/response sanitization units. |
 | `tests/unit/test_linguaspindle_client.py`, `tests/integration/test_translation_runs.py` | Private client hardening plus scoped credential lifecycle/isolation, Relay ASGI authorization/usage, and Run idempotency/control/cleanup/ingestion/draft/retranslation behavior. |
 
 ## Web and shared client
@@ -128,5 +129,5 @@ migrations, and tests.
 | Persistence schema | models plus migration | empty/v0.4/v0.9 migration and isolated restore tests |
 | HTTP contract | schema/serializer/route | `pnpm api:generate`, Web typecheck, integration tests |
 | Web layout/component system | design-system skill + provider + AppShell + shared UI | Web tests, production build, bundle report, inherited v0.6 browser acceptance, v0.7 task paths and capture-only browser evidence |
-| Deployment/upgrade | settings, Compose overlays, staging scripts | config/secret validation, 0007 unscoped-Run preflight, coordinated backup/external-key restore, network/port audit |
+| Deployment/upgrade | settings, Compose overlays, staging scripts | config/secret validation, 0007 unscoped-Run preflight, 0008 routing constraints, coordinated backup/external-key/allow-list restore, network/port audit |
 | Durable design | current code and consolidated docs | new ADR and decision-index entry |

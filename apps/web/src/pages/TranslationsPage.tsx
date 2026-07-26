@@ -85,6 +85,21 @@ function configurationValue(run: TranslationRun, key: string): string {
   return typeof value === "string" && value !== "" ? value : "未配置";
 }
 
+function firstConfigurationValue(run: TranslationRun, keys: string[]): string {
+  for (const key of keys) {
+    const value = run.configuration[key];
+    if (typeof value === "string" && value !== "") return value;
+  }
+  return "未配置";
+}
+
+function configurationBooleanLabel(run: TranslationRun, key: string): string {
+  const value = run.configuration[key];
+  if (value === true) return "开启";
+  if (value === false) return "关闭";
+  return "未记录";
+}
+
 function ActionControl({
   action,
   activeAction,
@@ -346,8 +361,8 @@ export function TranslationsPage() {
             {credentialError
               ? `${credentialError} 发起新任务前请进入凭据设置重试。`
               : credential?.configured
-                ? `新任务使用凭据 v${credential.version ?? "—"}；Token 费用计入你的 Provider 账户。`
-                : "漫读不会回退到管理员 Key。请先加密保存自己的 OpenAI-compatible API Key。"}
+                ? `新任务使用 ${credential.provider_name} · ${credential.model}${credential.thinking_enabled ? " · 思考模式" : ""} · 凭据 v${credential.version ?? "—"}；Token 费用计入你的 Provider 账户。`
+                : "漫读不会回退到管理员 Key。请先选择 Provider、模型并加密保存自己的 API Key。"}
           </small>
         </div>
         <Button
@@ -480,8 +495,25 @@ export function TranslationsPage() {
                     items={[
                       { key: "service", label: "服务版本", children: configurationValue(selected, "service_version") },
                       { key: "pipeline", label: "Pipeline", children: `${configurationValue(selected, "pipeline_key")} · ${configurationValue(selected, "pipeline_version")}` },
-                      { key: "provider", label: "Provider", children: configurationValue(selected, "provider_id") },
+                      {
+                        key: "provider",
+                        label: "绑定 Provider",
+                        children: firstConfigurationValue(
+                          selected,
+                          ["credential_provider_name", "credential_provider", "provider_id"],
+                        ),
+                      },
                       { key: "model", label: "模型", children: configurationValue(selected, "provider_model") },
+                      {
+                        key: "thinking",
+                        label: "思考模式",
+                        children: configurationBooleanLabel(selected, "thinking_enabled"),
+                      },
+                      {
+                        key: "base-url",
+                        label: "API Base URL",
+                        children: configurationValue(selected, "credential_base_url"),
+                      },
                       { key: "project", label: "Project ID", children: selected.remote_project_id ?? "尚未建立" },
                       { key: "job", label: "Job ID", children: selected.remote_job_id ?? "尚未建立" },
                       { key: "artifact", label: "Artifact ID", children: selected.remote_artifact_id ?? "尚未生成" },

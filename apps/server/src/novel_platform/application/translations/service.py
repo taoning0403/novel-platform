@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID
 
 from anyio import to_thread
@@ -10,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.errors import ApplicationError
 from novel_platform.application.library.storage import FileStorage, StorageError
-from novel_platform.application.provider_credentials.service import ProviderCredentialService
+from novel_platform.application.provider_credentials.service import (
+    CUSTOM_PROVIDER,
+    LEGACY_ALGORITHM,
+    OPENAI_COMPATIBLE_PROVIDER,
+    PROVIDER_DISPLAY_NAMES,
+    ProviderCredentialService,
+    ProviderKind,
+)
 from novel_platform.application.translations.commands import CreateTranslationRun
 from novel_platform.application.translations.ingestion_service import (
     GeneratedTranslationIngestionService,
@@ -28,6 +36,7 @@ from novel_platform.domain.translations.models import (
 from novel_platform.infrastructure.database.models import (
     BookEditionModel,
     EditionTranslationRunModel,
+    ProviderCredentialVersionModel,
 )
 from novel_platform.infrastructure.integrations.linguaspindle import (
     LinguaServiceStatus,
@@ -129,7 +138,7 @@ class TranslationRunService:
             raise ApplicationError("invalid_target_language", "目标语言无效。", status_code=422)
         if not edition_title or len(edition_title) > 500:
             raise ApplicationError("invalid_edition_title", "译本标题无效。", status_code=422)
-        configuration = self._configuration_snapshot(status, provider_credential.version)
+        configuration = self._configuration_snapshot(status, provider_credential)
         fingerprint = hashlib.sha256(
             json.dumps(
                 {
@@ -705,18 +714,37 @@ class TranslationRunService:
     def _configuration_snapshot(
         self,
         status: LinguaServiceStatus,
-        credential_version: int,
+        credential: ProviderCredentialVersionModel,
     ) -> dict[str, object]:
+        if credential.algorithm == LEGACY_ALGORITHM:
+            credential_provider = OPENAI_COMPATIBLE_PROVIDER
+            credential_provider_name = PROVIDER_DISPLAY_NAMES[OPENAI_COMPATIBLE_PROVIDER]
+            credential_base_url = self.settings.provider_relay_upstream_base_url
+            credential_model = self.settings.provider_relay_allowed_models[0]
+            thinking_enabled = False
+        else:
+            credential_provider = cast(ProviderKind, credential.provider)
+            credential_provider_name = (
+                credential.provider_name
+                if credential_provider == CUSTOM_PROVIDER and credential.provider_name is not None
+                else PROVIDER_DISPLAY_NAMES[credential_provider]
+            )
+            credential_base_url = credential.base_url
+            credential_model = credential.model
+            thinking_enabled = credential.thinking_enabled
         return {
             "contract": "novel-platform-linguaspindle.v2",
             "service_version": status.version,
             "pipeline_key": status.pipeline_key,
             "pipeline_version": status.pipeline_version,
             "provider_id": status.provider_id,
-            "provider_model": status.provider_model,
+            "provider_model": credential_model,
             "profile_id": self.settings.linguaspindle_profile_id,
-            "credential_provider": "openai_compatible",
-            "credential_version": credential_version,
+            "credential_provider": credential_provider,
+            "credential_provider_name": credential_provider_name,
+            "credential_base_url": credential_base_url,
+            "thinking_enabled": thinking_enabled,
+            "credential_version": credential.version,
         }
 
     @staticmethod

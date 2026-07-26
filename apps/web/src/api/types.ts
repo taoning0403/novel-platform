@@ -68,6 +68,7 @@ export type Passkey = Schemas["PasskeyResponse"];
 export type PasskeyRegistrationResult = Schemas["PasskeyRegistrationResponse"];
 export type WebAuthnOptions = Schemas["WebAuthnOptionsResponse"];
 export type SecurityAuditEvent = Schemas["SecurityAuditEventResponse"];
+export type ProviderKind = Schemas["ProviderKind"];
 export type ProviderCredentialStatus = Schemas["ProviderCredentialStatusResponse"];
 export type ProviderCredentialUpdate = Schemas["ProviderCredentialPut"];
 export type ProviderUsageTotals = Schemas["ProviderUsageTotalsResponse"];

@@ -1,4 +1,4 @@
-import { Alert, Button, Input, Tag } from "antd";
+import { Alert, Button, Input, Select, Switch, Tag } from "antd";
 import {
   type FormEvent,
   useCallback,
@@ -7,7 +7,11 @@ import {
 } from "react";
 
 import { api, userFacingError } from "../api/client";
-import type { ProviderCredentialStatus } from "../api/types";
+import type {
+  ProviderCredentialStatus,
+  ProviderCredentialUpdate,
+  ProviderKind,
+} from "../api/types";
 import { ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { formatDate } from "../shared/format";
 import { DestructiveAction } from "../ui/components/DestructiveAction";
@@ -29,9 +33,47 @@ const emptyUsage = {
   },
 };
 
+const providerPresets: Record<
+  Exclude<ProviderKind, "custom">,
+  { label: string; baseUrl: string; defaultModel: string }
+> = {
+  openai_compatible: {
+    label: "OpenAI",
+    baseUrl: "https://api.openai.com/v1",
+    defaultModel: "gpt-4.1-mini",
+  },
+  deepseek: {
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/v1",
+    defaultModel: "deepseek-chat",
+  },
+  kimi: {
+    label: "Kimi",
+    baseUrl: "https://api.moonshot.cn/v1",
+    defaultModel: "kimi-k2.5",
+  },
+};
+
+const providerOptions = [
+  ...Object.entries(providerPresets).map(([value, preset]) => ({
+    value: value as Exclude<ProviderKind, "custom">,
+    label: preset.label,
+    title: preset.label,
+  })),
+  {
+    value: "custom" as const,
+    label: "自定义 Provider",
+    title: "自定义 Provider",
+  },
+];
+
 const emptyCredential: ProviderCredentialStatus = {
   configured: false,
   provider: "openai_compatible",
+  provider_name: providerPresets.openai_compatible.label,
+  base_url: providerPresets.openai_compatible.baseUrl,
+  model: providerPresets.openai_compatible.defaultModel,
+  thinking_enabled: false,
   version: null,
   updated_at: null,
   usage: emptyUsage,
@@ -41,8 +83,46 @@ function formatUsageCount(value: number): string {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+function isSafeCustomBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:"
+      && url.username === ""
+      && url.password === ""
+      && url.search === ""
+      && url.hash === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+function supportsThinking(provider: ProviderKind, model: string): boolean {
+  return (
+    provider === "deepseek"
+    || (provider === "kimi" && model.trim() === "kimi-k2.5")
+  );
+}
+
+function normalizeThinkingEnabled(
+  provider: ProviderKind,
+  model: string,
+  enabled: boolean,
+): boolean {
+  if (provider === "deepseek" && model.trim() === "deepseek-reasoner") {
+    return true;
+  }
+  return supportsThinking(provider, model) && enabled;
+}
+
 export function ProviderCredentialPage() {
   const [credential, setCredential] = useState<ProviderCredentialStatus | null>(null);
+  const [provider, setProvider] = useState<ProviderKind>("openai_compatible");
+  const [model, setModel] = useState(providerPresets.openai_compatible.defaultModel);
+  const [customName, setCustomName] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,17 +131,43 @@ export function ProviderCredentialPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const syncFormWithCredential = useCallback((next: ProviderCredentialStatus) => {
+    const nextModel = (
+      !next.configured
+      && next.provider === "deepseek"
+      && next.model.trim() === "deepseek-reasoner"
+    )
+      ? "deepseek-chat"
+      : next.model;
+    setProvider(next.provider);
+    setModel(nextModel);
+    setThinkingEnabled(
+      next.configured
+      && normalizeThinkingEnabled(
+        next.provider,
+        nextModel,
+        next.thinking_enabled,
+      ),
+    );
+    if (next.provider === "custom") {
+      setCustomName(next.provider_name);
+      setBaseUrl(next.base_url);
+    }
+  }, []);
+
   const loadCredential = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
-      setCredential(await api.getProviderCredential());
+      const nextCredential = await api.getProviderCredential();
+      setCredential(nextCredential);
+      syncFormWithCredential(nextCredential);
     } catch (caught) {
       setLoadError(userFacingError(caught));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [syncFormWithCredential]);
 
   useEffect(() => {
     void loadCredential();
@@ -70,7 +176,44 @@ export function ProviderCredentialPage() {
   async function saveCredential(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const submittedApiKey = apiKey;
-    if (submittedApiKey.trim() === "") return;
+    const submittedModel = model.trim();
+    const submittedCustomName = customName.trim();
+    const submittedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
+    if (submittedApiKey.trim() === "" || submittedModel === "") return;
+    if (provider === "custom") {
+      if (submittedCustomName === "") {
+        setError("请为自定义 Provider 输入一个名称。");
+        return;
+      }
+      if (!isSafeCustomBaseUrl(submittedBaseUrl)) {
+        setError("自定义 Base URL 必须是 HTTPS 地址，且不能包含用户名、密码、查询参数或片段。");
+        return;
+      }
+    }
+
+    const payload: ProviderCredentialUpdate = provider === "custom"
+      ? {
+          api_key: submittedApiKey,
+          provider,
+          model: submittedModel,
+          base_url: submittedBaseUrl,
+          custom_name: submittedCustomName,
+          thinking_enabled: normalizeThinkingEnabled(
+            provider,
+            submittedModel,
+            thinkingEnabled,
+          ),
+        }
+      : {
+          api_key: submittedApiKey,
+          provider,
+          model: submittedModel,
+          thinking_enabled: normalizeThinkingEnabled(
+            provider,
+            submittedModel,
+            thinkingEnabled,
+          ),
+        };
 
     // Clear the only React copy before the request begins. It is never restored on failure.
     setApiKey("");
@@ -78,14 +221,13 @@ export function ProviderCredentialPage() {
     setError(null);
     setMessage(null);
     try {
-      const nextCredential = await api.updateProviderCredential({
-        api_key: submittedApiKey,
-      });
+      const nextCredential = await api.updateProviderCredential(payload);
       setCredential(nextCredential);
+      syncFormWithCredential(nextCredential);
       setMessage(
         credential?.configured
-          ? "新的凭据版本已加密保存；新任务将使用它。"
-          : "Provider 凭据已加密保存，可以发起翻译任务。",
+          ? `新的 ${nextCredential.provider_name} 凭据版本已加密保存；新任务将使用它。`
+          : `${nextCredential.provider_name} 凭据已加密保存，可以发起翻译任务。`,
       );
     } catch (caught) {
       setError(`${userFacingError(caught)} 输入内容已从页面清除，请重新输入。`);
@@ -101,11 +243,27 @@ export function ProviderCredentialPage() {
     setMessage(null);
     try {
       await api.deleteProviderCredential();
-      setCredential((current) => ({
-        ...emptyCredential,
-        updated_at: new Date().toISOString(),
-        usage: current?.usage ?? emptyUsage,
-      }));
+      setThinkingEnabled(false);
+      setModel((current) => (
+        provider === "deepseek" && current.trim() === "deepseek-reasoner"
+          ? "deepseek-chat"
+          : current
+      ));
+      setCredential((current) => current
+        ? {
+            ...current,
+            configured: false,
+            model: (
+              current.provider === "deepseek"
+              && current.model.trim() === "deepseek-reasoner"
+            )
+              ? "deepseek-chat"
+              : current.model,
+            thinking_enabled: false,
+            version: null,
+            updated_at: new Date().toISOString(),
+          }
+        : emptyCredential);
       setMessage("Provider 凭据已撤销。新任务和未完成任务都不能再使用已删除的版本。");
     } catch (caught) {
       setError(userFacingError(caught));
@@ -137,13 +295,29 @@ export function ProviderCredentialPage() {
   const hasCurrentMonthUsage = (
     usage.current_month.request_count > 0 || usage.current_month.total_tokens > 0
   );
+  const selectedProviderName = provider === "custom"
+    ? customName.trim() || "自定义 Provider"
+    : providerPresets[provider].label;
+  const selectedBaseUrl = provider === "custom"
+    ? baseUrl
+    : providerPresets[provider].baseUrl;
+  const keyLabel = `${selectedProviderName} API Key`;
+  const thinkingSupported = supportsThinking(provider, model);
+  const thinkingHelp = provider === "deepseek"
+    ? "默认关闭。开启后模型会切换为 deepseek-reasoner，可能需要更多响应时间和 Token。"
+    : provider === "kimi"
+      ? thinkingSupported
+        ? "默认关闭。开启后 Kimi 可能需要更多响应时间，并产生更多 Token 消耗。"
+        : "Kimi 仅在模型为 kimi-k2.5 时支持思考模式；当前模型会保持关闭。"
+      : "当前 Provider 没有可验证的统一开关，思考模式保持关闭。";
+  const thinkingControlDisabled = isSaving || isDeleting || !thinkingSupported;
 
   return (
     <main className={styles.page}>
       <PageHeader
         eyebrow="翻译设置"
         title="我的 Provider 凭据"
-        description="为你发起的小说翻译配置自己的 OpenAI-compatible API Key；实际 Token 费用由你的 Provider 账户承担。"
+        description="选择 OpenAI、DeepSeek、Kimi 或自定义兼容服务，为小说翻译配置自己的 API Key；实际 Token 费用由你的 Provider 账户承担。"
         secondaryActions={<Button href="/translations">返回翻译任务</Button>}
       />
 
@@ -155,14 +329,30 @@ export function ProviderCredentialPage() {
           </h2>
           <p>
             {credential.configured
-              ? "漫读只显示状态与版本，不会显示、回填或提供找回原始 API Key。"
+              ? "漫读只显示非秘密配置、状态与版本，不会显示、回填或提供找回原始 API Key。"
               : "配置后才能创建翻译任务；缺少凭据时不会改用管理员 Key。"}
           </p>
         </div>
         <dl className={styles.statusMeta}>
           <div>
             <dt>Provider</dt>
-            <dd>OpenAI-compatible</dd>
+            <dd>{credential.configured ? credential.provider_name : "—"}</dd>
+          </div>
+          <div>
+            <dt>模型</dt>
+            <dd>{credential.configured ? credential.model : "—"}</dd>
+          </div>
+          <div className={styles.endpointMeta}>
+            <dt>API Base URL</dt>
+            <dd>{credential.configured ? credential.base_url : "—"}</dd>
+          </div>
+          <div>
+            <dt>思考模式</dt>
+            <dd>
+              {credential.configured
+                ? credential.thinking_enabled ? "开启" : "关闭"
+                : "—"}
+            </dd>
           </div>
           <div>
             <dt>凭据版本</dt>
@@ -219,10 +409,11 @@ export function ProviderCredentialPage() {
             {credential.configured ? "轮换凭据" : "添加凭据"}
           </p>
           <h2 id="credential-form-heading">
-            {credential.configured ? "保存新的 API Key" : "输入你的 API Key"}
+            {credential.configured ? "保存新的 Provider 配置" : "配置你的 Provider"}
           </h2>
           <p className={styles.supportingCopy} id="provider-key-help">
-            API Key 只提交给漫读 Server 加密保存。保存完成后，本页不会再次展示它。
+            API Key 只提交给漫读 Server 加密保存。Provider、模型和地址会作为非秘密配置显示，
+            但保存后本页不会再次展示 API Key。
           </p>
 
           <form
@@ -230,31 +421,181 @@ export function ProviderCredentialPage() {
             autoComplete="off"
             onSubmit={(event) => void saveCredential(event)}
           >
-            <label className={styles.field} htmlFor="provider-api-key">
-              OpenAI-compatible API Key
-              <Input
-                id="provider-api-key"
-                name="provider-api-key"
-                type="password"
-                autoComplete="off"
-                autoCapitalize="none"
-                spellCheck={false}
-                maxLength={8192}
-                aria-describedby="provider-key-help"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                disabled={isSaving || isDeleting}
-                required
-              />
-            </label>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={isSaving}
-              disabled={apiKey.trim() === "" || isDeleting}
-            >
-              {credential.configured ? "保存新版本" : "保存并启用"}
-            </Button>
+            <div className={styles.configurationFields}>
+              <label className={styles.field} htmlFor="provider-kind">
+                Provider
+                <Select
+                  id="provider-kind"
+                  aria-label="Provider"
+                  aria-describedby="provider-choice-help"
+                  options={providerOptions}
+                  value={provider}
+                  onChange={(value: ProviderKind) => {
+                    setProvider(value);
+                    setThinkingEnabled(false);
+                    setModel(
+                      value === "custom"
+                        ? ""
+                        : providerPresets[value].defaultModel,
+                    );
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  disabled={isSaving || isDeleting}
+                />
+                <span className={styles.fieldHelp} id="provider-choice-help">
+                  预设 Provider 使用固定官方地址；自定义服务必须兼容 OpenAI Chat Completions。
+                </span>
+              </label>
+
+              <label className={styles.field} htmlFor="provider-model">
+                模型
+                <Input
+                  className={styles.technicalInput}
+                  id="provider-model"
+                  name="provider-model"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={120}
+                  placeholder="例如 gpt-4.1-mini"
+                  value={model}
+                  onChange={(event) => {
+                    const nextModel = event.target.value;
+                    setModel(nextModel);
+                    if (
+                      provider === "deepseek"
+                      && nextModel.trim() === "deepseek-reasoner"
+                    ) {
+                      setThinkingEnabled(true);
+                    } else if (!supportsThinking(provider, nextModel)) {
+                      setThinkingEnabled(false);
+                    }
+                  }}
+                  disabled={(
+                    isSaving
+                    || isDeleting
+                    || (provider === "deepseek" && thinkingEnabled)
+                  )}
+                  required
+                />
+              </label>
+
+              {provider === "custom" ? (
+                <>
+                  <label className={styles.field} htmlFor="provider-custom-name">
+                    自定义名称
+                    <Input
+                      id="provider-custom-name"
+                      name="provider-custom-name"
+                      autoComplete="off"
+                      maxLength={120}
+                      placeholder="例如 我的兼容服务"
+                      value={customName}
+                      onChange={(event) => setCustomName(event.target.value)}
+                      disabled={isSaving || isDeleting}
+                      required
+                    />
+                  </label>
+                  <label className={styles.field} htmlFor="provider-base-url">
+                    API Base URL
+                    <Input
+                      className={styles.technicalInput}
+                      id="provider-base-url"
+                      name="provider-base-url"
+                      type="url"
+                      inputMode="url"
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      maxLength={2048}
+                      placeholder="https://provider.example.com/v1"
+                      aria-label="API Base URL"
+                      aria-describedby="provider-base-url-help"
+                      value={baseUrl}
+                      onChange={(event) => setBaseUrl(event.target.value)}
+                      disabled={isSaving || isDeleting}
+                      required
+                    />
+                    <span className={styles.fieldHelp} id="provider-base-url-help">
+                      仅接受管理员已允许，且不含凭据、查询参数或片段的 HTTPS 地址。
+                    </span>
+                  </label>
+                </>
+              ) : (
+                <div className={styles.presetEndpoint} aria-live="polite">
+                  <span>API Base URL</span>
+                  <code>{selectedBaseUrl}</code>
+                </div>
+              )}
+
+              <div className={styles.thinkingSetting}>
+                <div>
+                  <span className={styles.thinkingLabel} id="provider-thinking-label">
+                    思考模式
+                  </span>
+                  <span className={styles.thinkingHelp} id="provider-thinking-help">
+                    {thinkingHelp}
+                  </span>
+                </div>
+                <label
+                  className={styles.switchTarget}
+                  htmlFor="provider-thinking-enabled"
+                  data-disabled={thinkingControlDisabled}
+                >
+                  <Switch
+                    id="provider-thinking-enabled"
+                    aria-labelledby="provider-thinking-label"
+                    aria-describedby="provider-thinking-help"
+                    checked={thinkingSupported && thinkingEnabled}
+                    onChange={(checked) => {
+                      setThinkingEnabled(checked);
+                      if (provider === "deepseek") {
+                        setModel(checked ? "deepseek-reasoner" : "deepseek-chat");
+                      }
+                    }}
+                    disabled={thinkingControlDisabled}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className={styles.secretRow}>
+              <label className={styles.field} htmlFor="provider-api-key">
+                {keyLabel}
+                <Input
+                  className={styles.technicalInput}
+                  id="provider-api-key"
+                  name="provider-api-key"
+                  type="password"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={8192}
+                  aria-describedby="provider-key-help"
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  disabled={isSaving || isDeleting}
+                  required
+                />
+              </label>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={isSaving}
+                disabled={(
+                  apiKey.trim() === ""
+                  || model.trim() === ""
+                  || (
+                    provider === "custom"
+                    && (customName.trim() === "" || baseUrl.trim() === "")
+                  )
+                  || isDeleting
+                )}
+              >
+                {credential.configured ? "保存新版本" : "保存并启用"}
+              </Button>
+            </div>
           </form>
 
           {message ? (
@@ -283,11 +624,17 @@ export function ProviderCredentialPage() {
           <ul>
             <li>
               <strong>费用归属</strong>
-              <span>你发起的 Provider 请求使用这把 Key，Token 费用计入你的 Provider 账户。</span>
+              <span>
+                你发起的请求使用所选 {selectedProviderName} 配置，
+                Token 费用计入你的 Provider 账户。
+              </span>
             </li>
             <li>
               <strong>轮换</strong>
-              <span>保存新版本后，新任务使用新版本；已创建的任务继续使用创建时绑定的旧版本。</span>
+              <span>
+                保存新版本后，新任务使用新的 Provider、模型和 Key；
+                已创建的任务继续使用创建时绑定的旧版本。
+              </span>
             </li>
             <li>
               <strong>删除</strong>

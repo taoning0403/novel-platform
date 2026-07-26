@@ -36,6 +36,9 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+type ProviderKind = Literal["openai_compatible", "deepseek", "kimi", "custom"]
+
+
 def validate_capability_list(
     values: list[CredentialCapability],
 ) -> list[CredentialCapability]:
@@ -404,11 +407,32 @@ class TranslationServiceStatusResponse(BaseModel):
 
 
 class ProviderCredentialPut(StrictModel):
+    provider: ProviderKind = "openai_compatible"
+    custom_name: str | None = Field(default=None, min_length=1, max_length=120)
+    base_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    model: str | None = Field(default=None, min_length=1, max_length=120)
+    thinking_enabled: bool = False
     api_key: SecretStr = Field(
         min_length=1,
         max_length=8192,
         json_schema_extra={"format": "password"},
     )
+
+    @model_validator(mode="after")
+    def validate_provider_configuration(self) -> "ProviderCredentialPut":
+        for field_name in ("custom_name", "base_url", "model"):
+            value = getattr(self, field_name)
+            if value is not None:
+                normalized = value.strip()
+                if not normalized:
+                    raise ValueError(f"{field_name} must not be blank")
+                setattr(self, field_name, normalized)
+        if self.provider == "custom":
+            if self.custom_name is None or self.base_url is None or self.model is None:
+                raise ValueError("custom Provider requires custom_name, base_url, and model")
+        elif self.custom_name is not None or self.base_url is not None:
+            raise ValueError("preset Providers do not accept custom_name or base_url")
+        return self
 
 
 class ProviderUsageTotalsResponse(BaseModel):
@@ -425,7 +449,11 @@ class ProviderCredentialUsageResponse(BaseModel):
 
 class ProviderCredentialStatusResponse(BaseModel):
     configured: bool
-    provider: Literal["openai_compatible"] = "openai_compatible"
+    provider: ProviderKind
+    provider_name: str
+    base_url: str
+    model: str
+    thinking_enabled: bool
     version: int | None
     updated_at: datetime | None
     usage: ProviderCredentialUsageResponse

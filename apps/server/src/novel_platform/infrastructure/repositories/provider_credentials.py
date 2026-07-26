@@ -41,7 +41,6 @@ class ProviderCredentialRepository:
     ) -> ProviderCredentialVersionModel | None:
         statement = select(ProviderCredentialVersionModel).where(
             ProviderCredentialVersionModel.user_id == user_id,
-            ProviderCredentialVersionModel.provider == PROVIDER_ID,
             ProviderCredentialVersionModel.retired_at.is_(None),
             ProviderCredentialVersionModel.revoked_at.is_(None),
         )
@@ -52,10 +51,7 @@ class ProviderCredentialRepository:
     async def latest(self, user_id: UUID) -> ProviderCredentialVersionModel | None:
         statement = (
             select(ProviderCredentialVersionModel)
-            .where(
-                ProviderCredentialVersionModel.user_id == user_id,
-                ProviderCredentialVersionModel.provider == PROVIDER_ID,
-            )
+            .where(ProviderCredentialVersionModel.user_id == user_id)
             .order_by(
                 ProviderCredentialVersionModel.version.desc(),
                 ProviderCredentialVersionModel.id.desc(),
@@ -67,8 +63,7 @@ class ProviderCredentialRepository:
     async def next_version(self, user_id: UUID) -> int:
         latest = await self.session.scalar(
             select(func.max(ProviderCredentialVersionModel.version)).where(
-                ProviderCredentialVersionModel.user_id == user_id,
-                ProviderCredentialVersionModel.provider == PROVIDER_ID,
+                ProviderCredentialVersionModel.user_id == user_id
             )
         )
         return int(latest or 0) + 1
@@ -89,7 +84,6 @@ class ProviderCredentialRepository:
     ) -> ProviderCredentialVersionModel | None:
         statement = select(ProviderCredentialVersionModel).where(
             ProviderCredentialVersionModel.id == credential_scope,
-            ProviderCredentialVersionModel.provider == PROVIDER_ID,
             ProviderCredentialVersionModel.revoked_at.is_(None),
         )
         if for_update:
@@ -122,7 +116,6 @@ class ProviderCredentialRepository:
             )
             .where(
                 ProviderCredentialVersionModel.id == credential_scope,
-                ProviderCredentialVersionModel.provider == PROVIDER_ID,
                 ProviderCredentialVersionModel.revoked_at.is_(None),
                 ProviderCredentialVersionModel.user_id
                 == EditionTranslationRunModel.created_by_user_id,
@@ -160,7 +153,6 @@ class ProviderCredentialRepository:
             update(ProviderCredentialVersionModel)
             .where(
                 ProviderCredentialVersionModel.user_id == user_id,
-                ProviderCredentialVersionModel.provider == PROVIDER_ID,
                 ProviderCredentialVersionModel.revoked_at.is_(None),
             )
             .values(revoked_at=now)

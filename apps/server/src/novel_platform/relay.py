@@ -18,11 +18,22 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from novel_platform.application.provider_credentials.service import (
+    ALGORITHM,
+    CUSTOM_PROVIDER,
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_PROVIDER,
+    KIMI_BASE_URL,
+    KIMI_DEFAULT_MODEL,
+    KIMI_PROVIDER,
+    LEGACY_ALGORITHM,
+    OPENAI_BASE_URL,
+    OPENAI_COMPATIBLE_PROVIDER,
     ProviderCredentialCipher,
     ProviderCredentialConfigurationError,
     ProviderCredentialDecryptionError,
 )
 from novel_platform.config import ProviderRelaySettings, get_provider_relay_settings
+from novel_platform.infrastructure.database.models import ProviderCredentialVersionModel
 from novel_platform.infrastructure.repositories.provider_credentials import (
     ProviderCredentialRepository,
 )
@@ -168,6 +179,11 @@ async def chat_completions(
     )
     if credential is None:
         return _error(404, "provider_credential_unavailable")
+    destination = _bound_provider_destination(credential, payload.model, settings)
+    if destination is None:
+        await session.rollback()
+        return _error(503, "provider_configuration_unavailable")
+    effective_base_url, effective_model = destination
     # Persist and release the short bootstrap lock before the potentially slow
     # upstream call. A first scoped Provider request may race Novel Platform
     # persisting the Job-creation response; subsequent calls must match the
@@ -182,6 +198,12 @@ async def chat_completions(
         payload,
         api_key,
         settings,
+        base_url=effective_base_url,
+        model=effective_model,
+        provider=(credential.provider if credential.algorithm != LEGACY_ALGORITHM else None),
+        thinking_enabled=(
+            credential.thinking_enabled if credential.algorithm != LEGACY_ALGORITHM else False
+        ),
         transport=request.app.state.upstream_transport,
     )
     if isinstance(upstream, JSONResponse):
@@ -191,7 +213,7 @@ async def chat_completions(
         try:
             await credentials.add_usage(
                 credential=credential,
-                model=sanitized["model"],
+                model=effective_model,
                 prompt_tokens=usage["prompt_tokens"],
                 completion_tokens=usage["completion_tokens"],
                 total_tokens=usage["total_tokens"],
@@ -209,8 +231,18 @@ async def _call_upstream(
     api_key: str,
     relay_settings: ProviderRelaySettings,
     *,
+    base_url: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+    thinking_enabled: bool = False,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> tuple[dict[str, Any], dict[str, int] | None] | JSONResponse:
+    upstream_base_url = base_url or relay_settings.provider_relay_upstream_base_url
+    upstream_model = model or payload.model
+    outbound_payload = payload.model_dump(exclude_none=True)
+    outbound_payload["model"] = upstream_model
+    if provider == KIMI_PROVIDER and upstream_model == KIMI_DEFAULT_MODEL:
+        outbound_payload["thinking"] = {"type": "enabled" if thinking_enabled else "disabled"}
     timeout = httpx.Timeout(
         connect=relay_settings.provider_relay_connect_timeout_seconds,
         read=relay_settings.provider_relay_read_timeout_seconds,
@@ -219,7 +251,7 @@ async def _call_upstream(
     )
     try:
         async with httpx.AsyncClient(
-            base_url=f"{relay_settings.provider_relay_upstream_base_url}/",
+            base_url=f"{upstream_base_url}/",
             timeout=timeout,
             follow_redirects=False,
             trust_env=False,
@@ -233,7 +265,7 @@ async def _call_upstream(
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                 },
-                json=payload.model_dump(exclude_none=True),
+                json=outbound_payload,
             ) as response:
                 if 300 <= response.status_code < 400:
                     return _error(502, "provider_protocol_error")
@@ -257,7 +289,7 @@ async def _call_upstream(
         raw_response = json.loads(response_body)
         return _sanitize_upstream_response(
             raw_response,
-            requested_model=payload.model,
+            requested_model=upstream_model,
             forbidden_secret=api_key,
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
@@ -383,6 +415,60 @@ def _authorized(request: Request, relay_settings: ProviderRelaySettings) -> bool
         return False
     expected = f"Bearer {configured.get_secret_value()}"
     return secrets.compare_digest(authorization, expected)
+
+
+def _bound_provider_destination(
+    credential: ProviderCredentialVersionModel,
+    inbound_model: str,
+    relay_settings: ProviderRelaySettings,
+) -> tuple[str, str] | None:
+    if credential.algorithm == LEGACY_ALGORITHM:
+        if credential.provider != OPENAI_COMPATIBLE_PROVIDER:
+            return None
+        return relay_settings.provider_relay_upstream_base_url, inbound_model
+    if credential.algorithm != ALGORITHM:
+        return None
+    if (
+        not isinstance(credential.model, str)
+        or not credential.model
+        or len(credential.model) > 120
+        or credential.model != credential.model.strip()
+        or not credential.model.isprintable()
+        or not _thinking_configuration_allowed(credential)
+    ):
+        return None
+    preset_base_urls = {
+        OPENAI_COMPATIBLE_PROVIDER: OPENAI_BASE_URL,
+        DEEPSEEK_PROVIDER: DEEPSEEK_BASE_URL,
+        KIMI_PROVIDER: KIMI_BASE_URL,
+    }
+    if credential.provider in preset_base_urls:
+        allowed = (
+            credential.provider_name is None
+            and credential.base_url == preset_base_urls[credential.provider]
+        )
+        return (credential.base_url, credential.model) if allowed else None
+    if credential.provider == CUSTOM_PROVIDER:
+        allowed = (
+            isinstance(credential.provider_name, str)
+            and bool(credential.provider_name.strip())
+            and credential.provider_name == credential.provider_name.strip()
+            and credential.base_url in relay_settings.provider_relay_custom_allowed_base_urls
+        )
+        return (credential.base_url, credential.model) if allowed else None
+    return None
+
+
+def _thinking_configuration_allowed(
+    credential: ProviderCredentialVersionModel,
+) -> bool:
+    if credential.provider in {OPENAI_COMPATIBLE_PROVIDER, CUSTOM_PROVIDER}:
+        return not credential.thinking_enabled
+    if credential.provider == DEEPSEEK_PROVIDER:
+        return credential.thinking_enabled == (credential.model == "deepseek-reasoner")
+    if credential.provider == KIMI_PROVIDER:
+        return not credential.thinking_enabled or credential.model == KIMI_DEFAULT_MODEL
+    return False
 
 
 def _single_header(

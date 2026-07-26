@@ -1762,17 +1762,33 @@ export interface components {
              * Format: password
              */
             api_key: string;
+            /** Base Url */
+            base_url?: string | null;
+            /** Custom Name */
+            custom_name?: string | null;
+            /** Model */
+            model?: string | null;
+            /** @default openai_compatible */
+            provider: components["schemas"]["ProviderKind"];
+            /**
+             * Thinking Enabled
+             * @default false
+             */
+            thinking_enabled: boolean;
         };
         /** ProviderCredentialStatusResponse */
         ProviderCredentialStatusResponse: {
+            /** Base Url */
+            base_url: string;
             /** Configured */
             configured: boolean;
-            /**
-             * Provider
-             * @default openai_compatible
-             * @constant
-             */
-            provider: "openai_compatible";
+            /** Model */
+            model: string;
+            provider: components["schemas"]["ProviderKind"];
+            /** Provider Name */
+            provider_name: string;
+            /** Thinking Enabled */
+            thinking_enabled: boolean;
             /** Updated At */
             updated_at: string | null;
             usage: components["schemas"]["ProviderCredentialUsageResponse"];
@@ -1784,6 +1800,8 @@ export interface components {
             all_time: components["schemas"]["ProviderUsageTotalsResponse"];
             current_month: components["schemas"]["ProviderUsageTotalsResponse"];
         };
+        /** @enum {string} */
+        ProviderKind: "openai_compatible" | "deepseek" | "kimi" | "custom";
         /** ProviderUsageTotalsResponse */
         ProviderUsageTotalsResponse: {
             /** Completion Tokens */

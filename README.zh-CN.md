@@ -11,13 +11,14 @@ Edition，管理员还可按凭证分别授予文件上传或 TXT 小说翻译�
 社交、支付、广告及公开发布能力。
 
 v0.10.0 保留 v0.9 的 capability、贡献归属和生成 Edition 模型，并引入阅读者自有的
-OpenAI-compatible Provider 凭据。每位翻译发起人把只写 Key 保存为不可变的 AES-256-GCM
-加密版本；Run 全程固定该版本承担用量，并可查看脱敏的请求/Token 汇总。LinguaSpindle
-v0.3.2 只接收不透明凭据 scope，再调用固定策略的私有 Relay；LinguaSpindle 与浏览器都拿不到
-上游 Key，系统也不会回退到管理员或共享 Key。
+Provider 凭据。每位翻译发起人把一个当前 OpenAI、DeepSeek、Kimi 或管理员允许的自定义
+配置及只写 Key 保存为不可变的 AES-256-GCM 加密版本；Run 全程固定该版本承担用量，并可
+查看脱敏的请求/Token 汇总。LinguaSpindle v0.3.2 只接收不透明凭据 scope，再调用固定策略
+的私有 Relay；LinguaSpindle 与浏览器都拿不到上游 Key，系统也不会回退到管理员或共享 Key。
 
-当前源码树以 v0.10.0 发布候选为目标，仍属于 1.0 之前的软件；最终发布门禁证据和外部部署
-验证仍待候选收尾。将站点暴露到互联网前，请先阅读
+已部署的 v0.10.0 基线已经完成；当前源码树包含尚未分配下一发布版本号的 post-v0.10
+Provider 路由增量，package/API metadata 暂时仍为 v0.10.0。候选与部署证据必须标明精确 commit，
+且不能覆盖已归档的 v0.10 证据。项目仍属于 1.0 之前的软件。将站点暴露到互联网前，请先阅读
 [当前项目状态](docs/PROJECT_STATE.md)和[部署手册](docs/staging-deployment.md)。
 
 ## 项目亮点
@@ -53,7 +54,7 @@ Browser
           -> 可选私网 HTTP -> LinguaSpindle >=0.3.2
                               -> 私有 Provider Relay
                                   -> PostgreSQL 加密凭据查找
-                                  -> 固定 OpenAI-compatible 上游
+                                  -> 版本绑定且经过批准的 OpenAI-compatible 上游
 ```
 
 LinguaSpindle 保留独立 SQLite 与 Artifact Volume，不知道 Novel Platform User，也不接收
@@ -263,16 +264,21 @@ v0.4 已验收的 Reader、文件修订、Edition 身份、source/supersedes、�
 ## 阅读者自有 Provider 凭据边界
 
 当前具备 `translation.use` 的 actor 只能通过 `/api/v1/me/provider-credential` 管理自己的
-OpenAI-compatible Key。原始值只由 PUT 接收，以唯一 nonce 及绑定所有者/版本的认证数据
+一个当前 OpenAI、DeepSeek、Kimi 或管理员 allowlist 中的自定义 OpenAI-compatible 配置。
+原始 Key 只由 PUT 接收，以唯一 nonce 及绑定所有者、版本、路由、模型和思考状态的认证数据
 加密；Web 提交后清空表单，服务不会返回 Key、提示、哈希或其他可逆/派生信息，也不会写入
-浏览器存储。轮换会创建新的不可变 current 版本并退休旧版本；已创建 Run 始终固定原版本。
-删除会撤销该 User 的全部版本，包括尚未完成 Run 所绑定的版本。
+浏览器存储。思考模式默认关闭：DeepSeek 与 `deepseek-reasoner` 严格对应，Kimi
+`kimi-k2.5` 会收到显式 enabled/disabled 字段，OpenAI、自定义及不支持的 Kimi 模型不能
+打开这个通用开关。轮换、切换 Provider 或改变思考状态都会创建新的不可变 current 版本并
+退休旧版本；已创建 Run 始终固定原版本。删除会撤销该 User 的全部版本，包括尚未完成 Run
+所绑定的版本。
 
 启动翻译必须同时具备当前翻译权限和当前个人凭据。凭据缺失、撤销、无法解密或绑定不符均
 失败关闭，绝不回退管理员或站点出资 Key。Relay 只接受固定 Chat Completions 路径、服务
-Bearer、不透明 scope、LinguaSpindle Job ID、allowlist 模型及固定 HTTPS 上游；只在上游调用
-边界把服务 Bearer 替换为解密后的 actor Key。它只保存 Provider 返回的整数 Token 用量，
-不保存 prompt、译文、原始响应、价格或费用估算。
+Bearer、不透明 scope、LinguaSpindle Job ID 及 allowlist 中的内部 adapter 模型，再按绑定
+版本路由到预设地址或管理员精确允许的自定义 HTTPS Base URL，并替换成绑定模型。它只在
+选定的上游边界把服务 Bearer 替换为解密后的 actor Key，只保存 Provider 返回的整数 Token
+用量，不保存 prompt、译文、原始响应、价格或费用估算。
 
 `PROVIDER_CREDENTIAL_MASTER_KEY` 必须为严格 Base64，解码后恰为 32 字节，并与数据库分开
 备份。`PROVIDER_RELAY_SERVICE_SECRET` 必须独立于凭据库主密钥及认证秘密，且只由 Relay 与
@@ -294,9 +300,14 @@ Translation Run 必填的凭据版本外键。历史 v0.9 Run 没有真实付款
 只要发现任意既有 Run 就拒绝迁移；它不会删除 Run，也不会伪造 scope。必须先备份，再显式
 归档/删除这些测试 Run，或恢复/重置精确的一次性环境后重试。
 
+Alembic `20260726_0008` 新增不可变的 Provider 类型/名称/Base URL/模型/思考状态、每位 User
+一个当前配置及一条版本序列；既有 v1 OpenAI 密文保持兼容，新版本使用 v2 认证数据。
+
 迁移前停止写入，执行 `scripts/backup-library.sh`，并通过隔离的
 `scripts/restore-library.sh --test`。匹配的 `PROVIDER_CREDENTIAL_MASTER_KEY` 必须另行保护：
-PostgreSQL dump 包含凭据密文与用量，但不包含主密钥或 Relay service secret。部署
+PostgreSQL dump 包含凭据密文与用量，但不包含主密钥或 Relay service secret。若备份含
+自定义 Provider，还必须另行保护匹配的 `PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS` 配置代际；
+manifest 只声明此外部要求，不记录其值。部署
 LinguaSpindle `>=0.3.2,<0.4.0`，把其 OpenAI-compatible base URL 指向私有 Relay `/v1`，运行时
 API Key 设置为 Relay service secret，模型设置为 Relay allowlist 中的值；Relay、
 LinguaSpindle、API 与数据库均不得发布宿主端口。
@@ -373,8 +384,9 @@ v0.6.0 改变 Web 组件基础与静态 Bundle，不新增 API、数据库、认
 脚本会短暂停止写入，生成 PostgreSQL custom dump、书库归档与 manifest，并在发布备份目录前
 拒绝数据库/文件引用不一致。Dump 包括凭证与 capability、Passkey、设备、会话、站点设置、
 审计、Book、Edition、贡献者归属、Translation Run、文件修订、Series、偏好、设置和进度；
-还包括加密 Provider 凭据版本与脱敏用量记录。manifest 明确排除凭据库主密钥、Relay service
-secret 及全部 LinguaSpindle 数据/资源；要恢复可用凭据，还必须另行提供匹配的主密钥。
+还包括加密 Provider 凭据版本与脱敏用量记录。manifest 明确排除凭据库主密钥、自定义
+Provider allowlist 的值、Relay service secret 及全部 LinguaSpindle 数据/资源；要恢复可用
+凭据，还必须另行提供匹配的主密钥，并为自定义路由恢复经过复核的匹配 allowlist 代际。
 
 始终先在隔离资源中测试恢复：
 
@@ -440,16 +452,17 @@ pnpm acceptance:v0100
 ```
 
 门禁保留 v0.5 的 84 项适用标准、v0.8 的 9 项加固标准及 v0.9 的 11 项标准，不覆盖历史
-产物。新增 6 项 v0.10 标准：继承回归；加密凭据生命周期/用量与 Run scope 固定；Relay
-认证/固定上游/脱敏；Web 凭据管理与无回退启动门禁；v0.10 package/OpenAPI；以及
+产物。扩展后的 6 项标准包括：继承回归；加密凭据生命周期/用量与 Run scope 固定；Relay
+认证、版本绑定路由/思考模式与脱敏；Web 凭据管理与无回退启动门禁；v0.10 package/OpenAPI；以及
 LinguaSpindle v0.3.2/私网拓扑/泄漏边界。
 
-脱敏产物为 `artifacts/acceptance-v0100.{md,json}`，继承回归证据写入
-`artifacts/acceptance-v0100-regression*`。合成 fake transport 必须通过；真实 LinguaSpindle
+本增量的脱敏产物为 `artifacts/acceptance-v0100-provider-routing.{md,json}`，继承回归证据
+写入 `artifacts/acceptance-v0100-provider-routing-regression*`，不会覆盖已归档的 v0.10
+产物。合成 fake transport 必须通过；真实 LinguaSpindle
 v0.3.2 + Mock Provider 与真实 OpenAI-compatible Provider 均保持
 `PENDING_OPERATOR_CONFIG`，不执行真实付费调用或正文外发。远端 migration、secret 注入、
-网络、HTTPS/Passkey、持久化和清理保持 `DEPLOYMENT_PENDING`。本次文档刷新时，最终 v0.10
-候选门禁报告与外部部署结果仍待确认。只有诊断失败的隔离环境时才设置
+网络、HTTPS/Passkey、持久化和清理保持 `DEPLOYMENT_PENDING`。Provider 路由增量只有在记录
+精确 commit 的本地报告与外部部署结果后才完成。只有诊断失败的隔离环境时才设置
 `KEEP_ACCEPTANCE_ENV=1`。
 
 历史门禁 `acceptance:v010` 至 `acceptance:v090` 及其证据保持可运行、可追溯；v0.10 不会

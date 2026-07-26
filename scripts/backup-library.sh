@@ -208,6 +208,7 @@ manifest = {
         ],
     },
     "required_external_secrets": ["provider_credential_master_key"],
+    "required_external_configuration": ["provider_relay_custom_allowed_base_urls"],
     "database": {"filename": "database.dump", "sha256": database_sha256},
     "library": {"filename": "library.tar.gz", "sha256": library_sha256},
 }

@@ -37,6 +37,9 @@ SELECT json_build_object(
   'sessions', (SELECT count(*) FROM auth_sessions),
   'site_settings', (SELECT count(*) FROM site_settings),
   'audit_events', (SELECT count(*) FROM auth_audit_events),
+  'provider_credential_versions', (SELECT count(*) FROM provider_credential_versions),
+  'provider_usage_records', (SELECT count(*) FROM provider_usage_records),
+  'translation_runs', (SELECT count(*) FROM edition_translation_runs),
   'identity_fingerprint', md5(
     coalesce((SELECT string_agg(id::text || ':' || role::text || ':' || status::text,
       ',' ORDER BY id) FROM users), '') || '|' ||
@@ -63,6 +66,25 @@ SELECT json_build_object(
       coalesce(preferred_edition_id::text, '') || ':' ||
       coalesce(last_opened_edition_id::text, ''), ',' ORDER BY user_id, book_id)
       FROM user_book_preferences), '')
+  ),
+  'provider_state_fingerprint', md5(
+    coalesce((SELECT string_agg(
+      id::text || ':' || user_id::text || ':' || provider || ':' ||
+      coalesce(provider_name, '') || ':' || md5(base_url) || ':' || model || ':' ||
+      thinking_enabled::text || ':' || version::text || ':' || algorithm || ':' ||
+      (retired_at IS NOT NULL)::text || ':' || (revoked_at IS NOT NULL)::text,
+      ',' ORDER BY id
+    ) FROM provider_credential_versions), '') || '|' ||
+    coalesce((SELECT string_agg(
+      id::text || ':' || provider_credential_version_id::text || ':' || model || ':' ||
+      prompt_tokens::text || ':' || completion_tokens::text || ':' || total_tokens::text,
+      ',' ORDER BY id
+    ) FROM provider_usage_records), '') || '|' ||
+    coalesce((SELECT string_agg(
+      id::text || ':' || provider_credential_version_id::text || ':' ||
+      md5(configuration::text) || ':' || status || ':' || cleanup_status,
+      ',' ORDER BY id
+    ) FROM edition_translation_runs), '')
   )
 )::text;
 SQL

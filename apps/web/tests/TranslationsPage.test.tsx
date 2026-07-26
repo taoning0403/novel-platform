@@ -41,7 +41,11 @@ const baseRun: TranslationRun = {
     pipeline_key: "novel_txt_v1",
     pipeline_version: "1",
     provider_id: "mock",
-    provider_model: "mock-v1",
+    provider_model: "gpt-4.1-mini",
+    credential_provider: "openai_compatible",
+    credential_provider_name: "OpenAI",
+    credential_base_url: "https://api.openai.com/v1",
+    thinking_enabled: false,
   },
   creator: { display_name: "翻译者" },
   status: "running",
@@ -98,6 +102,10 @@ describe("TranslationsPage", () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue({
       configured: true,
       provider: "openai_compatible",
+      provider_name: "OpenAI",
+      base_url: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      thinking_enabled: false,
       version: 2,
       updated_at: "2026-07-23T01:00:00Z",
       usage: zeroUsage,
@@ -164,7 +172,11 @@ describe("TranslationsPage", () => {
     vi.spyOn(api, "translationServiceStatus").mockResolvedValue(service);
     vi.spyOn(api, "getProviderCredential").mockResolvedValue({
       configured: true,
-      provider: "openai_compatible",
+      provider: "kimi",
+      provider_name: "Kimi",
+      base_url: "https://api.moonshot.cn/v1",
+      model: "kimi-k2.5",
+      thinking_enabled: true,
       version: 2,
       updated_at: "2026-07-23T01:00:00Z",
       usage: zeroUsage,
@@ -180,6 +192,14 @@ describe("TranslationsPage", () => {
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "审核并发布" }));
+    expect(screen.getByText(/新任务使用 Kimi · kimi-k2.5 · 思考模式 · 凭据 v2/))
+      .toBeInTheDocument();
+    expect(screen.getByText("绑定 Provider").closest(".ant-descriptions-item"))
+      .toHaveTextContent("OpenAI");
+    expect(screen.getByText("思考模式", { selector: "span" }).closest(".ant-descriptions-item"))
+      .toHaveTextContent("关闭");
+    expect(screen.getByText("API Base URL").closest(".ant-descriptions-item"))
+      .toHaveTextContent("https://api.openai.com/v1");
     expect(patch).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "确认发布" }));
     await waitFor(() => expect(patch).toHaveBeenCalledWith(

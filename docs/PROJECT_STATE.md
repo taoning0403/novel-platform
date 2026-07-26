@@ -20,6 +20,12 @@ exact version and sends only its opaque UUID4 scope to standalone LinguaSpindle
 scope, Job, model and fixed upstream before decrypting that actor's key. There is no administrator
 or shared-key fallback.
 
+The current source branch contains an unversioned post-v0.10 Provider-routing increment governed
+by ADR 0020. It keeps package/API metadata at v0.10.0 while adding OpenAI, DeepSeek, Kimi and
+operator-allowlisted custom configurations plus a default-off thinking switch. Candidate and
+deployment evidence use a distinct Provider-routing tag so archived v0.10 evidence remains
+unchanged.
+
 ## Implemented v0.10 surface
 
 ### Capability, contributor and translation baseline
@@ -104,13 +110,29 @@ or shared-key fallback.
   SQLite/Artifacts/containers/networks and upstream keys. A usable credential restore requires
   the separately protected matching master key; losing it is intentionally unrecoverable.
 
+## Implemented post-v0.10 Provider-routing increment
+
+- One current immutable credential version now binds Provider kind, optional custom name, exact
+  normalized base URL, model and thinking state. New ciphertext uses `aes-256-gcm-v2` authenticated
+  data that binds those routing fields; legacy v1 ciphertext retains its original upstream/model
+  behavior with thinking forced off.
+- OpenAI, DeepSeek and Kimi use fixed official base URLs. Custom OpenAI-compatible routes require
+  an exact operator allow-list match both when saved and at Relay call time; redirects remain
+  disabled. The legacy upstream setting is not reused for new v2 OpenAI credentials.
+- Thinking defaults off. DeepSeek enables it only through exact `deepseek-reasoner` equivalence;
+  Kimi injects an explicit enabled/disabled field only for `kimi-k2.5`; OpenAI, custom and
+  unsupported Kimi models cannot enable the generic switch.
+- The personal credential page configures Provider/model/custom metadata and exposes only
+  non-secret status. Translation launch and task detail show the bound Provider/model/thinking
+  snapshot without allowing per-Run switching.
+- Alembic `20260726_0008` adds the routing/thinking columns, one current version and one monotonic
+  per-User version sequence. Backup manifests declare the custom-route allow-list as an external
+  configuration dependency, and isolated restore verifies the 0008 constraints and invariants.
+
 ## Verification state
 
-- `scripts/acceptance-v0100.mjs` is the current release-candidate gate, selected by
-  `pnpm acceptance` and `pnpm acceptance:v0100`. It replays the applicable v0.9 gate into
-  `artifacts/acceptance-v0100-regression*` without rewriting historical evidence, then evaluates
-  six v0.10 BYOK/Relay/Web/version/topology criteria.
-- Final outputs are `artifacts/acceptance-v0100.{md,json}`. The gate passed on commit `b8c84c9`,
+- Archived outputs are `artifacts/acceptance-v0100.{md,json}`. The v0.10 gate passed on commit
+  `b8c84c9`,
   replaying 84 core, 9 proxy-hardening and 11 v0.9 criteria before passing all 6 v0.10
   BYOK/Relay criteria.
 - Server lint, formatting, strict typing, 86 unit tests and 29 PostgreSQL integration tests passed.
@@ -124,14 +146,20 @@ or shared-key fallback.
   paid request or user-content egress was used.
 - Historical acceptance scripts/evidence remain intact. v0.10 does not rewrite v0.9 evidence to
   claim that operator-funded/shared-key translation remains supported.
+- The Provider-routing increment passes Server lint/format/type checks, 101 unit tests and 31
+  PostgreSQL integration tests plus Web lint, 56 tests, production build, generated-contract
+  refresh, Compose validation and script syntax checks. Its exact-commit
+  `acceptance-v0100-provider-routing*` gate and external 0008 deployment verification remain
+  pending until the candidate is committed.
 
 ## Deliberately not implemented
 
 - Public registration/catalogue, email/phone/OAuth/password login, a second administrator, public
   publishing/downloads, social/comment/messaging/ranking/payment/advertising features.
 - EPUB, manga or arbitrary-document translation; per-chapter review/editor workflows;
-  client-supplied Provider/model/profile/URL; browser-direct Provider calls; arbitrary Artifact
-  downloads; Redis, workers, queues or scheduled polling.
+  per-Run Provider/model/profile/URL selection; arbitrary or unallowlisted custom destinations;
+  browser-direct Provider calls; arbitrary Artifact downloads; Redis, workers, queues or scheduled
+  polling.
 - Administrator/shared/site-funded Provider fallback, software quota billed to an administrator
   key, price/currency estimation, or a LinguaSpindle User/tenant/quota model.
 - Vault-master-key rotation/re-encryption automation. Ordinary reader-key rotation creates a new
@@ -149,6 +177,10 @@ Staging at `https://novel.mine-novel.top` deployed Novel Platform v0.10.0 commit
 `20260723_0006` to `20260726_0007`. LinguaSpindle v0.3.2 runs at schema 5. The archived v0.8
 release, pre-migration backup and protected old configuration remain available; no Alembic
 downgrade was performed or enabled.
+
+The post-v0.10 Provider-routing increment and Alembic `20260726_0008` are not yet deployed.
+Staging remains on the clean revision-0007 baseline while the exact candidate commit, coordinated
+backup/isolated restore and external verification are prepared.
 
 The deployment created a revision-0007 coordinated backup
 `novel-platform-v0100-20260726T100151Z` and passed its isolated database/library restore. It also

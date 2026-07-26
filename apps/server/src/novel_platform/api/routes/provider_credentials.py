@@ -47,7 +47,11 @@ def _status_response(
 ) -> ProviderCredentialStatusResponse:
     return ProviderCredentialStatusResponse(
         configured=status_value.configured,
-        provider="openai_compatible",
+        provider=status_value.provider,
+        provider_name=status_value.provider_name,
+        base_url=status_value.base_url,
+        model=status_value.model,
+        thinking_enabled=status_value.thinking_enabled,
         version=status_value.version,
         updated_at=status_value.updated_at,
         usage=_usage_response(status_value),
@@ -82,6 +86,11 @@ async def put_provider_credential(
         await ProviderCredentialService(session, settings).rotate(
             auth,
             payload.api_key.get_secret_value(),
+            provider=payload.provider,
+            provider_name=payload.custom_name,
+            base_url=payload.base_url,
+            model=payload.model,
+            thinking_enabled=payload.thinking_enabled,
         )
     )
 

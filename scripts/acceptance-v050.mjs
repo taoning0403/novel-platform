@@ -1221,6 +1221,9 @@ async function main() {
         `LINGUASPINDLE_MAX_DOWNLOAD_BYTES=${1024 * 1024}`,
         `PROVIDER_CREDENTIAL_MASTER_KEY=${acceptanceProviderCredentialMasterKey}`,
         "PROVIDER_RELAY_INTERNAL_URL=http://novel-provider-relay:8790",
+        "PROVIDER_RELAY_UPSTREAM_BASE_URL=https://api.openai.com/v1",
+        "PROVIDER_RELAY_ALLOWED_MODELS='[\"gpt-4.1-mini\"]'",
+        "PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS='[]'",
       ];
       await writeFile(environmentFile, `${envLines.join("\n")}\n`);
       await chmod(environmentFile, 0o600);

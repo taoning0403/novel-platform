@@ -1911,6 +1911,54 @@
             "title": "Api Key",
             "type": "string",
             "writeOnly": true
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "custom_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Name"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderKind",
+            "default": "openai_compatible"
+          },
+          "thinking_enabled": {
+            "default": false,
+            "title": "Thinking Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1921,15 +1969,28 @@
       },
       "ProviderCredentialStatusResponse": {
         "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
           "configured": {
             "title": "Configured",
             "type": "boolean"
           },
-          "provider": {
-            "const": "openai_compatible",
-            "default": "openai_compatible",
-            "title": "Provider",
+          "model": {
+            "title": "Model",
             "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderKind"
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          },
+          "thinking_enabled": {
+            "title": "Thinking Enabled",
+            "type": "boolean"
           },
           "updated_at": {
             "anyOf": [
@@ -1960,6 +2021,11 @@
         },
         "required": [
           "configured",
+          "provider",
+          "provider_name",
+          "base_url",
+          "model",
+          "thinking_enabled",
           "version",
           "updated_at",
           "usage"
@@ -1982,6 +2048,15 @@
         ],
         "title": "ProviderCredentialUsageResponse",
         "type": "object"
+      },
+      "ProviderKind": {
+        "enum": [
+          "openai_compatible",
+          "deepseek",
+          "kimi",
+          "custom"
+        ],
+        "type": "string"
       },
       "ProviderUsageTotalsResponse": {
         "properties": {

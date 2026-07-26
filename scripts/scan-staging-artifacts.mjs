@@ -58,6 +58,8 @@ const sensitiveValues = [
   "AUTH_JWT_SECRET",
   "AUTH_HASH_SECRET",
   "AUTH_CREDENTIAL_HASH_SECRET",
+  "PROVIDER_CREDENTIAL_MASTER_KEY",
+  "PROVIDER_RELAY_SERVICE_SECRET",
 ]
   .map((name) => ({ name, value: process.env[name] ?? "" }))
   .filter(({ value }) => value.length >= 8);

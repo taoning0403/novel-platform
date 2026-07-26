@@ -280,6 +280,8 @@ def configure_fake(app_harness, fake: FakeLinguaSpindle) -> None:
             "provider_credential_master_key": SecretStr(
                 base64.b64encode(bytes(range(32))).decode()
             ),
+            "provider_relay_upstream_base_url": "https://provider.example/v1",
+            "provider_relay_custom_allowed_base_urls": ["https://provider.example/v1"],
         }
     )
     app.dependency_overrides[get_settings] = lambda: settings
@@ -372,8 +374,24 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
     assert initial_status.status_code == 200
     assert initial_status.json()["configured"] is True
     assert initial_status.json()["provider"] == "openai_compatible"
+    assert initial_status.json()["provider_name"] == "OpenAI"
+    assert initial_status.json()["base_url"] == "https://api.openai.com/v1"
+    assert initial_status.json()["model"] == "gpt-4.1-mini"
+    assert initial_status.json()["thinking_enabled"] is False
     assert initial_status.json()["version"] == 1
     assert "api_key" not in initial_status.text
+    unsupported_openai_thinking = await client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={
+            "provider": "openai_compatible",
+            "model": "gpt-4.1-mini",
+            "thinking_enabled": True,
+            "api_key": "sk-must-not-be-stored",
+        },
+    )
+    assert unsupported_openai_thinking.status_code == 422
+    assert unsupported_openai_thinking.json()["error"]["code"] == "provider_thinking_not_supported"
 
     created = await create_txt_book(client, admin.headers, title="凭据版本测试书")
     first = await create_run(
@@ -384,14 +402,23 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
     )
     assert first.status_code == 201, first.text
     first_run = first.json()
+    assert first_run["configuration"]["credential_provider_name"] == "OpenAI"
+    assert first_run["configuration"]["credential_base_url"] == "https://api.openai.com/v1"
 
     rotated = await client.put(
         "/api/v1/me/provider-credential",
         headers=translator_headers,
-        json={"api_key": "sk-rotated-never-return-this-value"},
+        json={
+            "provider": "deepseek",
+            "api_key": "sk-rotated-never-return-this-value",
+        },
     )
     assert rotated.status_code == 200, rotated.text
     assert rotated.json()["version"] == 2
+    assert rotated.json()["provider"] == "deepseek"
+    assert rotated.json()["provider_name"] == "DeepSeek"
+    assert rotated.json()["base_url"] == "https://api.deepseek.com/v1"
+    assert rotated.json()["model"] == "deepseek-chat"
     assert "sk-rotated" not in rotated.text
     other_status = await client.get(
         "/api/v1/me/provider-credential",
@@ -408,6 +435,7 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
         source_edition_id=created["edition"]["id"],
     )
     assert second.status_code == 201, second.text
+    assert second.json()["configuration"]["credential_provider_name"] == "DeepSeek"
     assert len(fake.credential_scopes) == 2
     assert fake.credential_scopes[0] != fake.credential_scopes[1]
 
@@ -468,6 +496,23 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
         )
         await session.rollback()
 
+    kimi = await client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={
+            "provider": "kimi",
+            "api_key": "sk-kimi-never-return",
+            "thinking_enabled": True,
+        },
+    )
+    assert kimi.status_code == 200, kimi.text
+    assert kimi.json()["version"] == 3
+    assert kimi.json()["provider"] == "kimi"
+    assert kimi.json()["provider_name"] == "Kimi"
+    assert kimi.json()["base_url"] == "https://api.moonshot.cn/v1"
+    assert kimi.json()["model"] == "kimi-k2.5"
+    assert kimi.json()["thinking_enabled"] is True
+
     removed = await client.delete(
         "/api/v1/me/provider-credential",
         headers=translator_headers,
@@ -480,6 +525,11 @@ async def test_provider_credential_rotation_scopes_runs_and_removal_revokes_vers
     assert missing.status_code == 200
     assert missing.json()["configured"] is False
     assert missing.json()["version"] is None
+    assert missing.json()["provider"] == "kimi"
+    assert missing.json()["provider_name"] == "Kimi"
+    assert missing.json()["base_url"] == "https://api.moonshot.cn/v1"
+    assert missing.json()["model"] == "kimi-k2.5"
+    assert missing.json()["thinking_enabled"] is False
     other_after_removal = await client.get(
         "/api/v1/me/provider-credential",
         headers=other_translator_headers,
@@ -537,6 +587,51 @@ async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
         name="中继隔离对照译者",
         capabilities=["library.read", "translation.use"],
     )
+    unsupported_custom_thinking = await app_harness.client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={
+            "provider": "custom",
+            "custom_name": "私有兼容服务",
+            "base_url": "https://provider.example/v1",
+            "model": "custom-model",
+            "thinking_enabled": True,
+            "api_key": "sk-must-not-be-stored",
+        },
+    )
+    assert unsupported_custom_thinking.status_code == 422
+    assert unsupported_custom_thinking.json()["error"]["code"] == "provider_thinking_not_supported"
+    disallowed_custom = await app_harness.client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={
+            "provider": "custom",
+            "custom_name": "未允许服务",
+            "base_url": "https://attacker.example/v1",
+            "model": "custom-model",
+            "api_key": "sk-must-not-be-stored",
+        },
+    )
+    assert disallowed_custom.status_code == 422
+    assert disallowed_custom.json()["error"]["code"] == "provider_base_url_not_allowed"
+    custom_configuration = await app_harness.client.put(
+        "/api/v1/me/provider-credential",
+        headers=translator_headers,
+        json={
+            "provider": "custom",
+            "custom_name": "私有兼容服务",
+            "base_url": "https://provider.example/v1/",
+            "model": "custom-translation-model",
+            "api_key": "sk-custom-never-return",
+        },
+    )
+    assert custom_configuration.status_code == 200, custom_configuration.text
+    assert custom_configuration.json()["provider"] == "custom"
+    assert custom_configuration.json()["provider_name"] == "私有兼容服务"
+    assert custom_configuration.json()["base_url"] == "https://provider.example/v1"
+    assert custom_configuration.json()["model"] == "custom-translation-model"
+    assert custom_configuration.json()["thinking_enabled"] is False
+    assert "sk-custom" not in custom_configuration.text
     created = await create_txt_book(
         app_harness.client,
         admin.headers,
@@ -550,6 +645,8 @@ async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
     )
     assert started.status_code == 201, started.text
     run = started.json()
+    assert run["configuration"]["credential_provider_name"] == "私有兼容服务"
+    assert run["configuration"]["thinking_enabled"] is False
     credential_scope = fake.credential_scopes[0]
     bootstrap_started = await create_run(
         app_harness.client,
@@ -583,6 +680,7 @@ async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
         provider_relay_service_secret=SecretStr(shared_secret),
         provider_relay_upstream_base_url="https://provider.example/v1",
         provider_relay_allowed_models=["gpt-4.1-mini"],
+        provider_relay_custom_allowed_base_urls=["https://provider.example/v1"],
         provider_relay_max_request_bytes=512,
         provider_relay_max_response_bytes=4096,
     )
@@ -611,7 +709,11 @@ async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
     def success_handler(request: httpx.Request) -> httpx.Response:
         upstream_requests.append(request)
         assert str(request.url) == "https://provider.example/v1/chat/completions"
-        assert request.headers["Authorization"].startswith("Bearer sk-test-")
+        assert request.read()
+        assert request.content
+        assert b'"model":"custom-translation-model"' in request.content
+        assert b'"thinking"' not in request.content
+        assert request.headers["Authorization"] == "Bearer sk-custom-never-return"
         assert shared_secret not in request.headers["Authorization"]
         assert "X-LinguaSpindle-Credential-Scope" not in request.headers
         assert "X-LinguaSpindle-Job-ID" not in request.headers
@@ -803,6 +905,7 @@ async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
         assert usage[0].prompt_tokens == 12
         assert usage[0].completion_tokens == 3
         assert usage[0].total_tokens == 15
+        assert usage[0].model == "custom-translation-model"
         assert usage[0].remote_job_id == run["remote_job_id"]
 
     status_response = await app_harness.client.get(
@@ -810,6 +913,8 @@ async def test_provider_relay_hardens_forwarding_and_persists_sanitized_usage(
         headers=translator_headers,
     )
     assert status_response.status_code == 200
+    assert status_response.json()["provider"] == "custom"
+    assert status_response.json()["provider_name"] == "私有兼容服务"
     assert status_response.json()["usage"]["all_time"] == {
         "request_count": 1,
         "prompt_tokens": 12,

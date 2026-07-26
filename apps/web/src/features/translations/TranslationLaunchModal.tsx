@@ -116,6 +116,10 @@ export function TranslationLaunchModal({
         setCredential({
           configured: false,
           provider: "openai_compatible",
+          provider_name: "OpenAI",
+          base_url: "https://api.openai.com/v1",
+          model: "gpt-4.1-mini",
+          thinking_enabled: false,
           version: null,
           updated_at: null,
           usage: credential?.usage ?? emptyUsage,
@@ -185,7 +189,7 @@ export function TranslationLaunchModal({
                 LinguaSpindle {service.version ?? "未知版本"} · {service.pipeline_key}
                 {service.pipeline_version ? ` ${service.pipeline_version}` : ""}
                 {credential?.configured
-                  ? ` · 个人凭据 v${credential.version ?? "—"}`
+                  ? ` · ${credential.provider_name} · ${credential.model}${credential.thinking_enabled ? " · 思考模式" : ""} · 个人凭据 v${credential.version ?? "—"}`
                   : ""}
               </small>
             ) : null}
@@ -204,7 +208,7 @@ export function TranslationLaunchModal({
               type="warning"
               showIcon
               title="先配置你的 Provider 凭据"
-              description="漫读不会改用管理员 Key。配置自己的 API Key 后，新任务产生的 Token 费用计入你的 Provider 账户。"
+              description="漫读不会改用管理员 Key。选择 Provider、模型并配置自己的 API Key 后，新任务产生的 Token 费用计入你的 Provider 账户。"
               action={(
                 <Button href="/settings/provider-credential">
                   去配置
@@ -242,7 +246,7 @@ export function TranslationLaunchModal({
             type="warning"
             showIcon
             title="正文会经私有 Relay 发送给 Provider，并使用你加密保存的 API Key。"
-            description="Token 费用由你的 Provider 账户承担。此处不能更改 Provider、模型、服务地址或下载地址；提交前请确认你有权处理该正文。"
+            description="Token 费用由你的 Provider 账户承担。任务会使用凭据设置中的 Provider、模型与服务地址；提交前请确认你有权处理该正文。"
           />
           {error ? <Alert type="error" showIcon title={error} role="alert" /> : null}
 

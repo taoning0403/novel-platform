@@ -16,6 +16,49 @@ KNOWN_DEVELOPMENT_PROVIDER_CREDENTIAL_MASTER_KEY = bytes(32)
 PLACEHOLDER_MARKERS = ("change-me", "placeholder", "example", "replace-with")
 
 
+def normalize_provider_base_url(
+    value: str,
+    *,
+    protected_environment: bool,
+    setting_name: str,
+) -> str:
+    if not value or not value.isprintable():
+        raise ValueError(f"{setting_name} must contain fixed HTTP(S) base URLs")
+    normalized = value.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or ".." in parsed.path.split("/")
+    ):
+        raise ValueError(f"{setting_name} must contain fixed HTTP(S) base URLs")
+    if protected_environment and parsed.scheme != "https":
+        raise ValueError(f"staging/production {setting_name} must use HTTPS")
+    return normalized
+
+
+def normalize_provider_base_url_allowlist(
+    values: list[str],
+    *,
+    protected_environment: bool,
+) -> list[str]:
+    normalized = [
+        normalize_provider_base_url(
+            value,
+            protected_environment=protected_environment,
+            setting_name="PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS",
+        )
+        for value in values
+    ]
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS must be unique")
+    return normalized
+
+
 def _validate_provider_credential_master_key(
     value: SecretStr | None, *, protected_environment: bool
 ) -> None:
@@ -99,6 +142,10 @@ class Settings(BaseSettings):
     provider_relay_allowed_models: list[str] = Field(
         default_factory=lambda: ["gpt-4.1-mini"],
         min_length=1,
+        max_length=100,
+    )
+    provider_relay_custom_allowed_base_urls: list[str] = Field(
+        default_factory=list,
         max_length=100,
     )
     provider_relay_connect_timeout_seconds: float = Field(default=5, gt=0, le=60)
@@ -244,21 +291,16 @@ class Settings(BaseSettings):
                 "PROVIDER_RELAY_ALLOWED_MODELS must contain unique non-blank model IDs"
             )
         self.provider_relay_allowed_models = models
+        self.provider_relay_custom_allowed_base_urls = normalize_provider_base_url_allowlist(
+            self.provider_relay_custom_allowed_base_urls,
+            protected_environment=protected_environment,
+        )
 
-        parsed_upstream = urlsplit(self.provider_relay_upstream_base_url)
-        if (
-            parsed_upstream.scheme not in {"http", "https"}
-            or not parsed_upstream.hostname
-            or parsed_upstream.username is not None
-            or parsed_upstream.password is not None
-            or parsed_upstream.query
-            or parsed_upstream.fragment
-            or ".." in parsed_upstream.path.split("/")
-        ):
-            raise ValueError("PROVIDER_RELAY_UPSTREAM_BASE_URL must be one fixed HTTP(S) base URL")
-        if protected_environment and parsed_upstream.scheme != "https":
-            raise ValueError("staging/production Provider relay upstream must use HTTPS")
-        self.provider_relay_upstream_base_url = self.provider_relay_upstream_base_url.rstrip("/")
+        self.provider_relay_upstream_base_url = normalize_provider_base_url(
+            self.provider_relay_upstream_base_url,
+            protected_environment=protected_environment,
+            setting_name="PROVIDER_RELAY_UPSTREAM_BASE_URL",
+        )
 
         parsed_internal = urlsplit(self.provider_relay_internal_url)
         if (
@@ -299,6 +341,10 @@ class ProviderRelaySettings(BaseSettings):
     provider_relay_allowed_models: list[str] = Field(
         default_factory=lambda: ["gpt-4.1-mini"],
         min_length=1,
+        max_length=100,
+    )
+    provider_relay_custom_allowed_base_urls: list[str] = Field(
+        default_factory=list,
         max_length=100,
     )
     provider_relay_connect_timeout_seconds: float = Field(default=5, gt=0, le=60)
@@ -356,21 +402,16 @@ class ProviderRelaySettings(BaseSettings):
                 "PROVIDER_RELAY_ALLOWED_MODELS must contain unique non-blank model IDs"
             )
         self.provider_relay_allowed_models = models
+        self.provider_relay_custom_allowed_base_urls = normalize_provider_base_url_allowlist(
+            self.provider_relay_custom_allowed_base_urls,
+            protected_environment=protected_environment,
+        )
 
-        parsed_upstream = urlsplit(self.provider_relay_upstream_base_url)
-        if (
-            parsed_upstream.scheme not in {"http", "https"}
-            or not parsed_upstream.hostname
-            or parsed_upstream.username is not None
-            or parsed_upstream.password is not None
-            or parsed_upstream.query
-            or parsed_upstream.fragment
-            or ".." in parsed_upstream.path.split("/")
-        ):
-            raise ValueError("PROVIDER_RELAY_UPSTREAM_BASE_URL must be one fixed HTTP(S) base URL")
-        if protected_environment and parsed_upstream.scheme != "https":
-            raise ValueError("staging/production Provider relay upstream must use HTTPS")
-        self.provider_relay_upstream_base_url = self.provider_relay_upstream_base_url.rstrip("/")
+        self.provider_relay_upstream_base_url = normalize_provider_base_url(
+            self.provider_relay_upstream_base_url,
+            protected_environment=protected_environment,
+            setting_name="PROVIDER_RELAY_UPSTREAM_BASE_URL",
+        )
         return self
 
 

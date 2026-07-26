@@ -227,11 +227,17 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
   provider_usage_records="N/A (schema predates v0.10)"
   unbound_translation_runs="N/A (schema predates v0.10)"
   credential_owner_mismatches="N/A (schema predates v0.10)"
+  provider_routing_schema="N/A (schema predates multi-Provider routing)"
+  provider_configuration_violations="N/A (schema predates multi-Provider routing)"
+  provider_version_duplicates="N/A (schema predates multi-Provider routing)"
+  multiple_current_provider_credentials="N/A (schema predates multi-Provider routing)"
+  legacy_provider_routing_mismatches="N/A (schema predates multi-Provider routing)"
+  provider_thinking_violations="N/A (schema predates Provider thinking configuration)"
   revision_contract="v0.5 identity/library invariants"
   case "$manifest_revision" in
     20260715_0005)
       ;;
-    20260723_0006|20260726_0007)
+    20260723_0006|20260726_0007|20260726_0008)
       revision_contract="v0.9 capability, attribution and Translation Run invariants"
       credential_capabilities="$(compose exec -T postgres sh -c \
         'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
@@ -260,7 +266,8 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
         || die "restored v0.9+ content contains missing contributor attribution"
       (( credentials_without_read == 0 )) \
         || die "restored v0.9+ credential is missing library.read"
-      if [[ "$manifest_revision" == "20260726_0007" ]]; then
+      if [[ "$manifest_revision" == "20260726_0007" \
+        || "$manifest_revision" == "20260726_0008" ]]; then
         revision_contract="v0.10 encrypted credential, usage and scoped Run invariants"
         provider_credential_versions="$(compose exec -T postgres sh -c \
           'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
@@ -287,6 +294,140 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
           || die "restored v0.10 Translation Run is missing its credential binding"
         (( credential_owner_mismatches == 0 )) \
           || die "restored v0.10 Translation Run is bound to another actor's credential"
+      fi
+      if [[ "$manifest_revision" == "20260726_0008" ]]; then
+        revision_contract="v0.10 encrypted multi-Provider routing/thinking, usage and scoped Run invariants"
+        provider_routing_schema="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -AtF "|" -c \
+            "SELECT
+               (SELECT count(*)
+                FROM information_schema.columns
+                WHERE table_schema = '\''public'\''
+                  AND table_name = '\''provider_credential_versions'\''
+                  AND column_name IN (
+                    '\''provider_name'\'', '\''base_url'\'', '\''model'\'',
+                    '\''thinking_enabled'\''
+                  )),
+               (SELECT count(*)
+                FROM pg_attribute provider_attribute
+                JOIN pg_attrdef provider_default
+                  ON provider_default.adrelid = provider_attribute.attrelid
+                 AND provider_default.adnum = provider_attribute.attnum
+                WHERE provider_attribute.attrelid =
+                    '\''provider_credential_versions'\''::regclass
+                  AND provider_attribute.attname = '\''thinking_enabled'\''
+                  AND provider_attribute.atttypid = '\''boolean'\''::regtype
+                  AND provider_attribute.attnotnull
+                  AND pg_get_expr(
+                    provider_default.adbin,
+                    provider_default.adrelid
+                  ) = '\''false'\''),
+               (SELECT count(*)
+                FROM pg_constraint
+                WHERE conrelid = '\''provider_credential_versions'\''::regclass
+                  AND conname IN (
+                    '\''ck_provider_credential_versions_provider_known'\'',
+                    '\''ck_provider_credential_versions_provider_name_matches_provider'\'',
+                    '\''ck_provider_credential_versions_base_url_not_blank'\'',
+                    '\''ck_provider_credential_versions_model_not_blank'\'',
+                    '\''ck_provider_credential_versions_algorithm_supported'\'',
+                    '\''uq_provider_credential_versions_user_version'\''
+                  )),
+               (SELECT count(*)
+                FROM pg_index
+                WHERE indexrelid =
+                    to_regclass('\''public.uq_provider_credential_versions_current'\'')
+                  AND indisunique
+                  AND indnkeyatts = 1
+                  AND indpred IS NOT NULL)"' \
+          sh "$temporary_database")"
+        [[ "$provider_routing_schema" == "4|1|6|1" ]] \
+          || die "restored multi-Provider routing/thinking columns or constraints are incomplete"
+        provider_routing_schema="verified"
+        provider_configuration_violations="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM provider_credential_versions
+             WHERE provider IS NULL
+                OR provider NOT IN (
+                  '\''openai_compatible'\'', '\''deepseek'\'', '\''kimi'\'', '\''custom'\''
+                )
+                OR (
+                  provider = '\''custom'\''
+                  AND (provider_name IS NULL OR length(btrim(provider_name)) = 0)
+                )
+                OR (provider <> '\''custom'\'' AND provider_name IS NOT NULL)
+                OR base_url IS NULL
+                OR length(btrim(base_url)) = 0
+                OR model IS NULL
+                OR length(btrim(model)) = 0
+                OR thinking_enabled IS NULL
+                OR algorithm IS NULL
+                OR algorithm NOT IN ('\''aes-256-gcm-v1'\'', '\''aes-256-gcm-v2'\'')"' \
+          sh "$temporary_database")"
+        provider_version_duplicates="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM (
+               SELECT user_id, version
+               FROM provider_credential_versions
+               GROUP BY user_id, version
+               HAVING count(*) > 1
+             ) AS duplicate_versions"' \
+          sh "$temporary_database")"
+        provider_thinking_violations="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM provider_credential_versions
+             WHERE (
+               provider IN ('\''openai_compatible'\'', '\''custom'\'')
+               AND thinking_enabled
+             )
+                OR (
+                  provider = '\''deepseek'\''
+                  AND thinking_enabled IS DISTINCT FROM
+                      (model = '\''deepseek-reasoner'\'')
+                )
+                OR (
+                  provider = '\''kimi'\''
+                  AND thinking_enabled
+                  AND model <> '\''kimi-k2.5'\''
+                )"' \
+          sh "$temporary_database")"
+        multiple_current_provider_credentials="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM (
+               SELECT user_id
+               FROM provider_credential_versions
+               WHERE retired_at IS NULL AND revoked_at IS NULL
+               GROUP BY user_id
+               HAVING count(*) > 1
+             ) AS multiple_current"' \
+          sh "$temporary_database")"
+        legacy_provider_routing_mismatches="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM provider_credential_versions
+             WHERE algorithm = '\''aes-256-gcm-v1'\''
+               AND (
+                 provider <> '\''openai_compatible'\''
+                 OR provider_name IS NOT NULL
+                 OR base_url <> '\''https://api.openai.com/v1'\''
+                 OR model <> '\''gpt-4.1-mini'\''
+                 OR thinking_enabled IS DISTINCT FROM false
+               )"' \
+          sh "$temporary_database")"
+        (( provider_configuration_violations == 0 )) \
+          || die "restored multi-Provider credential routing violates its schema contract"
+        (( provider_version_duplicates == 0 )) \
+          || die "restored Provider credential versions are not unique per User"
+        (( provider_thinking_violations == 0 )) \
+          || die "restored Provider thinking configuration violates its Provider/model contract"
+        (( multiple_current_provider_credentials == 0 )) \
+          || die "restored User has more than one current Provider credential"
+        (( legacy_provider_routing_mismatches == 0 )) \
+          || die "restored legacy Provider ciphertext has mutable routing/thinking metadata"
       fi
       ;;
     *)
@@ -331,7 +472,14 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
 - Provider usage records present: $provider_usage_records
 - Translation runs missing credential binding: $unbound_translation_runs
 - Translation run/credential owner mismatches: $credential_owner_mismatches
+- Multi-Provider routing schema: $provider_routing_schema
+- Provider configuration constraint violations: $provider_configuration_violations
+- Duplicate per-User Provider versions: $provider_version_duplicates
+- Provider thinking configuration violations: $provider_thinking_violations
+- Users with multiple current Provider credentials: $multiple_current_provider_credentials
+- Legacy ciphertext routing/thinking mismatches: $legacy_provider_routing_mismatches
 - Vault master-key usability: not tested; the matching key is an external restore prerequisite
+- Custom Provider allow-list usability: not tested; the matching deployment policy is external
 - Stored files verified: $stored_files
 - Referenced temporary files verified: $temporary_files
 

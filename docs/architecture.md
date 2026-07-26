@@ -26,7 +26,7 @@ FastAPI modular monolith
        │             └── independent SQLite + Artifact volume
        └── LinguaSpindle -> Provider Relay
                               ├── encrypted credential lookup + usage ledger
-                              └── fixed HTTPS OpenAI-compatible Provider
+                              └── version-bound approved OpenAI-compatible Provider
 ```
 
 LinguaSpindle still shares no identity, database, volume or domain model with Novel Platform. It
@@ -243,7 +243,7 @@ actor + fixed readable TXT EditionFile
   -> deterministic Project + scoped Job requests and stored correlation IDs
   -> Lingua Job executes with opaque credential_scope + Job correlation
   -> private Relay validates scope/binding/model/service Bearer and atomically claims a first Job ID
-  -> Relay decrypts only the bound key and calls the fixed upstream origin
+  -> Relay decrypts only the bound key and calls its version-bound approved upstream/model
   -> Relay rejects reflected secrets and records sanitized integer token usage without prompt/output
   -> on-demand selected-Run sync/control (no worker or scheduler)
   -> terminal successful Artifact metadata
@@ -253,12 +253,18 @@ actor + fixed readable TXT EditionFile
   -> creator-only preview -> administrator-only ready publication
 ```
 
-Lingua/Relay origins, compatible version, Provider/Profile identity, allowed upstream HTTPS
-origin/models, timeouts and byte ceilings are operator configuration. The browser submits only its
-own key through the self-service credential endpoint and never submits a Provider/model/profile/
-URL/download choice. The raw key is accepted only as a write-only `SecretStr`, encrypted with
-AES-256-GCM and never returned. Both clients follow no redirects, accept only fixed endpoints, do
-not propagate raw remote response bodies, and sanitize error details.
+Lingua/Relay origins, compatible version, adapter/Profile identity, inbound adapter model,
+allowed custom HTTPS base URLs, timeouts and byte ceilings are operator configuration. New v2
+OpenAI credentials fix the preset to its official base URL; the separately configured upstream
+URL is retained only to preserve legacy v1 routing. The browser saves one current credential
+configuration through the self-service
+endpoint: OpenAI, DeepSeek, Kimi, or an operator-allowlisted custom OpenAI-compatible base URL,
+plus the upstream model and an explicit thinking-mode switch that defaults off. Thinking is
+supported only as a strict DeepSeek `deepseek-reasoner` mapping or the explicit Kimi `kimi-k2.5`
+request field; OpenAI, custom routes and unsupported Kimi models cannot enable it. The browser
+does not choose these values per Run or submit a profile/download URL. The raw key is accepted
+only as a write-only `SecretStr`, encrypted with AES-256-GCM and never returned. Both clients
+follow no redirects, do not propagate raw remote response bodies, and sanitize error details.
 
 The first Provider request can race the Novel Platform Job-creation response. A partial unique
 index permits only one uncorrelated `preparing` Run per credential version; the Relay row-locks
@@ -267,13 +273,21 @@ before calling the upstream. Every later call must match the stored ID. Unexpect
 exceptions are converted without logging values, and a successful Provider JSON value containing
 the decrypted key is rejected before any response or usage write.
 
-Each immutable credential version has a random UUID scope, per-User monotonic version, nonce and
-ciphertext. The separately injected 32-byte master key is absent from PostgreSQL and its backups.
-Rotation retires the old version but existing bound Runs may continue; removal revokes every
-version and later Provider calls fail closed. Run and remote Job fingerprints include the scope,
-while safe API responses expose only the version number. The Run also stores exact
-Project/Job/Artifact IDs. Retry recovers with deterministic idempotency; cleanup may delete only
-that stored Project. A cleanup failure never rolls back an already ingested Edition.
+Each immutable credential version has a random UUID scope, per-User monotonic version, Provider
+kind/name, normalized base URL, model, thinking state, nonce and ciphertext. One partial unique
+index permits only one current version across all Provider kinds. New ciphertext authenticated
+data binds the route, model and thinking state as well as User, credential UUID and version;
+legacy v1 OpenAI-compatible ciphertext retains its original fixed-upstream/model behavior with
+thinking forced off and without re-encryption. The separately injected 32-byte master key is
+absent from PostgreSQL and its backups. Rotation, switching Provider or changing thinking state
+retires the old version but existing bound Runs may continue; removal revokes every version and
+later Provider calls fail closed. The Relay revalidates preset/custom routing and Provider/model
+thinking policy at call time, then replaces LinguaSpindle's adapter model with the model bound to
+a v2 credential and injects only the supported Kimi field. Run and remote Job fingerprints
+include the scope, while safe API responses expose only non-secret configuration and version
+metadata. The Run also stores exact Project/Job/Artifact IDs. Retry recovers with deterministic
+idempotency; cleanup may delete only that stored Project. A cleanup failure never rolls back an
+already ingested Edition.
 
 Relay and Lingua availability are deliberately absent from main readiness, so disabling the
 feature/network affects only translation. Relay startup/health validates its master key, service
@@ -303,7 +317,9 @@ backfills creator columns, grants every retained credential only `library.read`,
 storage. It cannot be downgraded because placeholder deletion is destructive. Alembic
 `20260726_0007` then creates encrypted Provider-credential and sanitized usage storage and makes
 the credential-version binding non-null on every Run. It refuses any existing unscoped v0.9 Run
-instead of inventing a payer or deleting orchestration history.
+instead of inventing a payer or deleting orchestration history. Alembic `20260726_0008` adds
+version-bound Provider routing/model/thinking metadata, preserves legacy v1 ciphertext, and
+enforces one current configuration and one monotonic version sequence per User.
 
 Deployment order is:
 
@@ -312,6 +328,7 @@ validate candidate/config/topology -> stop writers -> sanitized count preflight
 -> coordinated database+library backup -> isolated restore
 -> explicit approval for destructive migration/reset -> Alembic 20260723_0006
 -> fail-closed unscoped-Run check -> Alembic 20260726_0007
+-> version-bound Provider route/model/thinking migration -> Alembic 20260726_0008
 -> volume integrity audit -> API/Web health + credential capability matrix
 -> LinguaSpindle >=0.3.2 + private Relay network/secret/health verification
 -> scoped synthetic translation without a paid Provider call
@@ -334,6 +351,6 @@ generated Editions. Remote Projects are never cleaned by pattern or inventory gu
 v0.10.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
 public registration/catalogue, payments, advertising, public/raw downloads, native clients,
 scheduled jobs, object storage, Series nesting/reordering, EPUB/manga translation, per-chapter
-review, user-selectable Provider/model/base URL, site-funded fallback, budgets/quotas, vault-master
-key rotation or arbitrary Artifact URLs. Adding any durable boundary requires a new explicit
-milestone and ADR.
+review, per-Run Provider switching, arbitrary/unallowlisted custom upstreams, automatic Provider
+failover, site-funded fallback, budgets/quotas, vault-master-key rotation or arbitrary Artifact
+URLs. Adding any durable boundary requires a new explicit milestone and ADR.

@@ -103,7 +103,11 @@ const zeroUsage: ProviderCredentialStatus["usage"] = {
 
 const configuredCredential: ProviderCredentialStatus = {
   configured: true,
-  provider: "openai_compatible",
+  provider: "deepseek",
+  provider_name: "DeepSeek",
+  base_url: "https://api.deepseek.com/v1",
+  model: "deepseek-reasoner",
+  thinking_enabled: true,
   version: 3,
   updated_at: "2026-07-23T01:10:00Z",
   usage: zeroUsage,
@@ -137,6 +141,8 @@ describe("TranslationLaunchModal", () => {
 
     expect(await screen.findByText(/Mock Provider · mock-v1/)).toBeInTheDocument();
     expect(screen.getByText(/个人凭据 v3/)).toBeInTheDocument();
+    expect(screen.getByText(/DeepSeek · deepseek-reasoner · 思考模式/))
+      .toBeInTheDocument();
     expect(screen.getByText(/使用你加密保存的 API Key/)).toBeInTheDocument();
     expect(screen.getByText("f2 · TXT")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("目标语言"), { target: { value: "ja" } });
@@ -167,6 +173,10 @@ describe("TranslationLaunchModal", () => {
     vi.spyOn(api, "getProviderCredential").mockResolvedValue({
       configured: false,
       provider: "openai_compatible",
+      provider_name: "OpenAI",
+      base_url: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      thinking_enabled: false,
       version: null,
       updated_at: null,
       usage: zeroUsage,

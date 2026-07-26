@@ -212,15 +212,29 @@ class ProviderCredentialVersionModel(Base):
     __tablename__ = "provider_credential_versions"
     __table_args__ = (
         CheckConstraint(
-            "provider = 'openai_compatible'",
-            name="provider_openai_compatible",
+            "provider IN ('openai_compatible', 'deepseek', 'kimi', 'custom')",
+            name="provider_known",
+        ),
+        CheckConstraint(
+            "(provider = 'custom' AND provider_name IS NOT NULL "
+            "AND length(btrim(provider_name)) > 0) "
+            "OR (provider <> 'custom' AND provider_name IS NULL)",
+            name="provider_name_matches_provider",
+        ),
+        CheckConstraint(
+            "length(btrim(base_url)) > 0",
+            name="base_url_not_blank",
+        ),
+        CheckConstraint(
+            "length(btrim(model)) > 0",
+            name="model_not_blank",
         ),
         CheckConstraint("version >= 1", name="version_positive"),
         CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
         CheckConstraint("octet_length(ciphertext) >= 17", name="ciphertext_has_tag"),
         CheckConstraint(
-            "algorithm = 'aes-256-gcm-v1'",
-            name="algorithm_aes_256_gcm_v1",
+            "algorithm IN ('aes-256-gcm-v1', 'aes-256-gcm-v2')",
+            name="algorithm_supported",
         ),
         CheckConstraint(
             "retired_at IS NULL OR retired_at >= created_at",
@@ -230,11 +244,10 @@ class ProviderCredentialVersionModel(Base):
             "revoked_at IS NULL OR revoked_at >= created_at",
             name="revoked_after_creation",
         ),
-        UniqueConstraint("user_id", "provider", "version", name="user_provider_version"),
+        UniqueConstraint("user_id", "version", name="user_version"),
         Index(
             "uq_provider_credential_versions_current",
             "user_id",
-            "provider",
             unique=True,
             postgresql_where=text("retired_at IS NULL AND revoked_at IS NULL"),
         ),
@@ -254,9 +267,25 @@ class ProviderCredentialVersionModel(Base):
     provider: Mapped[str] = mapped_column(
         String(32), nullable=False, default="openai_compatible", server_default="openai_compatible"
     )
+    provider_name: Mapped[str | None] = mapped_column(String(120))
+    base_url: Mapped[str] = mapped_column(
+        String(2048),
+        nullable=False,
+        default="https://api.openai.com/v1",
+        server_default="https://api.openai.com/v1",
+    )
+    model: Mapped[str] = mapped_column(
+        String(120),
+        nullable=False,
+        default="gpt-4.1-mini",
+        server_default="gpt-4.1-mini",
+    )
+    thinking_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     algorithm: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="aes-256-gcm-v1", server_default="aes-256-gcm-v1"
+        String(32), nullable=False, default="aes-256-gcm-v2", server_default="aes-256-gcm-v2"
     )
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
