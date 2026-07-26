@@ -45,7 +45,8 @@ RUN echo "$STAGING_REAL_IP_PEER" | grep -Eq '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|
     && { printf 'events {}\nhttp {\n'; cat /tmp/nginx-test/default.conf; printf '}\n'; } \
         > /tmp/nginx-test/main.conf \
     && nginx -t -q -c /tmp/nginx-test/main.conf \
-        -g 'pid /tmp/nginx.pid; error_log /tmp/nginx-error.log;'
+        -g 'pid /tmp/nginx.pid; error_log /tmp/nginx-error.log;' \
+    && rm -rf /tmp/nginx-test /tmp/nginx.pid /tmp/nginx-error.log
 COPY --from=build /workspace/apps/web/dist /usr/share/nginx/html
 USER 101
 EXPOSE 8080
