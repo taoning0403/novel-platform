@@ -1,9 +1,10 @@
 # Project state
 
-Last reviewed against the repository and staging deployment on 2026-07-26. v0.10.0 is deployed
-from Novel Platform commit `b8c84c92eb7e2af367ec3bc4d58b97a84635e736` with LinguaSpindle
-commit `1eeb5b029703c941c2fb4052d79e72767142cd19`. Package/API metadata, the final
-release gate and the staging runtime all report v0.10.0.
+Last reviewed against the repository and staging deployment on 2026-07-26. Staging runs the
+unversioned post-v0.10 Provider-routing increment from Novel Platform commit
+`e91a41a511511caa7f379450d7d9e3b7ce149903` with LinguaSpindle commit
+`1eeb5b029703c941c2fb4052d79e72767142cd19`. Package/API metadata remains v0.10.0 and
+the staging database is at Alembic `20260726_0008`.
 
 ## Current milestone
 
@@ -150,9 +151,13 @@ unchanged.
   claim that operator-funded/shared-key translation remains supported.
 - The Provider-routing increment passes Server lint/format/type checks, 111 unit tests and 32
   PostgreSQL integration tests plus Web lint, 59 tests, production build, generated-contract
-  refresh, Compose validation and script syntax checks. Its exact-commit
-  `acceptance-v0100-provider-routing*` gate and external 0008 deployment verification remain
-  pending until the candidate is committed.
+  refresh, Compose validation and script syntax checks. The exact-commit
+  `acceptance-v0100-provider-routing*` gate passed on `e91a41a` with all 6 criteria and 5 steps,
+  including the inherited v0.8/v0.9 regressions.
+- External verification on `e91a41a` passed revision-0008 deployment, HTTPS/API/container health,
+  migration and library integrity audit, restart/stop-start/recreate persistence, topology and
+  secret-agreement checks, sanitized resource reporting, artifact leak scanning, coordinated
+  backup and isolated database/library restore.
 
 ## Deliberately not implemented
 
@@ -167,28 +172,28 @@ unchanged.
 - Vault-master-key rotation/re-encryption automation. Ordinary reader-key rotation creates a new
   credential version and does not rotate the vault key.
 - Real OpenAI-compatible Provider calls or real user-content egress. No paid Provider call has
-  been executed for this candidate; it requires a reader-supplied key and separate explicit
+  been executed for this deployment; it requires a reader-supplied key and separate explicit
   authorization.
 - Automatic cleanup of unknown LinguaSpindle resources or ownership of its SQLite, Artifact
   volume, image, container or external network.
 
 ## Deployment state
 
-Staging at `https://novel.mine-novel.top` deployed Novel Platform v0.10.0 commit `b8c84c9` on
-2026-07-26T10:18:43Z. Alembic migrated transactionally from `20260715_0005` through
-`20260723_0006` to `20260726_0007`. LinguaSpindle v0.3.2 runs at schema 5. The archived v0.8
-release, pre-migration backup and protected old configuration remain available; no Alembic
+Staging at `https://novel.mine-novel.top` runs the post-v0.10 Provider-routing increment at exact
+commit `e91a41a511511caa7f379450d7d9e3b7ce149903`, deployed on 2026-07-26. Alembic migrated
+transactionally through `20260726_0008`; LinguaSpindle v0.3.2 remains at schema 5. No Alembic
 downgrade was performed or enabled.
 
-The post-v0.10 Provider-routing increment and Alembic `20260726_0008` are not yet deployed.
-Staging remains on the clean revision-0007 baseline while the exact candidate commit, coordinated
-backup/isolated restore and external verification are prepared.
+The protected pre-routing environment backup is
+`.env.staging.pre-provider-routing-20260726T131839Z` with mode 0600. The migration preparation
+backup `novel-platform-v0100-20260726T131906Z` passed isolated restore, and the initial routing
+deployment created `novel-platform-v0100-20260726T132053Z`. The final `e91a41a` update created
+`novel-platform-v0100-20260726T133652Z`; after all restart and external checks, the coordinated
+backup `novel-platform-v0100-20260726T133950Z` passed a fresh isolated database/library restore.
 
-The deployment created a revision-0007 coordinated backup
-`novel-platform-v0100-20260726T100151Z` and passed its isolated database/library restore. It also
-passed API, PostgreSQL, Compose stop/start and application-recreate persistence checks. The
-sanitized deployment evidence is `deployment-v0100-report.md` in the protected staging report
-directory.
+The deployed custom-route allow-list is empty. OpenAI, DeepSeek and Kimi preset routes are
+available, while custom Provider destinations fail closed until the operator adds an exact
+reviewed HTTPS base URL.
 
 Runtime inspection confirms:
 
