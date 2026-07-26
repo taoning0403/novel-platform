@@ -2,7 +2,7 @@
 
 Last reviewed against the repository and staging deployment on 2026-07-26. Staging runs the
 unversioned post-v0.10 Provider-routing increment from Novel Platform commit
-`e91a41a511511caa7f379450d7d9e3b7ce149903` with LinguaSpindle commit
+`93675b9198e99e9078baafd32cb6800af18cdd82` with LinguaSpindle commit
 `1eeb5b029703c941c2fb4052d79e72767142cd19`. Package/API metadata remains v0.10.0 and
 the staging database is at Alembic `20260726_0008`.
 
@@ -201,8 +201,9 @@ unchanged.
 ## Deployment state
 
 Staging at `https://novel.mine-novel.top` runs the post-v0.10 Provider-routing increment at exact
-commit `e91a41a511511caa7f379450d7d9e3b7ce149903`, deployed on 2026-07-26. Alembic migrated
-transactionally through `20260726_0008`; LinguaSpindle v0.3.2 remains at schema 5. No Alembic
+commit `93675b9198e99e9078baafd32cb6800af18cdd82`, deployed on 2026-07-26 at
+15:48:57Z. This revision includes the Scheme C Web interaction refresh. The database remains at
+Alembic `20260726_0008`; LinguaSpindle v0.3.2 remains at schema 5. No Alembic
 downgrade was performed or enabled.
 
 The protected pre-routing environment backup is
@@ -211,6 +212,8 @@ backup `novel-platform-v0100-20260726T131906Z` passed isolated restore, and the 
 deployment created `novel-platform-v0100-20260726T132053Z`. The final `e91a41a` update created
 `novel-platform-v0100-20260726T133652Z`; after all restart and external checks, the coordinated
 backup `novel-platform-v0100-20260726T133950Z` passed a fresh isolated database/library restore.
+The Scheme C Web deployment created the coordinated backup
+`novel-platform-v0100-20260726T154811Z`; no database revision change was required.
 
 The deployed custom-route allow-list is empty. OpenAI, DeepSeek and Kimi preset routes are
 available, while custom Provider destinations fail closed until the operator adds an exact
@@ -231,6 +234,9 @@ Runtime inspection confirms:
   not contact the fixed upstream.
 - Existing 2 Users, 1 Book and 1 Edition remain. Provider credential versions, usage records,
   Translation Runs and LinguaSpindle Projects/Jobs are all empty.
+- The Scheme C deployment script and post-deploy healthcheck passed. External checks returned
+  HTTPS 200, HTTP-to-HTTPS 308 and `{"status":"ok"}` from API readiness; Web, Server, Relay and
+  PostgreSQL are healthy, with only Web published on loopback `127.0.0.1:8080`.
 
 No Provider key has been submitted and no real Provider request has been made. Real translation
 requires a `translation.use` actor to configure a personal key; paid/content-egress verification
