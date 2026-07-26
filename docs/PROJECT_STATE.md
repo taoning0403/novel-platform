@@ -1,9 +1,9 @@
 # Project state
 
-Last reviewed against the repository on 2026-07-26. The current target is the v0.10.0 release
-candidate, developed incrementally from the v0.9.0 capability, contributor and private-translation
-baseline. Package/API metadata targets 0.10.0; final release-gate and external deployment evidence
-remain pending consolidation.
+Last reviewed against the repository and staging deployment on 2026-07-26. v0.10.0 is deployed
+from Novel Platform commit `b8c84c92eb7e2af367ec3bc4d58b97a84635e736` with LinguaSpindle
+commit `1eeb5b029703c941c2fb4052d79e72767142cd19`. Package/API metadata, the final
+release gate and the staging runtime all report v0.10.0.
 
 ## Current milestone
 
@@ -20,7 +20,7 @@ exact version and sends only its opaque UUID4 scope to standalone LinguaSpindle
 scope, Job, model and fixed upstream before decrypting that actor's key. There is no administrator
 or shared-key fallback.
 
-## Implemented candidate surface
+## Implemented v0.10 surface
 
 ### Capability, contributor and translation baseline
 
@@ -110,11 +110,18 @@ or shared-key fallback.
   `pnpm acceptance` and `pnpm acceptance:v0100`. It replays the applicable v0.9 gate into
   `artifacts/acceptance-v0100-regression*` without rewriting historical evidence, then evaluates
   six v0.10 BYOK/Relay/Web/version/topology criteria.
-- Candidate outputs are `artifacts/acceptance-v0100.{md,json}`. Synthetic/fake transport is the
-  repository test boundary. Real LinguaSpindle v0.3.2 + Mock Provider, secret injection, private
-  container chain, HTTPS/Passkey and restart/topology checks remain operator/deployment work.
-- The final v0.10 full-gate result has not yet been recorded in this file. Do not interpret
-  focused test reports or package metadata as a completed release or deployment.
+- Final outputs are `artifacts/acceptance-v0100.{md,json}`. The gate passed on commit `b8c84c9`,
+  replaying 84 core, 9 proxy-hardening and 11 v0.9 criteria before passing all 6 v0.10
+  BYOK/Relay criteria.
+- Server lint, formatting, strict typing, 86 unit tests and 29 PostgreSQL integration tests passed.
+  Web lint, 52 tests and production build passed. LinguaSpindle passed 252 tests plus lint,
+  formatting, strict typing, package and schema-migration checks.
+- The offline full chain from Novel Platform through real LinguaSpindle v0.3.2 and the private
+  Relay to a fake Provider passed with sanitized usage persistence. Staging secret injection,
+  private DNS, authenticated no-upstream probing, HTTPS, restart/recreate persistence, topology,
+  coordinated backup and isolated restore checks also passed.
+- A real OpenAI-compatible Provider remains outside the verification boundary: no reader key,
+  paid request or user-content egress was used.
 - Historical acceptance scripts/evidence remain intact. v0.10 does not rewrite v0.9 evidence to
   claim that operator-funded/shared-key translation remains supported.
 
@@ -137,22 +144,37 @@ or shared-key fallback.
 
 ## Deployment state
 
-No v0.10.0 deployment, migration 0007 application, Provider-key submission or real paid Provider
-call is asserted by this document. Deployment remains candidate work until the exact reviewed
-commits, backups, isolated restores, secret injection, migration, topology and post-deploy checks
-are recorded by the root task.
+Staging at `https://novel.mine-novel.top` deployed Novel Platform v0.10.0 commit `b8c84c9` on
+2026-07-26T10:18:43Z. Alembic migrated transactionally from `20260715_0005` through
+`20260723_0006` to `20260726_0007`. LinguaSpindle v0.3.2 runs at schema 5. The archived v0.8
+release, pre-migration backup and protected old configuration remain available; no Alembic
+downgrade was performed or enabled.
 
-Before migration, stop writers and create a coordinated PostgreSQL + library backup, then pass an
-isolated restore. Preserve the matching vault master key separately. A v0.9 database with any
-Translation Run must stop at the fail-closed 0007 preflight until the operator explicitly resolves
-those unscoped test Runs. Deploy LinguaSpindle `>=0.3.2,<0.4.0`, share the Relay Bearer only with
-LinguaSpindle/Relay, point LinguaSpindle's OpenAI-compatible base URL to the private Relay `/v1`,
-and keep the model in the Relay allowlist. Verify Relay/LinguaSpindle have no host ports, Relay
-joins only database + translation networks, and Web/PostgreSQL/migrate do not join translation.
+The deployment created a revision-0007 coordinated backup
+`novel-platform-v0100-20260726T100151Z` and passed its isolated database/library restore. It also
+passed API, PostgreSQL, Compose stop/start and application-recreate persistence checks. The
+sanitized deployment evidence is `deployment-v0100-report.md` in the protected staging report
+directory.
 
-Deployment verification may use synthetic or offline Mock content. Real Provider verification
-must remain explicitly pending unless a reader key and paid/content-egress authorization are
-provided.
+Runtime inspection confirms:
+
+- Server joins proxy, database and `linguaspindle-private`; Relay joins only database and
+  `linguaspindle-private`; LinguaSpindle joins only `linguaspindle-private`; Web and PostgreSQL do
+  not join translation.
+- Only Web publishes `127.0.0.1:8080`; PostgreSQL, Server, Relay and LinguaSpindle publish no host
+  port.
+- Server and Relay share the protected vault key; only Relay and LinguaSpindle share the
+  independent service Bearer. HMAC challenges proved runtime/host equality without printing the
+  values.
+- Current secret values were absent from deployment logs, reports, image configuration and image
+  history. The authenticated absent-scope probe stopped at Relay's expected sanitized 404 and did
+  not contact the fixed upstream.
+- Existing 2 Users, 1 Book and 1 Edition remain. Provider credential versions, usage records,
+  Translation Runs and LinguaSpindle Projects/Jobs are all empty.
+
+No Provider key has been submitted and no real Provider request has been made. Real translation
+requires a `translation.use` actor to configure a personal key; paid/content-egress verification
+remains explicitly pending.
 
 ## Update triggers
 
