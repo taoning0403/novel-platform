@@ -26,6 +26,7 @@ import type {
 } from "../api/types";
 import { ProtectedImage } from "../shared/ProtectedImage";
 import { formattedByteLimit, maxUploadBytes } from "../shared/format";
+import { InterfaceIcon } from "../ui/components/InterfaceIcon";
 import { PageHeader } from "../ui/components/PageHeader";
 import styles from "./UploadPages.module.css";
 
@@ -39,9 +40,15 @@ interface FailedImport {
 }
 
 const modeLabels: Record<ImportOperation, string> = {
-  create_book: "创建新图书",
-  add_edition: "向已有图书添加版本",
-  replace_edition_file: "替换已有版本文件",
+  create_book: "新建图书",
+  add_edition: "添加版本",
+  replace_edition_file: "替换文件",
+};
+
+const modeDescriptions: Record<ImportOperation, string> = {
+  create_book: "上传一本新书，同时创建它的第一个版本。",
+  add_edition: "为已有图书上传新的语言或格式版本。",
+  replace_edition_file: "替换某个已有版本的文件，保留其元数据。",
 };
 
 const presetLabels: Record<EditionPreset, string> = {
@@ -297,26 +304,39 @@ export function UploadPage() {
     <main className={styles.page}>
       <Link className={styles.backLink} to={bookId ? `/books/${bookId}` : "/"}>← 返回书库</Link>
       <PageHeader
-        eyebrow="EPUB / TXT · 安全导入"
-        title="上传与版本管理"
-        description="先安全解析并预览元数据，确认后再把文件与 Book、Edition 一次性提交。"
-      />
-      <Steps
-        className={styles.steps}
-        current={currentStep}
-        responsive
-        items={[
-          { title: "选择操作与文件" },
-          { title: "安全解析" },
-          { title: "校对元数据" },
-          { title: "确认提交" },
-          { title: "完成" },
-        ]}
+        eyebrow="UPLOAD · 上传"
+        title={(
+          <>
+            <span aria-hidden="true">上传</span>
+            <span className="sr-only">上传与版本管理</span>
+          </>
+        )}
+        description="上传新图书或为现有图书添加版本，文件全程在本站安全解析"
       />
 
-      <div className={styles.layout}>
+      <div className={styles.uploadLayout}>
+        <Card className={styles.stepRail}>
+          <Steps
+            className={styles.steps}
+            current={currentStep}
+            orientation="vertical"
+            responsive={false}
+            items={[
+              { title: "选择操作与文件" },
+              { title: "安全解析" },
+              { title: "校对元数据" },
+              { title: "确认提交" },
+              { title: "完成" },
+            ]}
+          />
+        </Card>
+        <div className={styles.wizardStack}>
         <Card className={styles.panel}>
         <form className={styles.form} onSubmit={(event) => void inspect(event)}>
+          <div className={styles.wizardIntro}>
+            <h2>选择操作与文件</h2>
+            <p>选择本次上传要执行的操作，然后选择或拖入文件。</p>
+          </div>
           <label className={styles.field}>
             操作模式
             <Radio.Group
@@ -325,7 +345,12 @@ export function UploadPage() {
               onChange={(event) => chooseMode(event.target.value as ImportOperation)}
             >
               {(Object.entries(modeLabels) as [ImportOperation, string][]).map(([value, label]) => (
-                <Radio.Button key={value} value={value}>{label}</Radio.Button>
+                <Radio.Button key={value} value={value}>
+                  <span className={styles.modeCopy}>
+                    <strong>{label}</strong>
+                    <small>{modeDescriptions[value]}</small>
+                  </span>
+                </Radio.Button>
               ))}
             </Radio.Group>
           </label>
@@ -385,8 +410,11 @@ export function UploadPage() {
               if (nextFile.originFileObj) chooseFile(nextFile.originFileObj);
             }}
           >
-            <p className={styles.draggerTitle}>拖放 EPUB / TXT 到这里</p>
-            <p className={styles.draggerHint}>或点击选择本地文件；文件不会由 antd 自动上传。</p>
+            <InterfaceIcon name="upload" />
+            <p className={styles.draggerTitle}>拖放文件到这里，或点击选择</p>
+            <p className={styles.draggerHint}>
+              支持 EPUB / TXT，单个文件不超过 {formattedByteLimit(maxUploadBytes)}
+            </p>
             <input
               className={styles.nativeFileInput}
               aria-label="选择 EPUB 或 TXT 文件"
@@ -439,18 +467,18 @@ export function UploadPage() {
                 : `删除 ${failedImport.filename} 的失败上传记录与临时文件`}
             </Button>
           ))}
-          <Button type="primary" htmlType="submit" loading={isInspecting}>上传并预览</Button>
+          <div className={styles.wizardFoot}>
+            <Button type="primary" htmlType="submit" loading={isInspecting}>上传并预览</Button>
+          </div>
         </form>
         </Card>
 
+        {inspection ? (
         <Card className={styles.preview}>
         <section aria-live="polite">
-          {!inspection ? (
-            <Alert role="status" type="info" showIcon title="等待文件" description="解析完成后可在这里校对元数据。" />
-          ) : (
-            <>
+          <>
               <div className={styles.previewHeader}>
-                <div><p className={styles.eyebrow}>解析成功</p><h2>确认导入</h2></div>
+                <div><p className={styles.eyebrow}>解析成功 · 校对元数据</p><h2>确认导入</h2></div>
                 <Tag color="success">{inspection.file_format?.toUpperCase()}</Tag>
               </div>
               <div className={styles.previewSummary}>
@@ -543,9 +571,10 @@ export function UploadPage() {
                 {mode === "replace_edition_file" ? "确认替换文件" : "确认导入"}
               </Button>
             </>
-          )}
         </section>
         </Card>
+        ) : null}
+        </div>
       </div>
       <Modal
         title="确认替换 Edition 文件"

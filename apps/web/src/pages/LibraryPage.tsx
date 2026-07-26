@@ -9,12 +9,18 @@ import { useAuth } from "../auth/AuthProvider";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { formatDate } from "../shared/format";
 import { ProtectedImage } from "../shared/ProtectedImage";
-import { InterfaceIcon } from "../ui/components/InterfaceIcon";
 import { PageHeader } from "../ui/components/PageHeader";
 import { StatusTag } from "../ui/components/StatusTag";
-import styles from "./LibraryPages.module.css";
+import styles from "./LibraryPage.module.css";
 
 type AppliedFilter = "query" | "format" | "language" | "editionType";
+const coverTones = [
+  styles.coverBlue,
+  styles.coverPlum,
+  styles.coverTeal,
+  styles.coverAmber,
+  styles.coverSlate,
+];
 
 export function LibraryPage() {
   const auth = useAuth();
@@ -102,19 +108,13 @@ export function LibraryPage() {
   return (
     <main className={styles.libraryPage}>
       <PageHeader
-        eyebrow={`馆藏 · ${books.length} 本作品`}
+        eyebrow="LIBRARY · 书库"
         title="书库"
-        description="从上次停下的位置继续，或选择下一本书。"
-        primaryAction={canUpload ? (
-          <Link className={styles.uploadAction} to="/upload">
-            <InterfaceIcon name="upload" /> 上传作品
-          </Link>
-        ) : undefined}
+        description={`共 ${books.length} 本藏书 · 每个版本独立保留阅读进度`}
       />
 
       {primaryRecent ? (
         <section className={styles.continueStrip} aria-labelledby="recent-title">
-          <div className={styles.continueTrace} aria-hidden="true" />
           {primaryRecent.book_cover_thumbnail_url ? (
             <ProtectedImage
               path={primaryRecent.book_cover_thumbnail_url}
@@ -122,25 +122,30 @@ export function LibraryPage() {
               className={styles.continueCover}
             />
           ) : (
-            <div className={styles.continueCoverFallback} aria-hidden="true">
-              <span>{primaryRecent.series_name ?? "漫读"}</span>
-              <strong>书</strong>
-            </div>
+            <div
+              className={`${styles.continueCoverFallback} ${styles.coverBlue}`}
+              data-title={primaryRecent.book_title}
+              aria-hidden="true"
+            />
           )}
           <div className={styles.continueCopy}>
             <h2 className={styles.continueLabel} id="recent-title">最近阅读</h2>
-            <h3>{primaryRecent.book_title}</h3>
-            <p>
-              {primaryRecent.edition_title} · {primaryRecent.edition_language} ·{" "}
-              {primaryRecent.file_format.toUpperCase()}
-            </p>
-            <div className={styles.continueProgressMeta}>
+            <div className={styles.continueTitleRow}>
+              <h3>{primaryRecent.book_title}</h3>
+              <p>
+                {primaryRecent.edition_title} · {primaryRecent.edition_language} ·{" "}
+                {primaryRecent.file_format.toUpperCase()}
+              </p>
+            </div>
+            <div className={styles.continueProgress}>
+              <div className={styles.traceProgress} aria-hidden="true">
+                <span style={{ width: `${Math.round(primaryRecent.progress * 100)}%` }} />
+              </div>
               <strong>{Math.round(primaryRecent.progress * 100)}%</strong>
+            </div>
+            <div className={styles.continueProgressMeta}>
               <span>{formatDate(primaryRecent.last_read_at)}</span>
               <StatusTag status={primaryRecent.status} />
-            </div>
-            <div className={styles.traceProgress} aria-hidden="true">
-              <span style={{ width: `${Math.round(primaryRecent.progress * 100)}%` }} />
             </div>
           </div>
           <Link className={styles.continueAction} to={primaryRecent.continue_url}>
@@ -150,42 +155,27 @@ export function LibraryPage() {
       ) : null}
 
       <section className={styles.catalogue} aria-labelledby="library-title">
-        <header className={styles.catalogueHeading}>
-          <div>
-            <h2 id="library-title">全部作品</h2>
-            <p>
-              {books.length} 个结果 · {
-                filters.sort === "title_asc"
-                  ? "按书名排序"
-                  : filters.sort === "created_desc"
-                    ? "按创建时间排序"
-                    : "按最近更新排序"
-              }
-            </p>
-          </div>
-          <form className={styles.searchTools} onSubmit={submitSearch}>
-            <Input
-              type="search"
-              aria-label="搜索书名或作者"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索书名或作者"
-              allowClear
-            />
-            <Button htmlType="submit" aria-label="搜索">搜索</Button>
-            <Button
-              htmlType="button"
-              aria-label="打开筛选"
-              onClick={() => setFilterOpen(true)}
-            >
-              筛选
-              {appliedFilters.length > 0 ? (
-                <span className={styles.filterCount}>{appliedFilters.length}</span>
-              ) : null}
-            </Button>
-            <Button aria-label="刷新" onClick={() => void loadBooks()}>刷新</Button>
-          </form>
-        </header>
+        <h2 className="sr-only" id="library-title">全部作品</h2>
+        <form className={styles.searchTools} onSubmit={submitSearch}>
+          <Input
+            type="search"
+            aria-label="搜索书名或作者"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索书名或作者"
+            allowClear
+          />
+          <Button
+            htmlType="button"
+            aria-label="打开筛选"
+            onClick={() => setFilterOpen(true)}
+          >
+            筛选
+            {appliedFilters.length > 0 ? (
+              <span className={styles.filterCount}>{appliedFilters.length}</span>
+            ) : null}
+          </Button>
+        </form>
 
         {hasActiveFilters ? (
           <div className={styles.activeFilters} aria-label="已应用筛选">
@@ -213,8 +203,13 @@ export function LibraryPage() {
         ) : null}
         {!isLoading && !error && books.length > 0 ? (
           <div className={styles.bookGrid}>
-            {books.map((book) => (
+            {books.map((book, index) => (
               <article className={styles.catalogueBook} key={book.id}>
+                <Link
+                  className={styles.cardOverlay}
+                  to={`/books/${book.id}`}
+                  aria-label="查看详情"
+                />
                 <div className={styles.catalogueCoverWrap}>
                   {book.cover_thumbnail_url ? (
                     <ProtectedImage
@@ -223,47 +218,36 @@ export function LibraryPage() {
                       className={styles.catalogueCover}
                     />
                   ) : (
-                    <div className={styles.catalogueCoverFallback} aria-hidden="true">
+                    <div
+                      className={`${styles.catalogueCoverFallback} ${coverTones[index % coverTones.length]}`}
+                      data-title={book.canonical_title}
+                      data-author={book.canonical_author ?? "作者未填写"}
+                      aria-hidden="true"
+                    >
                       <span>{book.series_name ?? "漫读馆藏"}</span>
-                      <strong>书</strong>
-                      <small>{book.canonical_author ?? "作者未填写"}</small>
                     </div>
                   )}
-                  {book.reading_progress > 0 ? (
-                    <span
-                      className={styles.coverProgress}
-                      style={{ height: `${Math.max(6, Math.round(book.reading_progress * 100))}%` }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
                 </div>
                 <div className={styles.catalogueCopy}>
-                  <div>
-                    <p className={styles.bookUtility}>{book.edition_count} 个版本</p>
-                    <h3>{book.canonical_title}</h3>
-                    <p className={styles.catalogueAuthor}>{book.canonical_author ?? "作者未填写"}</p>
-                    <p className={styles.bookUtility}>
-                      上传人：{book.contributor.display_name}
-                    </p>
-                  </div>
-                  <p className={styles.bookSummary}>{book.description ?? "暂无简介"}</p>
+                  <h3>{book.canonical_title}</h3>
+                  <p className={styles.catalogueAuthor}>{book.canonical_author ?? "作者未填写"}</p>
                   <div className={styles.bookTags}>
                     {book.file_formats.map((format) => <Tag key={format}>{format.toUpperCase()}</Tag>)}
                     {book.languages.map((item) => <Tag key={item}>{item}</Tag>)}
                   </div>
-                  <div className={styles.bookStatus}>
+                  {book.reading_progress > 0 ? (
+                    <div className={styles.bookProgress}>
+                      <div className={styles.traceProgress} aria-hidden="true">
+                        <span style={{ width: `${Math.round(book.reading_progress * 100)}%` }} />
+                      </div>
+                      <span>{Math.round(book.reading_progress * 100)}%</span>
+                    </div>
+                  ) : <p className={styles.notStarted}>尚未开始</p>}
+                  <div className={styles.bookUtilityRow}>
+                    <span>{book.edition_count} 个版本</span>
                     <StatusTag status={book.reading_status} />
-                    <span>{Math.round(book.reading_progress * 100)}%</span>
-                    <span>{book.series_name ?? "未归入系列"}</span>
-                  </div>
-                  <div className={styles.traceProgress} aria-hidden="true">
-                    <span style={{ width: `${Math.round(book.reading_progress * 100)}%` }} />
                   </div>
                   <p className={styles.preferredEdition}>首选：{book.preferred_edition_title ?? "未设置"}</p>
-                  <div className={styles.bookActions}>
-                    {book.continue_url ? <Link to={book.continue_url}>继续阅读</Link> : null}
-                    <Link to={`/books/${book.id}`}>查看详情</Link>
-                  </div>
                 </div>
               </article>
             ))}

@@ -132,6 +132,23 @@ unchanged.
   per-User version sequence. Backup manifests declare the custom-route allow-list as an external
   configuration dependency, and isolated restore verifies the 0008 constraints and invariants.
 
+## Implemented Scheme C Web interaction refresh
+
+- The authenticated Web shell now uses the approved Scheme C compact white sidebar, unified blue
+  reading-trace mark and smaller page-heading hierarchy. Mobile keeps the existing top bar,
+  bottom navigation and overflow drawer.
+- Library browsing is cover-led with a compact recent-reading strip, search/filter toolbar,
+  five-column desktop grid and two-column mobile layout. Book detail uses a cover-led hero and
+  compact Edition cards; edit, upload, replace, translate, download and destructive actions move
+  into contextual menus, Drawers and explicit confirmation dialogs without changing permission
+  checks.
+- Upload uses one focused work surface beside a vertical five-step rail, with operation cards,
+  local drag-and-drop and metadata confirmation shown only after safe inspection. Translation
+  tasks are grouped into active and completed/attention-needed lists, while source snapshots,
+  Provider bindings and task controls remain available in a detail Drawer.
+- This refresh changes only React/CSS/test code under `apps/web`; Server behavior, API contracts,
+  persistence, authentication, authorization and Reader publication chrome are unchanged.
+
 ## Verification state
 
 - Archived outputs are `artifacts/acceptance-v0100.{md,json}`. The v0.10 gate passed on commit
@@ -158,6 +175,10 @@ unchanged.
   migration and library integrity audit, restart/stop-start/recreate persistence, topology and
   secret-agreement checks, sanitized resource reporting, artifact leak scanning, coordinated
   backup and isolated database/library restore.
+- The Scheme C Web refresh passes Web lint, all 59 tests and the production build. The initial
+  entry chunk remains within the 200 kB gzip budget at 198.26 kB. Mock-API visual checks at
+  1440x900 and 390x844 cover Library, Book detail, Upload and Translations with no horizontal
+  overflow.
 
 ## Deliberately not implemented
 

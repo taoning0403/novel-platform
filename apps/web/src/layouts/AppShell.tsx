@@ -138,7 +138,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <BrandMark />
             <span className={styles.brandCopy}>
               <strong>{siteName}</strong>
-              <small>私人阅读空间</small>
             </span>
           </NavLink>
 

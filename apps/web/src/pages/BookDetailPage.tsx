@@ -1,4 +1,13 @@
-import { Alert, Button, Card, Input } from "antd";
+import {
+  Alert,
+  Button,
+  Drawer,
+  Dropdown,
+  Input,
+  Modal,
+  Tag,
+  type MenuProps,
+} from "antd";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -9,9 +18,7 @@ import { EditionCard } from "../features/editions/EditionCard";
 import { TranslationLaunchModal } from "../features/translations/TranslationLaunchModal";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { ProtectedImage } from "../shared/ProtectedImage";
-import { DestructiveAction } from "../ui/components/DestructiveAction";
-import { PageHeader } from "../ui/components/PageHeader";
-import styles from "./LibraryPages.module.css";
+import styles from "./BookDetailPage.module.css";
 
 export function BookDetailPage() {
   const auth = useAuth();
@@ -26,8 +33,11 @@ export function BookDetailPage() {
   const [author, setAuthor] = useState("");
   const [description, setDescription] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [translationEdition, setTranslationEdition] = useState<Edition | null>(null);
   const loadedRef = useRef(false);
 
@@ -76,8 +86,9 @@ export function BookDetailPage() {
         canonical_author: author.trim() || null,
         description: description.trim() || null,
       });
-      setMessage("图书信息已保存。");
       await loadBook();
+      setEditorOpen(false);
+      setMessage("图书信息已保存。");
     } catch (caught) {
       setActionError(userFacingError(caught));
     } finally {
@@ -87,12 +98,17 @@ export function BookDetailPage() {
 
   async function deleteBook() {
     if (!bookId) return;
+    setIsDeleting(true);
     setActionError(null);
     try {
       await api.deleteBook(bookId);
+      setDeleteOpen(false);
       navigate("/", { replace: true });
     } catch (caught) {
       setActionError(userFacingError(caught));
+      setDeleteOpen(false);
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -121,112 +137,169 @@ export function BookDetailPage() {
       </main>
     );
   }
+
   const hasManagement = book.can_edit || book.can_delete || book.can_upload_edition;
+  const preferredEdition = book.editions.find(
+    (edition) => edition.id === preference?.preferred_edition_id && edition.reader_available,
+  ) ?? book.editions.find((edition) => edition.reader_available);
+  const formats = Array.from(new Set(
+    book.editions.flatMap((edition) => (
+      edition.current_file ? [edition.current_file.file_format.toUpperCase()] : []
+    )),
+  ));
+  const languages = Array.from(new Set(book.editions.map((edition) => edition.language)));
+  const managementItems: MenuProps["items"] = [];
+  if (book.can_edit) {
+    managementItems.push({ key: "edit", label: "编辑图书信息" });
+  }
+  if (book.can_upload_edition) {
+    managementItems.push({
+      key: "upload",
+      label: <Link to={`/upload?mode=add_edition&bookId=${book.id}`}>上传新版本</Link>,
+    });
+  }
+  if (book.can_delete) {
+    if (managementItems.length > 0) managementItems.push({ type: "divider" });
+    managementItems.push({ key: "delete", danger: true, label: "删除整本图书" });
+  }
 
   return (
     <main className={styles.page}>
       <Link className={styles.backLink} to="/">← 返回书库</Link>
-      <div className={styles.detailHero}>
-        <div>
-          {book.cover_url ? (
-            <ProtectedImage path={book.cover_url} alt={`${book.canonical_title} 封面`} className={styles.detailCover} />
-          ) : <div className={styles.detailCover} aria-hidden="true">书</div>}
-        </div>
-        <div>
-          <PageHeader
-            className={styles.detailHeader}
-            eyebrow={`作品详情 · ${book.edition_count} 个版本`}
-            title={book.canonical_title}
-            description={book.canonical_author ?? "作者未填写"}
-            primaryAction={book.can_upload_edition ? (
-              <Link className={styles.primaryLink} to={`/upload?mode=add_edition&bookId=${book.id}`}>
-                上传新版本
-              </Link>
-            ) : undefined}
+
+      <section className={styles.hero} aria-labelledby="book-title">
+        {book.cover_url ? (
+          <ProtectedImage
+            path={book.cover_url}
+            alt={`${book.canonical_title} 封面`}
+            className={styles.heroCover}
           />
-          <p className={styles.detailDescription}>{book.description ?? "暂无简介"}</p>
-          <p className={styles.detailDescription}>上传人：{book.contributor.display_name}</p>
-          <p className={styles.detailDescription}>每个 Edition 独立保存阅读状态和位置；切换版本不会覆盖其他版本的进度。</p>
-        </div>
-      </div>
-
-      {message ? <Alert type="success" showIcon title={message} role="status" /> : null}
-
-      <div className={`${styles.contentGrid}${hasManagement ? "" : ` ${styles.contentGridSingle}`}`}>
-        {hasManagement ? <aside className={`${styles.sidebar} ${styles.sidebarStack}`}>
-          <Card className={styles.surface} title={<h2 className={styles.cardTitle}>馆藏操作</h2>}>
-            <div className={styles.actions}>
-              {book.can_upload_edition ? (
-                <Link className={styles.primaryLink} to={`/upload?mode=add_edition&bookId=${book.id}`}>
-                  上传新版本
-                </Link>
-              ) : null}
-              {book.can_delete ? (
-                <DestructiveAction
-                  label="删除整本图书"
-                  title={`删除《${book.canonical_title}》？`}
-                  description="全部版本、未引用物理文件，以及所有人的首选版本与阅读进度会被永久清理；此操作不可撤销。"
-                  onConfirm={deleteBook}
-                />
-              ) : null}
-            </div>
-            {!book.can_delete ? (
-              <p className={styles.detailDescription}>
-                当前不能整本删除。请先处理其他贡献者版本、依赖、上传或翻译任务，或联系管理员。
-              </p>
-            ) : null}
-            {actionError ? <Alert type="error" showIcon title={actionError} /> : null}
-          </Card>
-          {book.can_edit ? <Card className={styles.surface} title={<h2 className={styles.cardTitle}>图书元数据</h2>}>
-            <form className={styles.form} onSubmit={(event) => void saveBook(event)}>
-              <label className={styles.field} htmlFor="book-title">
-                书名
-                <Input id="book-title" required value={title} onChange={(event) => setTitle(event.target.value)} />
-              </label>
-              <label className={styles.field} htmlFor="book-author">
-                作者
-                <Input id="book-author" value={author} onChange={(event) => setAuthor(event.target.value)} />
-              </label>
-              <label className={styles.field} htmlFor="book-description">
-                简介
-                <Input.TextArea id="book-description" rows={5} value={description} onChange={(event) => setDescription(event.target.value)} />
-              </label>
-              <Button type="primary" htmlType="submit" loading={isSaving}>保存图书信息</Button>
-            </form>
-          </Card> : null}
-        </aside> : null}
-        <section aria-labelledby="editions-title">
-          <div className={styles.sectionHeader}>
-            <div>
-              <p className={styles.eyebrow}>全部可读版本</p>
-              <h2 id="editions-title">Edition 列表</h2>
-            </div>
-            <Button onClick={() => void loadBook()}>刷新</Button>
+        ) : (
+          <div className={`${styles.heroCover} ${styles.heroCoverFallback}`} aria-hidden="true">
+            <strong>{book.canonical_title}</strong>
+            <small>{book.canonical_author ?? "作者未填写"}</small>
           </div>
-          {book.editions.length === 0 ? (
-            <EmptyState
-              title="还没有版本"
-              detail={book.can_upload_edition ? "上传 EPUB 或 TXT，为作品添加可阅读版本。" : "这部作品暂时没有可阅读的版本。"}
+        )}
+        <div className={styles.heroInfo}>
+          <p className={styles.eyebrow}>BOOK · 图书详情</p>
+          <h1 id="book-title">{book.canonical_title}</h1>
+          <p className={styles.heroAuthor}>{book.canonical_author ?? "作者未填写"}</p>
+          <div className={styles.heroTags}>
+            {formats.map((format) => <Tag key={format}>{format}</Tag>)}
+            {languages.map((language) => <Tag key={language}>{language}</Tag>)}
+            <Tag color="success">{book.edition_count} 个版本</Tag>
+          </div>
+          <p className={styles.heroDescription}>{book.description ?? "暂无简介"}</p>
+          <p className={styles.contributor}>上传人：{book.contributor.display_name}</p>
+          <div className={styles.heroActions}>
+            {preferredEdition ? (
+              <Link className={styles.primaryLink} to={`/read/${preferredEdition.id}`}>
+                {preferredEdition.reading_status === "not_started" ? "开始阅读" : "继续阅读"}
+              </Link>
+            ) : null}
+            {hasManagement ? (
+              <Dropdown
+                menu={{
+                  items: managementItems,
+                  onClick: ({ key }) => {
+                    if (key === "edit") setEditorOpen(true);
+                    if (key === "delete") setDeleteOpen(true);
+                  },
+                }}
+                trigger={["click"]}
+              >
+                <Button aria-label="管理操作">管理操作 <span aria-hidden="true">⌄</span></Button>
+              </Dropdown>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      {message ? <Alert className={styles.pageAlert} type="success" showIcon title={message} role="status" /> : null}
+      {actionError ? <Alert className={styles.pageAlert} type="error" showIcon title={actionError} /> : null}
+
+      <section aria-labelledby="editions-title">
+        <div className={styles.sectionHeading}>
+          <h2 id="editions-title">版本 <span>{book.editions.length}</span></h2>
+          <Button onClick={() => void loadBook()}>刷新</Button>
+        </div>
+        {book.editions.length === 0 ? (
+          <EmptyState
+            title="还没有版本"
+            detail={book.can_upload_edition
+              ? "上传 EPUB 或 TXT，为作品添加可阅读版本。"
+              : "这部作品暂时没有可阅读的版本。"}
+          />
+        ) : (
+          <div className={styles.editionList}>
+            {book.editions.map((edition) => (
+              <EditionCard
+                key={edition.id}
+                edition={edition}
+                allEditions={book.editions}
+                onUpdated={loadBook}
+                isPreferred={preference?.preferred_edition_id === edition.id}
+                onSetPreferred={setPreferred}
+                onDeleted={handleEditionDeleted}
+                onTranslate={setTranslationEdition}
+                canManage={isAdmin}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <Drawer
+        title="编辑图书信息"
+        placement="right"
+        open={editorOpen}
+        onClose={() => setEditorOpen(false)}
+        size={Math.min(440, typeof window === "undefined" ? 440 : window.innerWidth)}
+      >
+        <form className={styles.form} onSubmit={(event) => void saveBook(event)}>
+          <label className={styles.field} htmlFor="book-title-field">
+            书名
+            <Input
+              id="book-title-field"
+              required
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
             />
-          ) : (
-            <div className={styles.editionList}>
-              {book.editions.map((edition) => (
-                <EditionCard
-                  key={edition.id}
-                  edition={edition}
-                  allEditions={book.editions}
-                  onUpdated={loadBook}
-                  isPreferred={preference?.preferred_edition_id === edition.id}
-                  onSetPreferred={setPreferred}
-                  onDeleted={handleEditionDeleted}
-                  onTranslate={setTranslationEdition}
-                  canManage={isAdmin}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
+          </label>
+          <label className={styles.field} htmlFor="book-author">
+            作者
+            <Input id="book-author" value={author} onChange={(event) => setAuthor(event.target.value)} />
+          </label>
+          <label className={styles.field} htmlFor="book-description">
+            简介
+            <Input.TextArea
+              id="book-description"
+              rows={6}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </label>
+          {actionError ? <Alert type="error" showIcon title={actionError} /> : null}
+          <Button type="primary" htmlType="submit" loading={isSaving}>保存图书信息</Button>
+        </form>
+      </Drawer>
+
+      <Modal
+        title={`删除《${book.canonical_title}》？`}
+        open={deleteOpen}
+        confirmLoading={isDeleting}
+        okText="确认执行"
+        cancelText="取消"
+        okButtonProps={{ danger: true, "aria-label": "确认执行" }}
+        cancelButtonProps={{ "aria-label": "取消" }}
+        onCancel={() => setDeleteOpen(false)}
+        onOk={() => void deleteBook()}
+      >
+        <p className={styles.deleteCopy}>
+          全部版本、未引用物理文件，以及所有人的首选版本与阅读进度会被永久清理；此操作不可撤销。
+        </p>
+      </Modal>
+
       <TranslationLaunchModal
         book={book}
         edition={translationEdition}

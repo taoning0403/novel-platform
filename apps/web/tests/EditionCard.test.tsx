@@ -131,10 +131,16 @@ describe("EditionCard", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "删除 Edition" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${independentTranslation.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除版本" }));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(remove).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "删除 Edition" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${independentTranslation.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除版本" }));
     fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith(
       independentTranslation.book_id,
@@ -162,6 +168,10 @@ describe("EditionCard", () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${independentTranslation.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "编辑版本信息" }));
     fireEvent.change(screen.getByLabelText("Edition 名称"), {
       target: { value: "修订后的译文" },
     });
@@ -208,8 +218,14 @@ describe("EditionCard", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "翻译小说" }));
-    fireEvent.click(screen.getByRole("button", { name: "重新翻译" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${sourceEdition.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "发起翻译" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${generatedDraft.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重新翻译" }));
     expect(onTranslate).toHaveBeenNthCalledWith(1, sourceEdition);
     expect(onTranslate).toHaveBeenNthCalledWith(2, generatedDraft);
     expect(screen.getByText("仅创建者预览")).toBeInTheDocument();

@@ -1,4 +1,13 @@
-import { Alert, Button, Card, Descriptions, Empty, Popconfirm, Progress, Tag } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Drawer,
+  Popconfirm,
+  Progress,
+  Tag,
+} from "antd";
 import {
   useCallback,
   useEffect,
@@ -151,6 +160,7 @@ export function TranslationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [pollMessage, setPollMessage] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(() => selectedId !== null);
   const loadedRef = useRef(false);
   const selectedIdRef = useRef(selectedId);
   const syncFlightsRef = useRef(new Map<string, Promise<TranslationRun>>());
@@ -164,6 +174,11 @@ export function TranslationsPage() {
   const selectRun = useCallback((runId: string) => {
     setSearchParams({ run: runId }, { replace: true });
   }, [setSearchParams]);
+
+  const openRun = useCallback((runId: string) => {
+    selectRun(runId);
+    setDetailOpen(true);
+  }, [selectRun]);
 
   const loadWorkspace = useCallback(async () => {
     if (!loadedRef.current) setIsLoading(true);
@@ -266,23 +281,27 @@ export function TranslationsPage() {
     };
   }, [selected, syncRun]);
 
-  async function performAction(action: TranslationAction) {
-    if (selected === null) return;
+  async function performRunAction(run: TranslationRun, action: TranslationAction) {
     setActiveAction(action);
     setPollMessage(null);
     try {
-      const currentSync = syncFlightsRef.current.get(selected.id);
+      const currentSync = syncFlightsRef.current.get(run.id);
       if (currentSync) await currentSync;
       const updated = action === "sync"
-        ? await syncRun(selected.id)
-        : await api.runTranslationAction(selected.id, action);
+        ? await syncRun(run.id)
+        : await api.runTranslationAction(run.id, action);
       setRuns((current) => replaceRun(current, updated));
-      backoffRef.current.set(selected.id, 4_000);
+      backoffRef.current.set(run.id, 4_000);
     } catch (caught) {
       setPollMessage(userFacingError(caught));
     } finally {
       setActiveAction(null);
     }
+  }
+
+  async function performAction(action: TranslationAction) {
+    if (selected === null) return;
+    await performRunAction(selected, action);
   }
 
   async function publishGeneratedEdition() {
@@ -316,9 +335,9 @@ export function TranslationsPage() {
   return (
     <main className={styles.page}>
       <PageHeader
-        eyebrow="LinguaSpindle · 私有 Relay"
+        eyebrow="TRANSLATIONS · 小说翻译"
         title="小说翻译"
-        description="跟踪你有权查看的翻译任务；正文经漫读的私有 Relay 使用发起人自己的加密凭据，费用由对应 Provider 账户承担。"
+        description="以固定来源快照发起 AI 翻译，生成译本需审核后发布"
         secondaryActions={(
           <Button href="/settings/provider-credential">
             管理我的凭据
@@ -379,162 +398,213 @@ export function TranslationsPage() {
           detail="请从书籍详情中带当前 TXT 文件的原文版本发起翻译。"
         />
       ) : (
-        <div className={styles.workspace}>
-          <aside className={styles.master} aria-label="翻译任务列表">
-            <div className={styles.masterHeader}>
-              <div><span>任务</span><strong>{runs.length}</strong></div>
-              <small>管理员看全部；贡献者只看自己</small>
+        <div className={styles.runGroups} aria-label="翻译任务列表">
+          <section aria-labelledby="active-runs">
+            <div className={styles.groupHeading}>
+              <h2 id="active-runs">进行中</h2>
+              <span>{runs.filter((run) => activeStatuses.has(run.status)).length}</span>
             </div>
-            <div className={styles.runList}>
-              {runs.map((run) => (
-                <button
-                  className={`${styles.runButton}${selected?.id === run.id ? ` ${styles.runSelected}` : ""}`}
-                  type="button"
-                  key={run.id}
-                  aria-pressed={selected?.id === run.id}
-                  onClick={() => selectRun(run.id)}
-                >
-                  <span className={styles.runTopline}>
-                    <strong>{run.edition_title}</strong>
-                    <StatusTag status={run.status} label={runStatusLabel(run)} />
-                  </span>
-                  <span>{run.book_title}</span>
-                  <small>{run.source_edition_title} → {run.target_language}</small>
-                  <Progress percent={Math.round(run.progress * 100)} size="small" showInfo={false} />
-                  <small>{formatDate(run.updated_at)}</small>
-                </button>
+            <div className={styles.activeList}>
+              {runs.filter((run) => activeStatuses.has(run.status)).length === 0 ? (
+                <div className={styles.emptyGroup}>暂无进行中的翻译任务</div>
+              ) : runs.filter((run) => activeStatuses.has(run.status)).map((run) => (
+                <Card className={styles.runCard} key={run.id}>
+                  <article>
+                    <div className={styles.runHeading}>
+                      <div>
+                        <h3>{run.book_title}</h3>
+                        <span>{run.source_edition_title} → {run.target_language}</span>
+                      </div>
+                      <StatusTag status={run.status} label={runStatusLabel(run)} />
+                    </div>
+                    <div className={styles.runMeta}>
+                      <span>译本：{run.edition_title}</span>
+                      <span>模型 {configurationValue(run, "provider_model")}</span>
+                      <span>发起人 {run.creator.display_name}</span>
+                      <span>{formatDate(run.updated_at)}</span>
+                    </div>
+                    <div className={styles.runProgress}>
+                      <Progress
+                        percent={Math.round(run.progress * 100)}
+                        size="small"
+                        showInfo={false}
+                      />
+                      <strong>{Math.round(run.progress * 100)}%</strong>
+                    </div>
+                    <div className={styles.runActions}>
+                      <Button onClick={() => openRun(run.id)}>查看详情</Button>
+                    </div>
+                  </article>
+                </Card>
               ))}
             </div>
-          </aside>
+          </section>
 
-          <section className={styles.detail} aria-live="polite">
-            {selected === null ? <Empty description="选择一个任务查看详情" /> : (
-              <>
-                <Card className={styles.detailCard}>
-                  <div className={styles.detailHeading}>
-                    <div>
-                      <p className={styles.eyebrow}>任务详情</p>
-                      <h2>{selected.edition_title}</h2>
-                      <p>{selected.book_title} · {selected.source_edition_title}</p>
+          <section aria-labelledby="settled-runs">
+            <div className={styles.groupHeading}>
+              <h2 id="settled-runs">已完成 / 待处理</h2>
+              <span>{runs.filter((run) => !activeStatuses.has(run.status)).length}</span>
+            </div>
+            <div className={styles.settledList}>
+              {runs.filter((run) => !activeStatuses.has(run.status)).length === 0 ? (
+                <div className={styles.emptyGroup}>暂无已完成或待处理任务</div>
+              ) : runs.filter((run) => !activeStatuses.has(run.status)).map((run) => (
+                <article className={styles.runRow} key={run.id}>
+                  <div className={styles.runRowMain}>
+                    <div className={styles.runHeading}>
+                      <div>
+                        <h3>{run.book_title}</h3>
+                        <span>{run.source_edition_title} → {run.target_language}</span>
+                      </div>
+                      <StatusTag status={run.status} label={runStatusLabel(run)} />
                     </div>
-                    <StatusTag status={selected.status} label={runStatusLabel(selected)} />
+                    <div className={styles.runMeta}>
+                      <span>{run.error_message ?? run.edition_title}</span>
+                      <span>模型 {configurationValue(run, "provider_model")}</span>
+                      <span>发起人 {run.creator.display_name}</span>
+                      <span>{formatDate(run.updated_at)}</span>
+                    </div>
                   </div>
-                  <Progress
-                    className={styles.progress}
-                    percent={Math.round(selected.progress * 100)}
-                    status={selected.status === "failed" ? "exception" : undefined}
-                  />
-
-                  {selected.error_message ? (
-                    <Alert
-                      type={selected.status === "attention_required" ? "warning" : "error"}
-                      showIcon
-                      title={selected.error_message}
-                      description={selected.error_code ? `错误代码：${selected.error_code}` : undefined}
-                    />
-                  ) : null}
-                  {pollMessage ? <Alert type="info" showIcon title={pollMessage} /> : null}
-
-                  <div className={styles.actions}>
-                    {selected.available_actions.map((action) => (
-                      <ActionControl
-                        action={action}
-                        activeAction={activeAction}
-                        key={action}
-                        onAction={(nextAction) => void performAction(nextAction)}
-                      />
-                    ))}
-                    {selected.generated_edition_id ? (
-                      <Link className={styles.previewLink} to={`/read/${selected.generated_edition_id}`}>
-                        {selected.can_preview_draft ? "预览生成草稿" : "阅读生成译本"}
-                      </Link>
-                    ) : null}
-                    {selected.can_publish ? (
-                      <Popconfirm
-                        title="审核并发布生成译本"
-                        description="发布为可用版本后，其他阅读者将能看到并阅读该译本。"
-                        okText="确认发布"
-                        cancelText="返回"
-                        onConfirm={() => void publishGeneratedEdition()}
-                      >
-                        <Button
-                          type="primary"
-                          loading={activeAction === "publish"}
-                          disabled={activeAction !== null}
-                        >
-                          审核并发布
-                        </Button>
-                      </Popconfirm>
-                    ) : null}
-                  </div>
-                </Card>
-
-                <Card className={styles.detailCard} title={<h3>来源快照</h3>}>
-                  <Descriptions
-                    column={{ xs: 1, md: 2 }}
-                    items={[
-                      { key: "creator", label: "翻译发起人", children: selected.creator.display_name },
-                      { key: "target", label: "目标语言", children: selected.target_language },
-                      { key: "source", label: "原文 Edition", children: selected.source_edition_title },
-                      { key: "file", label: "固定文件", children: `r${selected.source_revision} · ${selected.source_format.toUpperCase()}` },
-                      {
-                        key: "sha",
-                        label: "SHA-256",
-                        children: <code className={styles.hash}>{selected.source_sha256}</code>,
-                      },
-                      { key: "created", label: "创建时间", children: formatDate(selected.created_at) },
-                      { key: "started", label: "开始时间", children: selected.started_at ? formatDate(selected.started_at) : "尚未开始" },
-                      { key: "completed", label: "完成时间", children: selected.completed_at ? formatDate(selected.completed_at) : "尚未完成" },
-                    ]}
-                  />
-                </Card>
-
-                <Card className={styles.detailCard} title={<h3>服务关联</h3>}>
-                  <Descriptions
-                    column={{ xs: 1, md: 2 }}
-                    items={[
-                      { key: "service", label: "服务版本", children: configurationValue(selected, "service_version") },
-                      { key: "pipeline", label: "Pipeline", children: `${configurationValue(selected, "pipeline_key")} · ${configurationValue(selected, "pipeline_version")}` },
-                      {
-                        key: "provider",
-                        label: "绑定 Provider",
-                        children: firstConfigurationValue(
-                          selected,
-                          ["credential_provider_name", "credential_provider", "provider_id"],
-                        ),
-                      },
-                      { key: "model", label: "模型", children: configurationValue(selected, "provider_model") },
-                      {
-                        key: "thinking",
-                        label: "思考模式",
-                        children: configurationBooleanLabel(selected, "thinking_enabled"),
-                      },
-                      {
-                        key: "base-url",
-                        label: "API Base URL",
-                        children: configurationValue(selected, "credential_base_url"),
-                      },
-                      { key: "project", label: "Project ID", children: selected.remote_project_id ?? "尚未建立" },
-                      { key: "job", label: "Job ID", children: selected.remote_job_id ?? "尚未建立" },
-                      { key: "artifact", label: "Artifact ID", children: selected.remote_artifact_id ?? "尚未生成" },
-                      { key: "request", label: "远端 Request ID", children: selected.remote_request_id ?? "未返回" },
-                      {
-                        key: "cleanup",
-                        label: "清理状态",
-                        children: cleanupStatusLabels[selected.cleanup_status] ?? selected.cleanup_status,
-                      },
-                      { key: "retry", label: "重试次数", children: selected.retry_count },
-                    ]}
-                  />
-                  {selected.cleanup_error ? (
-                    <Alert className={styles.cardAlert} type="warning" showIcon title={selected.cleanup_error} />
-                  ) : null}
-                </Card>
-              </>
-            )}
+                  <Button onClick={() => openRun(run.id)}>查看详情</Button>
+                </article>
+              ))}
+            </div>
           </section>
         </div>
       )}
+
+      <Drawer
+        title="翻译任务详情"
+        placement="right"
+        open={detailOpen && selected !== null}
+        onClose={() => setDetailOpen(false)}
+        size={Math.min(760, typeof window === "undefined" ? 760 : window.innerWidth)}
+      >
+        {selected ? (
+          <section className={styles.detail} aria-live="polite">
+            <Card className={styles.detailCard}>
+              <div className={styles.detailHeading}>
+                <div>
+                  <p className={styles.eyebrow}>任务详情</p>
+                  <h2>{selected.edition_title}</h2>
+                  <p>{selected.book_title} · {selected.source_edition_title}</p>
+                </div>
+                <StatusTag status={selected.status} label={runStatusLabel(selected)} />
+              </div>
+              <Progress
+                className={styles.progress}
+                percent={Math.round(selected.progress * 100)}
+                status={selected.status === "failed" ? "exception" : undefined}
+              />
+
+              {selected.error_message ? (
+                <Alert
+                  type={selected.status === "attention_required" ? "warning" : "error"}
+                  showIcon
+                  title={selected.error_message}
+                  description={selected.error_code ? `错误代码：${selected.error_code}` : undefined}
+                />
+              ) : null}
+              {pollMessage ? <Alert type="info" showIcon title={pollMessage} /> : null}
+
+              <div className={styles.actions}>
+                {selected.available_actions.map((action) => (
+                  <ActionControl
+                    action={action}
+                    activeAction={activeAction}
+                    key={action}
+                    onAction={(nextAction) => void performAction(nextAction)}
+                  />
+                ))}
+                {selected.generated_edition_id ? (
+                  <Link className={styles.previewLink} to={`/read/${selected.generated_edition_id}`}>
+                    {selected.can_preview_draft ? "预览生成草稿" : "阅读生成译本"}
+                  </Link>
+                ) : null}
+                {selected.can_publish ? (
+                  <Popconfirm
+                    title="审核并发布生成译本"
+                    description="发布为可用版本后，其他阅读者将能看到并阅读该译本。"
+                    okText="确认发布"
+                    cancelText="返回"
+                    onConfirm={() => void publishGeneratedEdition()}
+                  >
+                    <Button
+                      type="primary"
+                      loading={activeAction === "publish"}
+                      disabled={activeAction !== null}
+                    >
+                      审核并发布
+                    </Button>
+                  </Popconfirm>
+                ) : null}
+              </div>
+            </Card>
+
+            <Card className={styles.detailCard} title={<h3>来源快照</h3>}>
+              <Descriptions
+                column={{ xs: 1, md: 2 }}
+                items={[
+                  { key: "creator", label: "翻译发起人", children: selected.creator.display_name },
+                  { key: "target", label: "目标语言", children: selected.target_language },
+                  { key: "source", label: "原文 Edition", children: selected.source_edition_title },
+                  { key: "file", label: "固定文件", children: `r${selected.source_revision} · ${selected.source_format.toUpperCase()}` },
+                  {
+                    key: "sha",
+                    label: "SHA-256",
+                    children: <code className={styles.hash}>{selected.source_sha256}</code>,
+                  },
+                  { key: "created", label: "创建时间", children: formatDate(selected.created_at) },
+                  { key: "started", label: "开始时间", children: selected.started_at ? formatDate(selected.started_at) : "尚未开始" },
+                  { key: "completed", label: "完成时间", children: selected.completed_at ? formatDate(selected.completed_at) : "尚未完成" },
+                ]}
+              />
+            </Card>
+
+            <Card className={styles.detailCard} title={<h3>服务关联</h3>}>
+              <Descriptions
+                column={{ xs: 1, md: 2 }}
+                items={[
+                  { key: "service", label: "服务版本", children: configurationValue(selected, "service_version") },
+                  { key: "pipeline", label: "Pipeline", children: `${configurationValue(selected, "pipeline_key")} · ${configurationValue(selected, "pipeline_version")}` },
+                  {
+                    key: "provider",
+                    label: "绑定 Provider",
+                    children: firstConfigurationValue(
+                      selected,
+                      ["credential_provider_name", "credential_provider", "provider_id"],
+                    ),
+                  },
+                  { key: "model", label: "模型", children: configurationValue(selected, "provider_model") },
+                  {
+                    key: "thinking",
+                    label: "思考模式",
+                    children: configurationBooleanLabel(selected, "thinking_enabled"),
+                  },
+                  {
+                    key: "base-url",
+                    label: "API Base URL",
+                    children: configurationValue(selected, "credential_base_url"),
+                  },
+                  { key: "project", label: "Project ID", children: selected.remote_project_id ?? "尚未建立" },
+                  { key: "job", label: "Job ID", children: selected.remote_job_id ?? "尚未建立" },
+                  { key: "artifact", label: "Artifact ID", children: selected.remote_artifact_id ?? "尚未生成" },
+                  { key: "request", label: "远端 Request ID", children: selected.remote_request_id ?? "未返回" },
+                  {
+                    key: "cleanup",
+                    label: "清理状态",
+                    children: cleanupStatusLabels[selected.cleanup_status] ?? selected.cleanup_status,
+                  },
+                  { key: "retry", label: "重试次数", children: selected.retry_count },
+                ]}
+              />
+              {selected.cleanup_error ? (
+                <Alert className={styles.cardAlert} type="warning" showIcon title={selected.cleanup_error} />
+              ) : null}
+            </Card>
+          </section>
+        ) : null}
+      </Drawer>
     </main>
   );
 }

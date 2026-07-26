@@ -9,9 +9,8 @@
   width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
-  padding: 28px 20px 20px;
   border-right: 1px solid var(--line);
-  background: var(--surface-muted);
+  background: var(--surface);
 }
 
 .brand,
@@ -25,7 +24,8 @@
 }
 
 .brand {
-  padding: 0 8px;
+  gap: 10px;
+  padding: 20px 20px 14px;
 }
 
 .brandCopy {
@@ -36,36 +36,33 @@
 
 .brandCopy strong {
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 740;
+  font-family: var(--font-book);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.brandCopy small {
-  color: #828ca0;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-}
-
 .desktopNav {
   flex: 1;
-  margin-top: 40px;
+  padding: 4px 12px 12px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
 .navGroup + .navGroup {
-  margin-top: 28px;
+  margin-top: 0;
 }
 
 .navGroup > p,
 .drawerGroup > p {
-  margin: 0 10px 8px;
-  color: #8993a5;
+  margin: 0;
+  padding: 16px 10px 6px;
+  color: var(--muted);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
+  font-weight: 500;
+  letter-spacing: 0.18em;
 }
 
 .navLink {
@@ -73,21 +70,23 @@
   min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 11px;
-  margin: 2px 0;
-  padding: 0 12px;
-  border-radius: 10px;
-  color: #536181;
+  gap: 0;
+  margin: 1px 0;
+  padding: 0 13px;
+  border-radius: 8px;
+  color: var(--ink-soft);
   font-size: 14px;
   text-decoration: none;
-  transition: color var(--motion-press) ease, background var(--motion-press) ease;
+  transition:
+    color var(--motion-press) var(--ease-out),
+    background-color var(--motion-press) var(--ease-out);
 }
 
 .navLink::before {
   position: absolute;
   top: 10px;
   bottom: 10px;
-  left: -20px;
+  left: -12px;
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: transparent;
@@ -97,13 +96,13 @@
 .navLink:hover,
 .navLink:focus-visible {
   color: var(--ink);
-  background: rgb(255 255 255 / 62%);
+  background: var(--surface-muted);
 }
 
 .active {
   color: var(--brand);
-  background: var(--surface);
-  font-weight: 660;
+  background: var(--brand-soft);
+  font-weight: 600;
 }
 
 .active::before {
@@ -111,11 +110,7 @@
 }
 
 .navIcon {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  flex: 0 0 auto;
-  place-items: center;
+  display: none;
 }
 
 .navIcon svg {
@@ -129,8 +124,12 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 18px 2px 2px;
-  border-top: 1px solid var(--line);
+  padding: 14px 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.sidebarFooter :global(.ant-btn) {
+  min-height: 44px;
 }
 
 .account {
@@ -142,9 +141,9 @@
 
 .avatar {
   flex: 0 0 auto;
-  color: var(--brand);
-  background: var(--brand-soft);
-  font-weight: 720;
+  color: #fff;
+  background: var(--brand);
+  font-weight: 600;
 }
 
 .accountCopy {
@@ -172,9 +171,9 @@
 
 .version {
   grid-column: 1 / -1;
-  margin-top: 6px;
-  color: #98a1b1;
-  font-size: 10px;
+  margin: -6px 0 0 42px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .workspace {
@@ -218,7 +217,7 @@
 }
 
 .drawerGroup > p {
-  margin-left: 12px;
+  padding-left: 12px;
 }
 
 .drawerLink {
