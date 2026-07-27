@@ -1,4 +1,5 @@
 import io
+import json
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -7,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from novel_platform.config import Settings
+from novel_platform.domain.library.models import FileFormat
 from novel_platform.infrastructure.integrations.linguaspindle import (
     LinguaSpindleClient,
     LinguaSpindleFailure,
@@ -30,7 +32,10 @@ def status_handler(request: httpx.Request, *, version: str = "0.3.2") -> httpx.R
     payloads = {
         "/health": {"status": "ok", "version": version, "database": "ok"},
         "/api/system": {"require_idempotency_key": True},
-        "/api/pipelines": [{"key": "novel_txt_v1", "version": "1"}],
+        "/api/pipelines": [
+            {"key": "novel_txt_v1", "version": "1"},
+            {"key": "novel_epub_v1", "version": "1"},
+        ],
         "/api/providers": [
             {
                 "id": "mock",
@@ -63,27 +68,48 @@ def test_download_limit_is_fail_closed_only_when_translation_is_enabled() -> Non
 @pytest.mark.asyncio
 async def test_status_requires_compatible_version_pipeline_provider_and_idempotency() -> None:
     client = client_with(status_handler)
-    status = await client.service_status(request_id="np-status-test")
+    status = await client.service_status(
+        source_format=FileFormat.TXT,
+        request_id="np-status-test",
+    )
     assert status.available is True
     assert status.version == "0.3.2"
+    assert status.source_format is FileFormat.TXT
     assert status.pipeline_key == "novel_txt_v1"
     assert status.provider_id == "mock"
     assert status.provider_offline is True
 
+    epub_status = await client.service_status(
+        source_format=FileFormat.EPUB,
+        request_id="np-status-epub-test",
+    )
+    assert epub_status.available is True
+    assert epub_status.source_format is FileFormat.EPUB
+    assert epub_status.pipeline_key == "novel_epub_v1"
+
     incompatible = client_with(lambda request: status_handler(request, version="0.4.0"))
-    unavailable = await incompatible.service_status(request_id="np-status-test")
+    unavailable = await incompatible.service_status(
+        source_format=FileFormat.TXT,
+        request_id="np-status-test",
+    )
     assert unavailable.available is False
     assert unavailable.error_code == "translation_service_incompatible"
 
     prerelease = client_with(lambda request: status_handler(request, version="0.3.2-rc1"))
-    prerelease_status = await prerelease.service_status(request_id="np-status-test")
+    prerelease_status = await prerelease.service_status(
+        source_format=FileFormat.TXT,
+        request_id="np-status-test",
+    )
     assert prerelease_status.available is False
     assert prerelease_status.error_code == "translation_service_incompatible"
 
     build_metadata = client_with(
         lambda request: status_handler(request, version="0.3.2+reviewed.1")
     )
-    build_metadata_status = await build_metadata.service_status(request_id="np-status-test")
+    build_metadata_status = await build_metadata.service_status(
+        source_format=FileFormat.TXT,
+        request_id="np-status-test",
+    )
     assert build_metadata_status.available is True
 
 
@@ -105,6 +131,7 @@ async def test_create_uses_deterministic_headers_and_never_follows_redirects() -
     project = await client.create_project(
         source=io.BytesIO("第一章\n正文".encode()),
         filename="source-r1.txt",
+        source_format=FileFormat.TXT,
         source_language="zh-CN",
         target_language="en",
         idempotency_key="np:00000000-0000-4000-8000-000000000001:project:v1",
@@ -115,6 +142,48 @@ async def test_create_uses_deterministic_headers_and_never_follows_redirects() -
     assert captured["idempotency"].endswith(":project:v1")
     assert captured["request_id"].startswith("np-")
     assert captured["content_type"].startswith("multipart/form-data;")
+
+
+@pytest.mark.asyncio
+async def test_epub_create_uses_epub_media_type_filename_and_pipeline() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/api/projects":
+            return httpx.Response(201, json={"id": "project-epub"})
+        return httpx.Response(
+            202,
+            json={
+                "id": "job-epub",
+                "project_id": "project-epub",
+                "status": "queued",
+                "progress": 0,
+            },
+        )
+
+    client = client_with(handler, linguaspindle_provider_id="openai-compatible")
+    await client.create_project(
+        source=io.BytesIO(b"epub-payload"),
+        filename="original-book.epub",
+        source_format=FileFormat.EPUB,
+        source_language="zh-CN",
+        target_language="en",
+        idempotency_key="np:00000000-0000-4000-8000-000000000002:project:v1",
+        request_id="np-00000000-0000-4000-8000-000000000002",
+    )
+    await client.create_job(
+        project_id="project-epub",
+        source_format=FileFormat.EPUB,
+        credential_scope="7fa936d1-848f-4e31-b2a7-830fb4b357c2",
+        idempotency_key="np:00000000-0000-4000-8000-000000000002:job:v1",
+        request_id="np-00000000-0000-4000-8000-000000000002",
+    )
+
+    multipart = requests[0].content
+    assert b'filename="original-book.epub"' in multipart
+    assert b"application/epub+zip" in multipart
+    assert json.loads(requests[1].content)["pipeline_key"] == "novel_epub_v1"
 
 
 @pytest.mark.asyncio

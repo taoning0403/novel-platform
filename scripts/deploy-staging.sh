@@ -95,7 +95,8 @@ if [[ "$before_revision" == "20260715_0005" ]]; then
 elif [[ -n "$before_revision" \
   && "$before_revision" != "20260723_0006" \
   && "$before_revision" != "20260726_0007" \
-  && "$before_revision" != "20260726_0008" ]]; then
+  && "$before_revision" != "20260726_0008" \
+  && "$before_revision" != "20260727_0009" ]]; then
   die "existing database revision is not a supported upgrade source"
 fi
 if [[ "$before_revision" == "20260723_0006" ]]; then

@@ -233,11 +233,13 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
   multiple_current_provider_credentials="N/A (schema predates multi-Provider routing)"
   legacy_provider_routing_mismatches="N/A (schema predates multi-Provider routing)"
   provider_thinking_violations="N/A (schema predates Provider thinking configuration)"
+  translation_source_format_schema="N/A (schema predates EPUB translation)"
+  translation_source_format_violations="N/A (schema predates EPUB translation)"
   revision_contract="v0.5 identity/library invariants"
   case "$manifest_revision" in
     20260715_0005)
       ;;
-    20260723_0006|20260726_0007|20260726_0008)
+    20260723_0006|20260726_0007|20260726_0008|20260727_0009)
       revision_contract="v0.9 capability, attribution and Translation Run invariants"
       credential_capabilities="$(compose exec -T postgres sh -c \
         'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
@@ -267,7 +269,8 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
       (( credentials_without_read == 0 )) \
         || die "restored v0.9+ credential is missing library.read"
       if [[ "$manifest_revision" == "20260726_0007" \
-        || "$manifest_revision" == "20260726_0008" ]]; then
+        || "$manifest_revision" == "20260726_0008" \
+        || "$manifest_revision" == "20260727_0009" ]]; then
         revision_contract="v0.10 encrypted credential, usage and scoped Run invariants"
         provider_credential_versions="$(compose exec -T postgres sh -c \
           'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
@@ -295,7 +298,8 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
         (( credential_owner_mismatches == 0 )) \
           || die "restored v0.10 Translation Run is bound to another actor's credential"
       fi
-      if [[ "$manifest_revision" == "20260726_0008" ]]; then
+      if [[ "$manifest_revision" == "20260726_0008" \
+        || "$manifest_revision" == "20260727_0009" ]]; then
         revision_contract="v0.10 encrypted multi-Provider routing/thinking, usage and scoped Run invariants"
         provider_routing_schema="$(compose exec -T postgres sh -c \
           'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -AtF "|" -c \
@@ -429,6 +433,29 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
         (( legacy_provider_routing_mismatches == 0 )) \
           || die "restored legacy Provider ciphertext has mutable routing/thinking metadata"
       fi
+      if [[ "$manifest_revision" == "20260727_0009" ]]; then
+        revision_contract="v0.10 scoped EPUB/TXT Translation Run invariants"
+        translation_source_format_schema="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM pg_constraint
+             WHERE conrelid = '\''edition_translation_runs'\''::regclass
+               AND conname =
+                   '\''ck_edition_translation_runs_source_format_supported'\''
+               AND contype = '\''c'\''"' \
+          sh "$temporary_database")"
+        [[ "$translation_source_format_schema" == "1" ]] \
+          || die "restored EPUB/TXT Translation Run source-format constraint is missing"
+        translation_source_format_schema="verified"
+        translation_source_format_violations="$(compose exec -T postgres sh -c \
+          'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$1" -Atc \
+            "SELECT count(*)
+             FROM edition_translation_runs
+             WHERE source_format NOT IN ('\''epub'\'', '\''txt'\'')"' \
+          sh "$temporary_database")"
+        (( translation_source_format_violations == 0 )) \
+          || die "restored Translation Run has an unsupported source format"
+      fi
       ;;
     *)
       die "isolated restore verification does not support manifest revision $manifest_revision"
@@ -478,6 +505,8 @@ for path in sorted(p for p in root.iterdir() if p.is_file()):
 - Provider thinking configuration violations: $provider_thinking_violations
 - Users with multiple current Provider credentials: $multiple_current_provider_credentials
 - Legacy ciphertext routing/thinking mismatches: $legacy_provider_routing_mismatches
+- EPUB/TXT Translation Run source-format schema: $translation_source_format_schema
+- Translation Run source-format violations: $translation_source_format_violations
 - Vault master-key usability: not tested; the matching key is an external restore prerequisite
 - Custom Provider allow-list usability: not tested; the matching deployment policy is external
 - Stored files verified: $stored_files

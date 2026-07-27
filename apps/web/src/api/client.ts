@@ -468,8 +468,10 @@ export const api = {
     }),
   recentReading: (limit = 12) =>
     request<RecentReading[]>(`/api/v1/reader/recent?limit=${limit}`),
-  translationServiceStatus: () =>
-    request<TranslationServiceStatus>("/api/v1/translation-service/status"),
+  translationServiceStatus: (sourceFormat: FileFormat) =>
+    request<TranslationServiceStatus>(
+      `/api/v1/translation-service/status?source_format=${encodeURIComponent(sourceFormat)}`,
+    ),
   createTranslationRun: (
     bookId: string,
     sourceEditionId: string,

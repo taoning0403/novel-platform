@@ -259,7 +259,7 @@ settings, or audit pages before Passkey registration.
 Create reader identities in the administrator UI. Deliver each one-time reader credential through
 an appropriate private channel. The UI cannot retrieve it again.
 
-## Upgrade to the current v0.10 Provider-routing schema
+## Upgrade to the current v0.10 Provider-routing and EPUB-translation schema
 
 This upgrade adds Alembic `20260726_0007`, encrypted per-User Provider credential versions,
 sanitized token-usage records, exact Run-to-version binding and the private Relay. A v0.9
@@ -268,11 +268,14 @@ refuse any v0.9 database containing a Run; neither path deletes it or invents at
 Alembic `20260726_0008` then adds one version-bound OpenAI, DeepSeek, Kimi or exact-allowlisted
 custom route/model per current credential, plus a thinking switch that defaults off and is bound
 into v2 ciphertext authenticated data. Existing v1 OpenAI credentials remain decryptable with
-their original fixed route/model and thinking disabled.
+their original fixed route/model and thinking disabled. Alembic `20260727_0009` then widens only
+the Translation Run source-format constraint from TXT to `epub | txt`; it preserves existing TXT
+rows and refuses downgrade while any EPUB Run remains.
 
-The Provider-routing increment remains a deployment candidate until the exact commit passes the
-local gate and external deployment checks. Do not report deployment PASS merely because package
-metadata, focused tests or migration code exist.
+The EPUB-translation increment remains a deployment candidate; the deployed Provider-routing
+baseline remains at `20260726_0008` until the exact EPUB candidate passes the local gate and
+external deployment checks. Do not report deployment PASS merely because package metadata,
+focused tests or migration code exist.
 
 ### 1. Candidate, data and topology baseline
 
@@ -351,9 +354,9 @@ V090_RESTORE_TEST_REPORT=/srv/novel-platform/reports/restore-v0100-TIMESTAMP.md 
 
 The deploy script creates its normal coordinated backup unless explicitly told not to, stops
 writers, checks supported source revision and zero unscoped Runs, and then advances to
-`20260726_0008`. Verify the credential routing/thinking columns and constraints, both credential
-tables, every required Run column and the code-head revision. Revisions other than 0005, 0006,
-0007 or 0008 are refused.
+`20260727_0009`. Verify the credential routing/thinking columns and constraints, both credential
+tables, every required Run column, the `epub | txt` source-format constraint and the code-head
+revision. Revisions other than 0005, 0006, 0007, 0008 or 0009 are refused.
 
 ### 4. Upgrade LinguaSpindle and enable the private chain
 
@@ -377,7 +380,7 @@ PostgreSQL to that network and must publish no Relay port.
 Verify all of the following with synthetic data and, where a successful upstream response is
 needed, an explicitly isolated offline Mock Provider:
 
-- application/database revision is `20260726_0008`; main `/api/v1/health/ready` remains healthy
+- application/database revision is `20260727_0009`; main `/api/v1/health/ready` remains healthy
   when translation is disabled or LinguaSpindle/Relay is unavailable;
 - a `translation.use` actor without a personal credential cannot launch translation and never
   consumes an administrator/shared key;
@@ -389,6 +392,9 @@ needed, an explicitly isolated offline Mock Provider:
   rotation keeps an existing Run on its old version and removal makes later calls fail closed;
 - LinguaSpindle `>=0.3.2,<0.4.0` persists the opaque scope across restart, separates Job
   fingerprints by scope, forwards required scope + Job headers and does not expose them publicly;
+- TXT uses `novel_txt_v1` / `novel_export_txt`, while a common valid unencrypted EPUB uses
+  `novel_epub_v1` / `novel_export_epub`, preserves its upload media type and filename, and imports
+  only after local bounded EPUB/package/language reinspection;
 - Relay rejects missing/wrong Bearer, scope or Job ID, an unbound/revoked version, disallowed
   model, redirect, oversized body and malformed Provider response; it forwards neither internal
   scope nor Relay Bearer upstream;
@@ -770,9 +776,9 @@ its own coordinated backup when required.
 ## Rollback
 
 Application-only rollback is valid only when the target code supports the current schema.
-`20260723_0006` cannot be downgraded, and returning from schema `20260726_0008` to a build that
-cannot read it must use the matching coordinated pre-upgrade backup rather than an automatic
-downgrade:
+`20260723_0006` cannot be downgraded. Alembic `20260727_0009` also refuses downgrade while any
+EPUB Run remains, and returning from that schema to a build that cannot read it must use the
+matching coordinated pre-upgrade backup rather than an automatic downgrade:
 
 1. stop writers;
 2. isolate-test the exact pre-upgrade coordinated backup;

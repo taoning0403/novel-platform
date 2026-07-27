@@ -10,9 +10,50 @@ from uuid import UUID
 import httpx
 
 from novel_platform.config import Settings
+from novel_platform.domain.library.models import FileFormat
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _MAX_JSON_BYTES = 2 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class LinguaTranslationFormat:
+    source_format: FileFormat
+    pipeline_key: str
+    source_media_type: str
+    artifact_kind: str
+    artifact_media_type: str
+    extension: str
+    label: str
+
+
+_TRANSLATION_FORMATS = {
+    FileFormat.TXT: LinguaTranslationFormat(
+        source_format=FileFormat.TXT,
+        pipeline_key="novel_txt_v1",
+        source_media_type="text/plain",
+        artifact_kind="novel_export_txt",
+        artifact_media_type="text/plain",
+        extension=".txt",
+        label="TXT",
+    ),
+    FileFormat.EPUB: LinguaTranslationFormat(
+        source_format=FileFormat.EPUB,
+        pipeline_key="novel_epub_v1",
+        source_media_type="application/epub+zip",
+        artifact_kind="novel_export_epub",
+        artifact_media_type="application/epub+zip",
+        extension=".epub",
+        label="EPUB",
+    ),
+}
+
+
+def translation_format_contract(source_format: FileFormat) -> LinguaTranslationFormat:
+    try:
+        return _TRANSLATION_FORMATS[source_format]
+    except KeyError as exc:
+        raise ValueError("unsupported novel translation source format") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +61,7 @@ class LinguaServiceStatus:
     enabled: bool
     available: bool
     version: str | None
+    source_format: FileFormat
     pipeline_key: str
     pipeline_version: str | None
     provider_id: str
@@ -85,13 +127,19 @@ class LinguaSpindleFailure(Exception):
 
 
 class LinguaSpindleGateway(Protocol):
-    async def service_status(self, *, request_id: str) -> LinguaServiceStatus: ...
+    async def service_status(
+        self,
+        *,
+        source_format: FileFormat,
+        request_id: str,
+    ) -> LinguaServiceStatus: ...
 
     async def create_project(
         self,
         *,
         source: BinaryIO,
         filename: str,
+        source_format: FileFormat,
         source_language: str,
         target_language: str,
         idempotency_key: str,
@@ -102,6 +150,7 @@ class LinguaSpindleGateway(Protocol):
         self,
         *,
         project_id: str,
+        source_format: FileFormat,
         credential_scope: str,
         idempotency_key: str,
         request_id: str,
@@ -155,14 +204,21 @@ class LinguaSpindleClient:
             pool=settings.linguaspindle_connect_timeout_seconds,
         )
 
-    async def service_status(self, *, request_id: str) -> LinguaServiceStatus:
+    async def service_status(
+        self,
+        *,
+        source_format: FileFormat,
+        request_id: str,
+    ) -> LinguaServiceStatus:
         provider_id = self.settings.linguaspindle_provider_id
+        format_contract = translation_format_contract(source_format)
         if not self.settings.linguaspindle_enabled:
             return LinguaServiceStatus(
                 enabled=False,
                 available=False,
                 version=None,
-                pipeline_key="novel_txt_v1",
+                source_format=source_format,
+                pipeline_key=format_contract.pipeline_key,
                 pipeline_version=None,
                 provider_id=provider_id,
                 provider_name=None,
@@ -191,11 +247,12 @@ class LinguaSpindleClient:
                 raise LinguaSpindleFailure(
                     "translation_idempotency_not_required", "小说翻译服务未启用强制幂等。"
                 )
-            pipeline = _find_mapping(pipelines, "key", "novel_txt_v1")
+            pipeline = _find_mapping(pipelines, "key", format_contract.pipeline_key)
             provider = _find_mapping(providers, "id", provider_id)
             if pipeline is None:
                 raise LinguaSpindleFailure(
-                    "translation_pipeline_unavailable", "小说 TXT 翻译管线不可用。"
+                    "translation_pipeline_unavailable",
+                    f"小说 {format_contract.label} 翻译管线不可用。",
                 )
             if provider is None or provider.get("configured") is not True:
                 raise LinguaSpindleFailure(
@@ -205,7 +262,8 @@ class LinguaSpindleClient:
                 enabled=True,
                 available=True,
                 version=version,
-                pipeline_key="novel_txt_v1",
+                source_format=source_format,
+                pipeline_key=format_contract.pipeline_key,
                 pipeline_version=_optional_string(pipeline.get("version")),
                 provider_id=provider_id,
                 provider_name=_optional_string(provider.get("display_name")),
@@ -218,7 +276,8 @@ class LinguaSpindleClient:
                 enabled=True,
                 available=False,
                 version=None,
-                pipeline_key="novel_txt_v1",
+                source_format=source_format,
+                pipeline_key=format_contract.pipeline_key,
                 pipeline_version=None,
                 provider_id=provider_id,
                 provider_name=None,
@@ -234,11 +293,13 @@ class LinguaSpindleClient:
         *,
         source: BinaryIO,
         filename: str,
+        source_format: FileFormat,
         source_language: str,
         target_language: str,
         idempotency_key: str,
         request_id: str,
     ) -> RemoteProject:
+        format_contract = translation_format_contract(source_format)
         payload, response = await self._json(
             "POST",
             "/api/projects",
@@ -250,7 +311,7 @@ class LinguaSpindleClient:
                 "source_language": source_language,
                 "target_language": target_language,
             },
-            files={"source": (filename, source, "text/plain")},
+            files={"source": (filename, source, format_contract.source_media_type)},
             ambiguous=True,
         )
         return RemoteProject(
@@ -262,11 +323,13 @@ class LinguaSpindleClient:
         self,
         *,
         project_id: str,
+        source_format: FileFormat,
         credential_scope: str,
         idempotency_key: str,
         request_id: str,
     ) -> RemoteJob:
         _validate_remote_id(project_id)
+        format_contract = translation_format_contract(source_format)
         try:
             normalized_credential_scope = str(UUID(credential_scope))
         except ValueError as exc:
@@ -274,7 +337,7 @@ class LinguaSpindleClient:
         if normalized_credential_scope != credential_scope:
             raise ValueError("credential_scope must use canonical UUID serialization")
         body = {
-            "pipeline_key": "novel_txt_v1",
+            "pipeline_key": format_contract.pipeline_key,
             "profile_id": self.settings.linguaspindle_profile_id,
             "provider_id": self.settings.linguaspindle_provider_id,
             "adapter_id": None,

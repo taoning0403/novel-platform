@@ -2503,6 +2503,7 @@ export interface components {
             provider_name: string | null;
             /** Provider Offline */
             provider_offline: boolean;
+            source_format: components["schemas"]["FileFormat"];
             /** Version */
             version: string | null;
         };
@@ -10849,7 +10850,9 @@ export interface operations {
     };
     get_translation_service_status_api_v1_translation_service_status_get: {
         parameters: {
-            query?: never;
+            query?: {
+                source_format?: components["schemas"]["FileFormat"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

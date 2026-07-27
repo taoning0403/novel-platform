@@ -13,6 +13,7 @@ const service: TranslationServiceStatus = {
   enabled: true,
   available: true,
   version: "0.3.2",
+  source_format: "txt",
   pipeline_key: "novel_txt_v1",
   pipeline_version: "1",
   provider_id: "mock",

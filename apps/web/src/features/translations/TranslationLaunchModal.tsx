@@ -47,6 +47,7 @@ export function TranslationLaunchModal({
     return book.editions.find((item) => item.id === edition?.source_edition_id) ?? null;
   }, [book.editions, edition]);
   const isRetranslation = edition?.creation_method === "generated";
+  const isEpub = source?.current_file?.file_format === "epub";
   const [service, setService] = useState<TranslationServiceStatus | null>(null);
   const [credential, setCredential] = useState<ProviderCredentialStatus | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -70,8 +71,14 @@ export function TranslationLaunchModal({
     setService(null);
     setCredential(null);
     setIsChecking(true);
+    const sourceFormat = source?.current_file?.file_format;
+    if (sourceFormat !== "epub" && sourceFormat !== "txt") {
+      setError("找不到可翻译的 EPUB 或 TXT 原文文件。");
+      setIsChecking(false);
+      return;
+    }
     void Promise.all([
-      api.translationServiceStatus(),
+      api.translationServiceStatus(sourceFormat),
       api.getProviderCredential(),
     ])
       .then(([nextService, nextCredential]) => {
@@ -89,7 +96,7 @@ export function TranslationLaunchModal({
     return () => {
       cancelled = true;
     };
-  }, [book.canonical_title, edition, isRetranslation, open]);
+  }, [book.canonical_title, edition, isRetranslation, open, source]);
 
   const usableCredential = credential?.configured === true
     && typeof credential.model === "string"
@@ -159,7 +166,9 @@ export function TranslationLaunchModal({
       {edition === null ? null : (
         <form className={styles.form} onSubmit={(event) => void submit(event)}>
           <p className={styles.intro}>
-            {isRetranslation
+            {isEpub
+              ? "翻译会保留 EPUB 的章节顺序、目录、链接、图片与样式，并生成独立 EPUB 草稿；现有版本和阅读进度不会被覆盖。"
+              : isRetranslation
               ? "新译本会作为独立草稿保留，现有版本、阅读进度和首选设置不会被覆盖。"
               : "翻译完成后会生成独立草稿；只有管理员审核后，其他阅读者才能看到。"}
           </p>
@@ -197,7 +206,7 @@ export function TranslationLaunchModal({
             </div>
             {service?.available ? (
               <small>
-                LinguaSpindle {service.version ?? "未知版本"} · {service.pipeline_key}
+                LinguaSpindle {service.version ?? "未知版本"} · {service.source_format.toUpperCase()} · {service.pipeline_key}
                 {service.pipeline_version ? ` ${service.pipeline_version}` : ""}
                 {usableCredential
                   ? ` · ${usableCredential.providerName} · ${usableCredential.model}${usableCredential.thinkingEnabled ? " · 思考模式" : ""} · 个人凭据 v${usableCredential.version ?? "—"}`

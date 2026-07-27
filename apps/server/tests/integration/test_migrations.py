@@ -116,7 +116,7 @@ async def test_empty_database_upgrade_and_cli_only_admin_initialization(tmp_path
                 .mappings()
                 .one()
             )
-        assert revision == "20260726_0008"
+        assert revision == "20260727_0009"
         assert all(value is not None for value in tables.values())
         assert {
             "provider_name",
@@ -552,7 +552,7 @@ async def test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_st
                 .one()
             )
         await engine.dispose()
-        assert v090["revision"] == "20260726_0008"
+        assert v090["revision"] == "20260727_0009"
         assert v090["book_creator"] == target_admin
         assert v090["edition_creator"] == target_admin
         assert v090["file_creator"] == target_admin
@@ -659,9 +659,206 @@ async def test_v090_migration_blocks_active_import_and_backfills_read_capability
                 .one()
             )
         await engine.dispose()
-        assert migrated["version_num"] == "20260726_0008"
+        assert migrated["version_num"] == "20260727_0009"
         assert migrated["capability"] == "library.read"
         assert migrated["requested_by_user_id"] == admin_id
+    finally:
+        await drop_migration_database(database_name, admin_url)
+
+
+@pytest.mark.integration
+async def test_epub_translation_migration_preserves_txt_and_guards_downgrade() -> None:
+    base_url = os.getenv("TEST_DATABASE_URL")
+    if not base_url:
+        pytest.skip("TEST_DATABASE_URL is not configured")
+    database_name, admin_url, database_url = await create_migration_database(base_url)
+    credential_id = UUID("87000000-0000-0000-0000-000000000009")
+    stored_file_id = UUID("81000000-0000-0000-0000-000000000009")
+    book_id = UUID("82000000-0000-0000-0000-000000000009")
+    edition_id = UUID("83000000-0000-0000-0000-000000000009")
+    edition_file_id = UUID("84000000-0000-0000-0000-000000000009")
+    run_id = UUID("85000000-0000-0000-0000-000000000009")
+    try:
+        run_alembic(database_url, "upgrade", "20260726_0008")
+        engine = create_async_engine(database_url)
+        settings = Settings(database_url=database_url)
+        factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        async with factory() as session:
+            await AdminService(session, settings).initialize("EPUB 迁移管理员")
+            owner_id = await session.scalar(
+                text("SELECT library_owner_user_id FROM site_settings WHERE id=1")
+            )
+            assert owner_id is not None
+            await session.execute(
+                text(
+                    "INSERT INTO provider_credential_versions "
+                    "(id, user_id, provider, base_url, model, version, nonce, ciphertext) "
+                    "VALUES (:id, :owner, 'openai_compatible', "
+                    "'https://api.openai.com/v1', 'migration-model', 1, "
+                    ":nonce, :ciphertext)"
+                ),
+                {
+                    "id": credential_id,
+                    "owner": owner_id,
+                    "nonce": bytes(12),
+                    "ciphertext": b"x" * 17,
+                },
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO stored_files "
+                    "(id, owner_user_id, created_by_user_id, storage_key, "
+                    "original_filename, media_type, file_format, purpose, size_bytes, sha256) "
+                    "VALUES (:id, :owner, :owner, :storage_key, 'source.txt', "
+                    "'text/plain', 'txt', 'edition_source', 3, :sha256)"
+                ),
+                {
+                    "id": stored_file_id,
+                    "owner": owner_id,
+                    "storage_key": "1" * 64,
+                    "sha256": "2" * 64,
+                },
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO books "
+                    "(id, owner_user_id, created_by_user_id, canonical_title, metadata) "
+                    "VALUES (:id, :owner, :owner, 'EPUB Migration Book', '{}'::jsonb)"
+                ),
+                {"id": book_id, "owner": owner_id},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO book_editions "
+                    "(id, book_id, created_by_user_id, title, language, content_role, "
+                    "creation_method, status, revision, metadata) "
+                    "VALUES (:id, :book, :owner, 'Source', 'zh-CN', 'source', "
+                    "'uploaded', 'ready', 1, '{}'::jsonb)"
+                ),
+                {"id": edition_id, "book": book_id, "owner": owner_id},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO edition_files "
+                    "(id, edition_id, stored_file_id, revision, is_current, metadata) "
+                    "VALUES (:id, :edition, :stored, 1, true, '{}'::jsonb)"
+                ),
+                {
+                    "id": edition_file_id,
+                    "edition": edition_id,
+                    "stored": stored_file_id,
+                },
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO edition_translation_runs "
+                    "(id, library_owner_user_id, created_by_user_id, "
+                    "provider_credential_version_id, book_id, source_edition_id, "
+                    "source_edition_file_id, source_revision, source_sha256, source_format, "
+                    "target_language, edition_title, configuration_fingerprint, "
+                    "configuration_snapshot, client_request_id) "
+                    "VALUES (:id, :owner, :owner, :credential, :book, :edition, "
+                    ":edition_file, 1, :sha256, 'txt', 'en', 'Migration Translation', "
+                    ":fingerprint, '{}'::jsonb, :client_request)"
+                ),
+                {
+                    "id": run_id,
+                    "owner": owner_id,
+                    "credential": credential_id,
+                    "book": book_id,
+                    "edition": edition_id,
+                    "edition_file": edition_file_id,
+                    "sha256": "2" * 64,
+                    "fingerprint": "3" * 64,
+                    "client_request": UUID("86000000-0000-0000-0000-000000000009"),
+                },
+            )
+            await session.commit()
+        await engine.dispose()
+
+        run_alembic(database_url, "upgrade", "head")
+        engine = create_async_engine(database_url)
+        async with engine.begin() as connection:
+            migrated = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT av.version_num, run.source_format, "
+                            "pg_get_constraintdef(c.oid) AS constraint_definition "
+                            "FROM alembic_version av "
+                            "JOIN edition_translation_runs run ON run.id=:run "
+                            "JOIN pg_constraint c "
+                            "ON c.conrelid='edition_translation_runs'::regclass "
+                            "AND c.conname="
+                            "'ck_edition_translation_runs_source_format_supported'"
+                        ),
+                        {"run": run_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            await connection.execute(
+                text("UPDATE edition_translation_runs SET source_format='epub' WHERE id=:run"),
+                {"run": run_id},
+            )
+        assert migrated["version_num"] == "20260727_0009"
+        assert migrated["source_format"] == "txt"
+        assert "'epub'::file_format" in migrated["constraint_definition"]
+        assert "'txt'::file_format" in migrated["constraint_definition"]
+
+        with pytest.raises(subprocess.CalledProcessError) as downgrade_failure:
+            run_alembic(database_url, "downgrade", "20260726_0008")
+        assert "epub_translation_runs_cannot_downgrade" in (
+            (downgrade_failure.value.stdout or "") + (downgrade_failure.value.stderr or "")
+        )
+
+        async with engine.begin() as connection:
+            state = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT (SELECT version_num FROM alembic_version) AS revision, "
+                            "source_format FROM edition_translation_runs WHERE id=:run"
+                        ),
+                        {"run": run_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert state["revision"] == "20260727_0009"
+            assert state["source_format"] == "epub"
+            await connection.execute(
+                text("UPDATE edition_translation_runs SET source_format='txt' WHERE id=:run"),
+                {"run": run_id},
+            )
+        await engine.dispose()
+
+        run_alembic(database_url, "downgrade", "20260726_0008")
+        engine = create_async_engine(database_url)
+        async with engine.connect() as connection:
+            downgraded = (
+                (
+                    await connection.execute(
+                        text(
+                            "SELECT av.version_num, pg_get_constraintdef(c.oid) "
+                            "AS constraint_definition "
+                            "FROM alembic_version av "
+                            "JOIN pg_constraint c "
+                            "ON c.conrelid='edition_translation_runs'::regclass "
+                            "AND c.conname="
+                            "'ck_edition_translation_runs_ck_translation_runs_source_format'"
+                        )
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        await engine.dispose()
+        assert downgraded["version_num"] == "20260726_0008"
+        assert "'txt'::file_format" in downgraded["constraint_definition"]
+        assert "'epub'::file_format" not in downgraded["constraint_definition"]
     finally:
         await drop_migration_database(database_name, admin_url)
 
@@ -892,7 +1089,7 @@ async def test_multi_provider_migration_preserves_legacy_credential_semantics() 
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
         await engine.dispose()
 
-        assert revision == "20260726_0008"
+        assert revision == "20260727_0009"
         assert dict(migrated) == {
             "provider": "openai_compatible",
             "provider_name": None,
@@ -991,6 +1188,6 @@ async def test_multi_provider_migration_downgrade_refuses_incompatible_rows() ->
         async with engine.connect() as connection:
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
         await engine.dispose()
-        assert revision == "20260726_0008"
+        assert revision == "20260727_0009"
     finally:
         await drop_migration_database(database_name, admin_url)

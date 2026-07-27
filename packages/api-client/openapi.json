@@ -4164,6 +4164,9 @@
             "title": "Provider Offline",
             "type": "boolean"
           },
+          "source_format": {
+            "$ref": "#/components/schemas/FileFormat"
+          },
           "version": {
             "anyOf": [
               {
@@ -4180,6 +4183,7 @@
           "enabled",
           "available",
           "version",
+          "source_format",
           "pipeline_key",
           "pipeline_version",
           "provider_id",
@@ -14648,6 +14652,17 @@
     "/api/v1/translation-service/status": {
       "get": {
         "operationId": "get_translation_service_status_api_v1_translation_service_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "source_format",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FileFormat",
+              "default": "txt"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

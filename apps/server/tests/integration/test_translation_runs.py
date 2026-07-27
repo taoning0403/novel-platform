@@ -1,5 +1,7 @@
 import base64
 import hashlib
+import io
+import zipfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -25,8 +27,10 @@ from novel_platform.domain.editions.models import (
     EditionStatus,
     TranslationOrigin,
 )
+from novel_platform.domain.library.models import FileFormat
 from novel_platform.infrastructure.database.models import (
     BookEditionModel,
+    EditionFileModel,
     EditionTranslationRunModel,
     ProviderCredentialVersionModel,
     ProviderUsageRecordModel,
@@ -50,12 +54,63 @@ from novel_platform.relay import app as provider_relay_app
 from novel_platform.relay import get_relay_session
 
 
+def epub_bytes(*, language: str, title: str = "EPUB 测试书") -> bytes:
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "mimetype",
+            b"application/epub+zip",
+            compress_type=zipfile.ZIP_STORED,
+        )
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf"
+      media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>""",
+        )
+        archive.writestr(
+            "OEBPS/content.opf",
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+  xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0"
+  unique-identifier="book-id">
+  <metadata>
+    <dc:identifier id="book-id">urn:uuid:epub-translation-test</dc:identifier>
+    <dc:title>{title}</dc:title>
+    <dc:language>{language}</dc:language>
+  </metadata>
+  <manifest>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="chapter"/></spine>
+</package>""",
+        )
+        archive.writestr(
+            "OEBPS/chapter.xhtml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>Chapter</title></head>
+  <body><h1>Chapter 1</h1><p>Translated body.</p></body>
+</html>""",
+        )
+    return payload.getvalue()
+
+
 class FakeLinguaSpindle:
     def __init__(self) -> None:
         self.projects_by_key: dict[str, RemoteProject] = {}
         self.jobs_by_key: dict[str, RemoteJob] = {}
         self.jobs: dict[str, RemoteJob] = {}
         self.sources: dict[str, bytes] = {}
+        self.project_formats: dict[str, FileFormat] = {}
+        self.project_targets: dict[str, str] = {}
+        self.project_filenames: dict[str, str] = {}
+        self.job_formats: dict[str, FileFormat] = {}
+        self.artifact_language_overrides: dict[str, str] = {}
         self.control_keys: list[tuple[str, str, str | None]] = []
         self.credential_scopes: list[str] = []
         self.deleted_projects: list[str] = []
@@ -64,12 +119,18 @@ class FakeLinguaSpindle:
         self.before_control: Callable[[str, str], Awaitable[None]] | None = None
         self.control_failure: LinguaSpindleFailure | None = None
 
-    async def service_status(self, *, request_id: str) -> LinguaServiceStatus:
+    async def service_status(
+        self,
+        *,
+        source_format: FileFormat,
+        request_id: str,
+    ) -> LinguaServiceStatus:
         return LinguaServiceStatus(
             enabled=True,
             available=True,
             version="0.3.2",
-            pipeline_key="novel_txt_v1",
+            source_format=source_format,
+            pipeline_key=("novel_epub_v1" if source_format is FileFormat.EPUB else "novel_txt_v1"),
             pipeline_version="1",
             provider_id="openai-compatible",
             provider_name="Fake OpenAI-compatible Relay",
@@ -83,6 +144,7 @@ class FakeLinguaSpindle:
         *,
         source: BinaryIO,
         filename: str,
+        source_format: FileFormat,
         source_language: str,
         target_language: str,
         idempotency_key: str,
@@ -97,12 +159,16 @@ class FakeLinguaSpindle:
         )
         self.projects_by_key[idempotency_key] = project
         self.sources[project.id] = source.read()
+        self.project_formats[project.id] = source_format
+        self.project_targets[project.id] = target_language
+        self.project_filenames[project.id] = filename
         return project
 
     async def create_job(
         self,
         *,
         project_id: str,
+        source_format: FileFormat,
         credential_scope: str,
         idempotency_key: str,
         request_id: str,
@@ -119,6 +185,8 @@ class FakeLinguaSpindle:
         )
         self.jobs_by_key[idempotency_key] = job
         self.jobs[job.id] = job
+        self.job_formats[job.id] = source_format
+        assert self.project_formats[project_id] is source_format
         self.credential_scopes.append(credential_scope)
         return job
 
@@ -162,16 +230,19 @@ class FakeLinguaSpindle:
         *,
         request_id: str,
     ) -> list[RemoteArtifact]:
+        payload = self._artifact_payload(job_id)
+        source_format = self.job_formats[job_id]
+        is_epub = source_format is FileFormat.EPUB
         return [
             RemoteArtifact(
                 id=f"artifact-{job_id}",
                 project_id=project_id,
                 job_id=job_id,
-                kind="novel_export_txt",
-                filename="translated.txt",
-                media_type="text/plain; charset=utf-8",
-                size=len(self.translated_text),
-                checksum=hashlib.sha256(self.translated_text).hexdigest(),
+                kind="novel_export_epub" if is_epub else "novel_export_txt",
+                filename="translated.epub" if is_epub else "translated.txt",
+                media_type=("application/epub+zip" if is_epub else "text/plain; charset=utf-8"),
+                size=len(payload),
+                checksum=hashlib.sha256(payload).hexdigest(),
                 download_url=f"/api/artifacts/artifact-{job_id}/download",
             )
         ]
@@ -184,12 +255,15 @@ class FakeLinguaSpindle:
         request_id: str,
         max_bytes: int,
     ) -> DownloadedArtifact:
-        assert len(self.translated_text) <= max_bytes
-        destination.write(self.translated_text)
-        checksum = hashlib.sha256(self.translated_text).hexdigest()
+        if artifact.job_id is None:
+            raise AssertionError("translation Artifact must belong to a Job")
+        payload = self._artifact_payload(artifact.job_id)
+        assert len(payload) <= max_bytes
+        destination.write(payload)
+        checksum = hashlib.sha256(payload).hexdigest()
         if artifact.job_id in self.corrupt_download_jobs:
             checksum = "0" * 64
-        return DownloadedArtifact(size=len(self.translated_text), sha256=checksum)
+        return DownloadedArtifact(size=len(payload), sha256=checksum)
 
     async def delete_project(self, project_id: str, *, request_id: str) -> None:
         self.deleted_projects.append(project_id)
@@ -204,6 +278,17 @@ class FakeLinguaSpindle:
             request_id=current.request_id,
             error_code="mock_failure" if status in {"failed", "partially_succeeded"} else None,
         )
+
+    def _artifact_payload(self, job_id: str) -> bytes:
+        if self.job_formats[job_id] is FileFormat.EPUB:
+            project_id = self.jobs[job_id].project_id
+            return epub_bytes(
+                language=self.artifact_language_overrides.get(
+                    job_id,
+                    self.project_targets[project_id],
+                )
+            )
+        return self.translated_text
 
 
 async def create_reader_login(
@@ -262,6 +347,39 @@ async def create_txt_book(
         headers=headers,
         data={"operation": "create_book", "text_encoding": "auto"},
         files={"file": (f"{title}.txt", f"第一章\n{title}正文".encode(), "text/plain")},
+    )
+    assert inspected.status_code == 201, inspected.text
+    committed = await client.post(
+        f"/api/v1/imports/{inspected.json()['id']}/commit",
+        headers=headers,
+        json={
+            "canonical_title": title,
+            "edition_title": f"{title}原文",
+            "language": "zh-CN",
+            "content_role": "source",
+        },
+    )
+    assert committed.status_code == 200, committed.text
+    return cast(dict[str, Any], committed.json())
+
+
+async def create_epub_book(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    *,
+    title: str,
+) -> dict[str, Any]:
+    inspected = await client.post(
+        "/api/v1/imports/inspect",
+        headers=headers,
+        data={"operation": "create_book", "text_encoding": "auto"},
+        files={
+            "file": (
+                f"{title}.epub",
+                epub_bytes(language="zh-CN", title=title),
+                "application/epub+zip",
+            )
+        },
     )
     assert inspected.status_code == 201, inspected.text
     committed = await client.post(
@@ -1423,6 +1541,105 @@ async def test_successful_translation_ingestion_draft_visibility_publication_and
     async with app_harness.session_factory() as session:
         stored_run = await session.get(EditionTranslationRunModel, UUID(rerun["id"]))
         assert stored_run is not None and stored_run.generated_edition_id is None
+
+
+@pytest.mark.integration
+async def test_epub_translation_uses_matching_pipeline_and_ingests_one_valid_epub(
+    app_harness,
+) -> None:
+    fake = FakeLinguaSpindle()
+    configure_fake(app_harness, fake)
+    client = app_harness.client
+    admin = await app_harness.provision_admin()
+    translator, translator_headers = await create_reader_login(
+        app_harness,
+        admin.headers,
+        name="EPUB 译者",
+        capabilities=["library.read", "translation.use"],
+    )
+    created = await create_epub_book(client, admin.headers, title="结构保留测试书")
+    book_id = created["book"]["id"]
+    source_id = created["edition"]["id"]
+
+    detail = await client.get(f"/api/v1/books/{book_id}", headers=translator_headers)
+    assert detail.status_code == 200
+    source = next(item for item in detail.json()["editions"] if item["id"] == source_id)
+    assert source["can_translate"] is True
+    assert source["current_file"]["file_format"] == "epub"
+
+    service_status = await client.get(
+        "/api/v1/translation-service/status?source_format=epub",
+        headers=translator_headers,
+    )
+    assert service_status.status_code == 200
+    assert service_status.json()["source_format"] == "epub"
+    assert service_status.json()["pipeline_key"] == "novel_epub_v1"
+
+    started = await create_run(
+        client,
+        translator_headers,
+        book_id=book_id,
+        source_edition_id=source_id,
+    )
+    assert started.status_code == 201, started.text
+    run = started.json()
+    assert run["source_format"] == "epub"
+    assert run["configuration"]["source_format"] == "epub"
+    assert run["configuration"]["pipeline_key"] == "novel_epub_v1"
+    assert fake.project_filenames[run["remote_project_id"]] == "结构保留测试书.epub"
+
+    fake.set_status(run["remote_job_id"], "succeeded")
+    synced = await client.post(
+        f"/api/v1/translation-runs/{run['id']}/sync",
+        headers=translator_headers,
+    )
+    assert synced.status_code == 200, synced.text
+    completed = synced.json()
+    assert completed["status"] == "succeeded"
+    generated_id = completed["generated_edition_id"]
+
+    opened = await client.post(
+        f"/api/v1/editions/{generated_id}/reader/open",
+        headers=translator_headers,
+    )
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["publication"]["file_format"] == "epub"
+
+    async with app_harness.session_factory() as session:
+        generated_file = (
+            await session.scalars(
+                select(EditionFileModel).where(EditionFileModel.edition_id == UUID(generated_id))
+            )
+        ).one()
+        stored_file = await session.get(StoredFileModel, generated_file.stored_file_id)
+        assert stored_file is not None
+        assert stored_file.created_by_user_id == UUID(translator["id"])
+        assert stored_file.file_format is FileFormat.EPUB
+        assert stored_file.media_type == "application/epub+zip"
+        assert generated_file.normalized_stored_file_id is None
+        assert generated_file.text_encoding is None
+        assert generated_file.content_item_count == 1
+        assert generated_file.extracted_metadata["language"] == "en"
+
+    mismatched = await create_run(
+        client,
+        translator_headers,
+        book_id=book_id,
+        source_edition_id=source_id,
+        target_language="fr",
+    )
+    assert mismatched.status_code == 201, mismatched.text
+    mismatched_run = mismatched.json()
+    fake.artifact_language_overrides[mismatched_run["remote_job_id"]] = "de"
+    fake.set_status(mismatched_run["remote_job_id"], "succeeded")
+    rejected = await client.post(
+        f"/api/v1/translation-runs/{mismatched_run['id']}/sync",
+        headers=translator_headers,
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "attention_required"
+    assert rejected.json()["error_code"] == "translation_artifact_language_mismatch"
+    assert rejected.json()["generated_edition_id"] is None
 
 
 @pytest.mark.integration

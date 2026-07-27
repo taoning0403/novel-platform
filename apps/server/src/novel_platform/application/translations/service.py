@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import UTC, datetime
+from pathlib import PurePath
 from typing import cast
 from uuid import UUID
 
@@ -25,7 +26,11 @@ from novel_platform.application.translations.ingestion_service import (
 )
 from novel_platform.config import Settings
 from novel_platform.domain.auth.capabilities import CredentialCapability
-from novel_platform.domain.editions.models import ContentRole, CreationMethod
+from novel_platform.domain.editions.models import (
+    ContentRole,
+    CreationMethod,
+    EditionStatus,
+)
 from novel_platform.domain.library.models import FileFormat
 from novel_platform.domain.translations.models import (
     TERMINAL_TRANSLATION_RUN_STATUSES,
@@ -43,6 +48,7 @@ from novel_platform.infrastructure.integrations.linguaspindle import (
     LinguaSpindleFailure,
     LinguaSpindleGateway,
     RemoteJob,
+    translation_format_contract,
 )
 from novel_platform.infrastructure.repositories.books import BookRepository
 from novel_platform.infrastructure.repositories.editions import EditionRepository
@@ -69,9 +75,24 @@ class TranslationRunService:
         self.provider_credentials = ProviderCredentialService(session, settings)
         self.ingestion = GeneratedTranslationIngestionService(session, storage, settings, client)
 
-    async def service_status(self, scope: LibraryAccessScope) -> LinguaServiceStatus:
+    async def service_status(
+        self,
+        scope: LibraryAccessScope,
+        source_format: FileFormat,
+    ) -> LinguaServiceStatus:
         self._require_translation(scope)
-        return await self.client.service_status(request_id="np-status-v1")
+        try:
+            translation_format_contract(source_format)
+        except ValueError as exc:
+            raise ApplicationError(
+                "translation_source_format_unsupported",
+                "小说翻译仅支持 EPUB 或 TXT 原文。",
+                status_code=422,
+            ) from exc
+        return await self.client.service_status(
+            source_format=source_format,
+            request_id=f"np-status-{source_format.value}-v1",
+        )
 
     async def create(
         self,
@@ -91,8 +112,49 @@ class TranslationRunService:
             self._require_same_request(existing, book_id, source_edition_id, command)
             return existing
 
+        book = await self.books.get(book_id, scope.owner_user_id)
+        source = await self.editions.get_readable(scope.owner_user_id, source_edition_id)
+        if book is None or source is None or source.book_id != book_id:
+            raise ApplicationError("edition_not_found", "可翻译的原文版本不存在。", status_code=404)
+        if (
+            source.content_role is not ContentRole.SOURCE
+            or source.status is not EditionStatus.READY
+        ):
+            raise ApplicationError(
+                "translation_source_required",
+                "只能翻译已就绪的原文版本。",
+                status_code=409,
+            )
+        source_file = await self.library.get_current_edition_file_for_owner(
+            scope.owner_user_id, source.id
+        )
+        if source_file is None:
+            raise ApplicationError(
+                "translation_source_file_required",
+                "原文版本没有可翻译的当前文件。",
+                status_code=409,
+            )
+        source_format = source_file.stored_file.file_format
+        try:
+            translation_format_contract(source_format)
+        except ValueError as exc:
+            raise ApplicationError(
+                "translation_source_format_unsupported",
+                "小说翻译仅支持 EPUB 或 TXT 原文。",
+                status_code=409,
+            ) from exc
+        if not await to_thread.run_sync(self.storage.exists, source_file.stored_file.storage_key):
+            raise ApplicationError("source_file_unavailable", "原文文件不可用。", status_code=409)
+        actual_sha256 = await to_thread.run_sync(
+            self.storage.calculate_checksum, source_file.stored_file.storage_key
+        )
+        if actual_sha256 != source_file.stored_file.sha256:
+            raise ApplicationError(
+                "source_file_integrity_error", "原文文件完整性校验失败。", status_code=409
+            )
         status = await self.client.service_status(
-            request_id=f"np-create-{command.client_request_id}"
+            source_format=source_format,
+            request_id=f"np-create-{command.client_request_id}",
         )
         if not status.enabled:
             raise ApplicationError("feature_disabled", "小说翻译服务未启用。", status_code=503)
@@ -103,33 +165,6 @@ class TranslationRunService:
                 status_code=503,
             )
         provider_credential = await self.provider_credentials.current_for_run(scope.viewer_user_id)
-
-        book = await self.books.get(book_id, scope.owner_user_id)
-        source = await self.editions.get_readable(scope.owner_user_id, source_edition_id)
-        if book is None or source is None or source.book_id != book_id:
-            raise ApplicationError("edition_not_found", "可翻译的原文版本不存在。", status_code=404)
-        if source.content_role is not ContentRole.SOURCE:
-            raise ApplicationError(
-                "translation_source_required", "只能翻译原文版本。", status_code=409
-            )
-        source_file = await self.library.get_current_edition_file_for_owner(
-            scope.owner_user_id, source.id
-        )
-        if source_file is None or source_file.stored_file.file_format is not FileFormat.TXT:
-            raise ApplicationError(
-                "translation_txt_source_required",
-                "v0.9 只支持带当前 TXT 文件的原文版本。",
-                status_code=409,
-            )
-        if not await to_thread.run_sync(self.storage.exists, source_file.stored_file.storage_key):
-            raise ApplicationError("source_file_unavailable", "原文文件不可用。", status_code=409)
-        actual_sha256 = await to_thread.run_sync(
-            self.storage.calculate_checksum, source_file.stored_file.storage_key
-        )
-        if actual_sha256 != source_file.stored_file.sha256:
-            raise ApplicationError(
-                "source_file_integrity_error", "原文文件完整性校验失败。", status_code=409
-            )
         await self._validate_supersedes(scope, book_id, source.id, command.supersedes_edition_id)
 
         target_language = command.target_language.strip()
@@ -159,7 +194,7 @@ class TranslationRunService:
             source_edition_file_id=source_file.edition_file.id,
             source_revision=source_file.edition_file.revision,
             source_sha256=source_file.stored_file.sha256,
-            source_format=FileFormat.TXT,
+            source_format=source_format,
             target_language=target_language,
             edition_title=edition_title,
             supersedes_edition_id=command.supersedes_edition_id,
@@ -245,11 +280,12 @@ class TranslationRunService:
                 remote.id,
                 request_id=request_id,
             )
-            outputs = [item for item in artifacts if item.kind == "novel_export_txt"]
+            format_contract = translation_format_contract(run.source_format)
+            outputs = [item for item in artifacts if item.kind == format_contract.artifact_kind]
             if len(outputs) != 1:
                 raise LinguaSpindleFailure(
                     "translation_artifact_ambiguous",
-                    "翻译任务没有唯一完整的 TXT 产物。",
+                    f"翻译任务没有唯一完整的 {format_contract.label} 产物。",
                     status_code=502,
                 )
             artifact = outputs[0]
@@ -553,6 +589,14 @@ class TranslationRunService:
                         status_code=409,
                     )
                 storage_key = source_file.stored_file.storage_key
+                format_contract = translation_format_contract(run.source_format)
+                filename = f"source-r{run.source_revision}{format_contract.extension}"
+                if (
+                    run.source_format is FileFormat.EPUB
+                    and PurePath(source_file.stored_file.original_filename).suffix.lower()
+                    == format_contract.extension
+                ):
+                    filename = source_file.stored_file.original_filename
                 await self.session.commit()
                 try:
                     actual_sha256 = await to_thread.run_sync(
@@ -568,7 +612,8 @@ class TranslationRunService:
                     with self.storage.open_file(storage_key) as source_stream:
                         project = await self.client.create_project(
                             source=source_stream,
-                            filename=f"source-r{run.source_revision}.txt",
+                            filename=filename,
+                            source_format=run.source_format,
                             source_language=source_edition.language,
                             target_language=run.target_language,
                             idempotency_key=f"np:{run_id}:project:v1",
@@ -590,6 +635,7 @@ class TranslationRunService:
                 await self.session.commit()
                 remote = await self.client.create_job(
                     project_id=project_id,
+                    source_format=run.source_format,
                     credential_scope=str(run.provider_credential_version_id),
                     idempotency_key=f"np:{run_id}:job:v1",
                     request_id=request_id,
@@ -735,6 +781,7 @@ class TranslationRunService:
         return {
             "contract": "novel-platform-linguaspindle.v2",
             "service_version": status.version,
+            "source_format": status.source_format.value,
             "pipeline_key": status.pipeline_key,
             "pipeline_version": status.pipeline_version,
             "provider_id": status.provider_id,

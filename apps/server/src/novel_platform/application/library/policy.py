@@ -22,6 +22,8 @@ from novel_platform.infrastructure.database.models import (
 from novel_platform.infrastructure.repositories.editions import EditionRepository
 from novel_platform.infrastructure.repositories.library import EditionFileRecord, LibraryRepository
 
+_TRANSLATABLE_FILE_FORMATS = (FileFormat.EPUB, FileFormat.TXT)
+
 
 @dataclass(frozen=True, slots=True)
 class ResourcePermissions:
@@ -258,7 +260,7 @@ class LibraryResourcePolicy:
                 .where(
                     EditionFileModel.edition_id == BookEditionModel.id,
                     EditionFileModel.is_current.is_(True),
-                    StoredFileModel.file_format == FileFormat.TXT,
+                    StoredFileModel.file_format.in_(_TRANSLATABLE_FILE_FORMATS),
                 )
                 .correlate(BookEditionModel)
                 .exists(),
@@ -276,7 +278,7 @@ class LibraryResourcePolicy:
             edition.content_role is ContentRole.SOURCE
             and edition.status is EditionStatus.READY
             and file_record is not None
-            and file_record.stored_file.file_format is FileFormat.TXT
+            and file_record.stored_file.file_format in _TRANSLATABLE_FILE_FORMATS
         ):
             return True
         if (
@@ -290,7 +292,8 @@ class LibraryResourcePolicy:
             return False
         source_file = await self.library.get_current_edition_file(source.id)
         return bool(
-            source_file is not None and source_file.stored_file.file_format is FileFormat.TXT
+            source_file is not None
+            and source_file.stored_file.file_format in _TRANSLATABLE_FILE_FORMATS
         )
 
     async def _edition_has_blockers(self, edition_id: UUID) -> bool:

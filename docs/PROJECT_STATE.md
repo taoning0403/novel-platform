@@ -1,6 +1,6 @@
 # Project state
 
-Last reviewed against the repository and staging deployment on 2026-07-26. Staging runs the
+Last reviewed against the repository and staging deployment on 2026-07-27. Staging runs the
 unversioned post-v0.10 Provider-routing increment from Novel Platform commit
 `93675b9198e99e9078baafd32cb6800af18cdd82` with LinguaSpindle commit
 `1eeb5b029703c941c2fb4052d79e72767142cd19`. Package/API metadata remains v0.10.0 and
@@ -14,18 +14,22 @@ immutable `library.read` and may also carry `library.upload` and/or `translation
 Authorization requires the current database-backed capability plus durable resource-creator
 policy; the administrator remains the unique library owner.
 
-v0.10.0 changes who supplies and pays for real TXT translation. Each translating actor owns
+v0.10.0 changes who supplies and pays for real translation. Each translating actor owns
 versioned encrypted OpenAI-compatible Provider credentials in Novel Platform. A Run binds one
 exact version and sends only its opaque UUID4 scope to standalone LinguaSpindle
 `>=0.3.2,<0.4.0`. LinguaSpindle calls a separate private Relay, which validates the service,
 scope, Job, model and fixed upstream before decrypting that actor's key. There is no administrator
 or shared-key fallback.
 
-The current source branch contains an unversioned post-v0.10 Provider-routing increment governed
-by ADR 0020. It keeps package/API metadata at v0.10.0 while adding OpenAI, DeepSeek, Kimi and
-operator-allowlisted custom configurations plus a default-off thinking switch. Candidate and
-deployment evidence use a distinct Provider-routing tag so archived v0.10 evidence remains
-unchanged.
+The deployed post-v0.10 Provider-routing increment is governed by ADR 0020. It keeps package/API
+metadata at v0.10.0 while adding OpenAI, DeepSeek, Kimi and operator-allowlisted custom
+configurations plus a default-off thinking switch.
+
+The current source branch adds the unversioned EPUB-translation increment governed by ADR 0021.
+It extends the same private scoped execution from TXT to common valid, unencrypted EPUB 2/3,
+using LinguaSpindle's native structure-preserving Pipeline and Alembic `20260727_0009`. This
+increment has not been deployed; staging remains at the Provider-routing baseline and database
+revision `20260726_0008`.
 
 ## Implemented v0.10 surface
 
@@ -132,6 +136,25 @@ unchanged.
   per-User version sequence. Backup manifests declare the custom-route allow-list as an external
   configuration dependency, and isolated restore verifies the 0008 constraints and invariants.
 
+## Implemented EPUB-translation increment
+
+- A readable `ready` source Edition with a current EPUB or TXT file can launch a Run. Translation
+  availability is queried for that exact format, and the Run snapshot fixes the format, Pipeline
+  key/version, EditionFile revision and SHA-256.
+- The private client maps TXT to `novel_txt_v1` / `novel_export_txt` and EPUB to
+  `novel_epub_v1` / `novel_export_epub`. EPUB keeps its original filename and
+  `application/epub+zip` media type through Project upload.
+- Successful EPUB output must be the single format-matching Artifact for the exact Project/Job,
+  pass bounded download and SHA-256 checks, reopen through Novel Platform's EPUB safety inspector,
+  and declare the Run target language. It creates one EPUB StoredFile and no normalized TXT.
+- EPUB uses the same reader-owned credential version, opaque LinguaSpindle scope, private Relay,
+  idempotency/control/cleanup, creator-previewed draft and administrator-only publication rules as
+  TXT. Partial, corrupt, ambiguous or locally invalid output creates no Edition.
+- Alembic `20260727_0009` permits only `epub | txt` Run sources, preserves existing TXT rows and
+  refuses downgrade while EPUB Run history exists.
+- The Web launch modal requests format-specific capability and explains structure-preserving EPUB
+  output; the task workspace shows the fixed format, Pipeline and output contract.
+
 ## Implemented Scheme C Web interaction refresh
 
 - The authenticated Web shell now uses the approved Scheme C compact white sidebar, unified blue
@@ -171,6 +194,18 @@ unchanged.
   refresh, Compose validation and script syntax checks. The exact-commit
   `acceptance-v0100-provider-routing*` gate passed on `e91a41a` with all 6 criteria and 5 steps,
   including the inherited v0.8/v0.9 regressions.
+- The source-only EPUB increment passes Server Ruff format/check, strict mypy, 112 unit tests and
+  all 34 PostgreSQL integration tests; Web lint, all 60 tests and the production build; repeatable
+  OpenAPI generation; translation Compose parsing; and deployment/restore script syntax checks.
+  LinguaSpindle passes Ruff, strict mypy across 43 targets, compileall, dependency/Compose checks
+  and all 253 tests. Its scoped EPUB regression uses a fake HTTP Provider, produces a re-openable
+  target-language EPUB and proves scope/Job headers plus public/log/Artifact containment.
+- The initial EPUB candidate `pnpm acceptance` advanced an empty database through Alembic
+  `20260727_0009`, then stopped in the inherited v0.5 browser replay because its broad historical
+  language locator matched two operation radios and the language textbox. The locator now targets
+  the exact language textbox without changing the scenario or criterion; a complete candidate
+  rerun is still required before any new full acceptance PASS, real-container LinguaSpindle chain
+  or deployment is claimed.
 - External verification on `e91a41a` passed revision-0008 deployment, HTTPS/API/container health,
   migration and library integrity audit, restart/stop-start/recreate persistence, topology and
   secret-agreement checks, sanitized resource reporting, artifact leak scanning, coordinated
@@ -184,7 +219,7 @@ unchanged.
 
 - Public registration/catalogue, email/phone/OAuth/password login, a second administrator, public
   publishing/downloads, social/comment/messaging/ranking/payment/advertising features.
-- EPUB, manga or arbitrary-document translation; per-chapter review/editor workflows;
+- Manga or arbitrary-document translation; EPUB chapter selection or review/editor workflows;
   per-Run Provider/model/profile/URL selection; arbitrary or unallowlisted custom destinations;
   browser-direct Provider calls; arbitrary Artifact downloads; Redis, workers, queues or scheduled
   polling.
@@ -205,6 +240,8 @@ commit `93675b9198e99e9078baafd32cb6800af18cdd82`, deployed on 2026-07-26 at
 15:48:57Z. This revision includes the Scheme C Web interaction refresh. The database remains at
 Alembic `20260726_0008`; LinguaSpindle v0.3.2 remains at schema 5. No Alembic
 downgrade was performed or enabled.
+
+The source-only EPUB increment and Alembic `20260727_0009` are not deployed.
 
 The protected pre-routing environment backup is
 `.env.staging.pre-provider-routing-20260726T131839Z` with mode 0600. The migration preparation

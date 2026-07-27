@@ -23,13 +23,14 @@ current consolidated design.
 | [0015 — Quiet Trace UI/UX system](adr/0015-quiet-trace-ui-ux-system.md) | Accepted | Adopt 漫读 Quiet Trace branding, tokens, grouped responsive navigation, task-oriented Library and administration, and restrained Reader chrome without changing v0.5/v0.6 behavior contracts. |
 | [0016 — Trusted-edge client IP, entry rate limiting, bounded challenge cleanup, and device-bound refresh](adr/0016-trusted-edge-rate-limit-and-device-bound-refresh.md) | Accepted | Restore the real client IP from the single trusted host edge, rate-limit the two public auth entries at Nginx, delete expired challenges in bounded batches, and require the device secret plus an allowlisted Origin for refresh. |
 | [0017 — Credential capabilities and contributor-attributed library](adr/0017-credential-capabilities-and-contributor-library.md) | Accepted | Keep one library owner, attach immutable read/upload/translation capabilities to each invited credential, attribute durable content to its actual User, enforce creator-aware mutation, and remove fileless public creation. |
-| [0018 — Private LinguaSpindle translation orchestration](adr/0018-private-linguaspindle-translation-orchestration.md) | Superseded in part by 0019 | Retain private HTTP orchestration, recoverable actor-scoped Runs and verified generated-Edition ingestion; 0019 replaces the operator-owned Provider-secret boundary. |
+| [0018 — Private LinguaSpindle translation orchestration](adr/0018-private-linguaspindle-translation-orchestration.md) | Superseded in part by 0019 and 0021 | Retain private HTTP orchestration, recoverable actor-scoped Runs and verified generated-Edition ingestion; 0019 replaces the operator-owned Provider-secret boundary and 0021 expands the initial TXT-only source restriction to EPUB. |
 | [0019 — Reader-owned Provider credentials and private relay](adr/0019-reader-owned-provider-credentials-and-private-relay.md) | Superseded in part by 0020 | Retain encrypted reader-owned credential versions, exact Run binding, the private scoped Relay and no shared-key fallback; 0020 replaces the single fixed upstream and credential kind. |
 | [0020 — Versioned reader-selected Provider routing](adr/0020-versioned-provider-routing.md) | Accepted | Let one current immutable reader credential version select OpenAI, DeepSeek, Kimi or an operator-allowlisted custom route and a live Provider-catalogue model while preserving scoped Relay authorization and exact Run binding. |
+| [0021 — Structure-preserving EPUB translation](adr/0021-structure-preserving-epub-translation.md) | Accepted | Extend private whole-book translation from TXT to bounded EPUB 2/3 using LinguaSpindle's native EPUB Pipeline, format-matched Artifact ingestion and local EPUB revalidation without a second service or Provider path. |
 
 ## Recording a decision
 
-1. Add the next numbered file under `docs/adr/` (currently `0020`).
+1. Add the next numbered file under `docs/adr/` (currently `0021`).
 2. Record date, status, context, decision, and consequences.
 3. Add a concise row to this index and update consolidated architecture or data-model docs.
 4. Supersede an accepted ADR with a new ADR when reversing it; do not rewrite history to

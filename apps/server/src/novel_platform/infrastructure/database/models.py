@@ -765,7 +765,10 @@ class EditionTranslationRunModel(Base):
     __table_args__ = (
         CheckConstraint("source_revision >= 1", name="source_revision_positive"),
         CheckConstraint("source_sha256 ~ '^[0-9a-f]{64}$'", name="source_sha256_lower_hex"),
-        CheckConstraint("source_format = 'txt'", name="source_format_txt"),
+        CheckConstraint(
+            "source_format IN ('epub', 'txt')",
+            name="source_format_supported",
+        ),
         CheckConstraint("length(btrim(target_language)) > 0", name="target_language_not_blank"),
         CheckConstraint("length(btrim(edition_title)) > 0", name="edition_title_not_blank"),
         CheckConstraint(

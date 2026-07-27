@@ -21,6 +21,7 @@ from novel_platform.api.translation_responses import (
 from novel_platform.application.access import LibraryAccessScope, LibraryAccessService
 from novel_platform.application.translations.commands import CreateTranslationRun
 from novel_platform.application.translations.service import TranslationRunService
+from novel_platform.domain.library.models import FileFormat
 from novel_platform.infrastructure.database.models import EditionTranslationRunModel
 
 router = APIRouter(tags=["translations"])
@@ -58,9 +59,13 @@ async def get_translation_service_status(
     storage: FileStorageDependency,
     settings: TranslationSettings,
     client: LinguaSpindleDependency,
+    source_format: FileFormat = FileFormat.TXT,
 ) -> TranslationServiceStatusResponse:
     scope = await _scope(session, auth)
-    service_status = await _service(session, storage, settings, client).service_status(scope)
+    service_status = await _service(session, storage, settings, client).service_status(
+        scope,
+        source_format,
+    )
     return translation_service_response(service_status)
 
 

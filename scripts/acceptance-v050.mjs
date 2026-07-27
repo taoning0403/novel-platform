@@ -807,7 +807,9 @@ async function main() {
       await adminPageState.page.getByRole("heading", { name: "确认导入" }).waitFor();
       await adminPageState.page.getByLabel("书名").fill("验收共享藏书");
       await adminPageState.page.getByLabel("Edition 名称").fill("验收 TXT 版本");
-      await adminPageState.page.getByLabel("语言").fill("zh-CN");
+      await adminPageState.page
+        .getByRole("textbox", { name: "语言", exact: true })
+        .fill("zh-CN");
       const commitResponsePromise = adminPageState.page.waitForResponse(
         (response) => response.url().includes("/api/v1/imports/") && response.url().endsWith("/commit"),
       );

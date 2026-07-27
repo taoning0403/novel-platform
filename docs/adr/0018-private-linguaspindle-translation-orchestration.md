@@ -1,6 +1,6 @@
 # ADR 0018: Private LinguaSpindle translation orchestration
 
-- Status: accepted
+- Status: superseded in part by ADR 0019 and ADR 0021
 - Date: 2026-07-23
 - Supersedes: ADR 0003's proposed client-supplied credential direction for this integration
 - Extends: ADR 0002 for generated translation Editions and ADR 0009 for staging topology

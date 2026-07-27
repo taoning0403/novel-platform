@@ -13,7 +13,7 @@ migrations, and tests.
 | `.agents/skills/novel-platform-design-system/` | Approved 漫读 Quiet Trace tokens, layout, interaction, accessibility, and verification constraints for Web UI work. |
 | `docs/PROJECT_STATE.md` | Deployed v0.10.0 baseline plus current post-v0.10 Provider-routing scope, verification, omissions, and deployment state. |
 | `docs/architecture.md`, `docs/data-model.md` | Boundaries, flows, relationships, and invariants. |
-| `docs/DECISIONS.md`, `docs/adr/0012-*` through `0020-*` | Authentication, capability/contributor library, Quiet Trace, proxy hardening, private translation, reader-owned credentials and version-bound Provider-routing decisions. |
+| `docs/DECISIONS.md`, `docs/adr/0012-*` through `0021-*` | Authentication, capability/contributor library, Quiet Trace, proxy hardening, private translation, reader-owned credentials, version-bound Provider routing and structure-preserving EPUB translation decisions. |
 | `compose.yaml` | Isolated local PostgreSQL, migration, API, library volume, and Web topology. |
 | `compose.staging.yml`, `.env.staging.example`, `compose.translation.yml` | HTTPS/WebAuthn single-host contract plus optional Server and database-connected Relay overlay on external `linguaspindle-private`; Relay has no host/proxy port. |
 | `scripts/acceptance-v0100.mjs` | Current Provider-routing candidate gate: v0.9 replay plus six extended encrypted-BYOK/multi-Provider/thinking/Relay/Web/version/topology criteria. |
@@ -61,13 +61,13 @@ migrations, and tests.
 | `application/site/service.py` | Limited public/site-security settings and change audit. |
 | `application/books/`, `editions/`, `series/` | Readable, owner/creator-aware library orchestration and deletion dependencies. |
 | `application/library/` | Actor-attributed EPUB/TXT inspect/commit/revision, generated ingestion reuse and safe storage lifecycle. |
-| `application/translations/` | Run state machine/orchestration, deterministic remote correlation, sync/control/cleanup and atomic generated ingestion. |
+| `application/translations/` | EPUB/TXT Run state machine/orchestration, deterministic remote correlation, sync/control/cleanup and format-validated atomic generated ingestion. |
 | `application/provider_credentials/` | Bounded live model discovery, AES-256-GCM credential encryption, immutable version lifecycle, configuration fail-closed behavior and safe status projection. |
 | `application/reader/` | Safe EPUB/TXT projection, protected resources, progress/settings/recent state. |
 | `infrastructure/repositories/credentials.py` | Credential capability, Passkey, challenge and device-secret lookups/counting plus bounded challenge deletion. |
 | `infrastructure/repositories/{books,editions,series,reader,translations}.py` | Explicit library owner, actor creator and viewer query boundaries. |
 | `infrastructure/repositories/provider_credentials.py` | Per-User current/version resolution, Run/Job-bound Relay authorization and sanitized usage aggregation. |
-| `infrastructure/integrations/linguaspindle.py` | Narrow, same-origin, no-redirect, bounded-streaming `>=0.3.2,<0.4.0` private HTTP client with private credential scope. |
+| `infrastructure/integrations/linguaspindle.py` | Central EPUB/TXT Pipeline/MIME/Artifact mapping plus narrow, same-origin, no-redirect, bounded-streaming `>=0.3.2,<0.4.0` private HTTP client with private credential scope. |
 | `infrastructure/integrations/provider_http.py` | Shared bounded Provider response reader and recursive reflected-secret detector used by model discovery and Relay sanitization. |
 | `infrastructure/database/models.py` | Identity/capability, creator-attributed library, credential-version/usage, scoped Translation Run, auth and reader mappings. |
 | `infrastructure/storage/local.py` | Random-key private local storage with checksum and bounded-path enforcement. |
@@ -75,6 +75,7 @@ migrations, and tests.
 | `migrations/versions/20260723_0006_capabilities_contributors_translations.py` | Destructive fileless cleanup, creator/capability backfill and Translation Run schema; no downgrade. |
 | `migrations/versions/20260726_0007_provider_credentials_and_relay.py` | Encrypted credential/usage schema and non-null Run binding; fails closed rather than assigning or deleting existing unscoped v0.9 Runs. |
 | `migrations/versions/20260726_0008_multi_provider_credentials.py` | Adds immutable Provider name/base/model/default-off thinking metadata, one current version per User and v1/v2 authenticated-cipher compatibility. |
+| `migrations/versions/20260727_0009_epub_translation.py` | Widens Translation Run sources from TXT to `epub | txt`, preserves TXT history and refuses downgrade while EPUB Runs exist. |
 | `tests/integration/test_auth_and_isolation.py` | Credential capabilities/state, device concurrency, recovery/reset/lock and private isolation. |
 | `tests/integration/test_auth_hardening.py` | Device-bound refresh, uniform failure, replay revocation, fail-closed Origin, and device-Cookie renewal. |
 | `tests/integration/test_challenge_cleanup.py` | Bounded expired-challenge deletion, valid-row preservation, and concurrent single-use verification. |
@@ -82,7 +83,7 @@ migrations, and tests.
 | `tests/integration/test_api_workflow.py`, `test_contributor_library.py` | Legacy API removal, shared visibility, attribution and contributor permission/deletion matrix. |
 | `tests/integration/test_migrations.py` | Empty/v0.4/v0.9/v0.10 upgrades, destructive count/preservation, capability/creator backfill and fail-closed unscoped-Run preflight. |
 | `tests/unit/test_provider_credentials.py` | Live model discovery, vault/routing/thinking configuration, v1/v2 encryption compatibility and Relay payload/response sanitization units. |
-| `tests/unit/test_linguaspindle_client.py`, `tests/integration/test_translation_runs.py` | Private client hardening plus scoped credential lifecycle/isolation, Relay ASGI authorization/usage, and Run idempotency/control/cleanup/ingestion/draft/retranslation behavior. |
+| `tests/unit/test_linguaspindle_client.py`, `tests/integration/test_translation_runs.py` | Format-specific private client hardening plus scoped credential lifecycle/isolation, Relay ASGI authorization/usage, and EPUB/TXT Run idempotency/control/cleanup/ingestion/draft/retranslation behavior. |
 
 ## Web and shared client
 

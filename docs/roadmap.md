@@ -30,20 +30,21 @@
 - v0.10.0: immutable AES-256-GCM-encrypted reader-owned OpenAI-compatible credential versions,
   exact Run-to-version binding, sanitized Provider token usage, opaque LinguaSpindle v0.3.2
   credential scopes, and a private Relay with no administrator/shared-key fallback.
+- Post-v0.10 Provider routing: exact version-bound OpenAI, DeepSeek, Kimi or
+  operator-allowlisted custom routing, live model-catalogue selection and default-off thinking.
 
 ## Current committed milestone
 
-- Post-v0.10 Provider routing increment: one current immutable configuration per translating User,
-  with OpenAI, DeepSeek, Kimi and operator-allowlisted custom OpenAI-compatible choices; v2
-  authenticated routing metadata; live Provider model-catalogue selection without product
-  defaults; and Relay selection from the exact Run-bound version.
+- Structure-preserving EPUB translation: extend the existing private scoped Run workflow from TXT
+  to common valid, unencrypted EPUB 2/3 through LinguaSpindle's native `novel_epub_v1` Pipeline,
+  local Artifact revalidation and creator-preview/admin-publish generated EPUB Editions.
 
-The implementation, focused verification, revision-0008 migration and external deployment
-verification must be consolidated before assigning the next release version.
+The implementation, focused verification and revision-0009 migration must be consolidated before
+assigning the next release version. Staging deployment remains a separate action.
 
 ## Committed boundary
 
-ADR 0020 defines the current increment. Further durable behavior requires an explicit task,
+ADR 0021 defines the current increment. Further durable behavior requires an explicit task,
 incremental acceptance criteria, and any necessary ADR before implementation.
 
 ## Reserved future increments
@@ -53,7 +54,7 @@ Candidate later work, not committed:
 1. Consider annotations/export and per-chapter translation review/editing in a later milestone.
 2. Consider optional source comparison without making normal reading depend on a source link.
 3. Evaluate object storage, a worker, and a queue only when measured workloads justify them.
-4. Consider EPUB/manga translation, site-funded translation, per-Run Provider selection or
+4. Consider manga/other-document translation, site-funded translation, per-Run Provider selection or
    automatic Provider failover only after explicit scope, threat-model and cost/data-egress
    review; keep upstream keys write-only/encrypted and out of Browser/LinguaSpindle public state.
 5. Evaluate native clients only after their secure credential and offline synchronization model is

@@ -34,6 +34,7 @@ def translation_service_response(
         enabled=status.enabled,
         available=status.available,
         version=status.version,
+        source_format=status.source_format,
         pipeline_key=status.pipeline_key,
         pipeline_version=status.pipeline_version,
         provider_id=status.provider_id,

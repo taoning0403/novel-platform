@@ -236,10 +236,10 @@ launch, the actor must have both current `translation.use` authority and a curre
 Provider credential version. There is no shared administrator-key fallback.
 
 ```text
-actor + fixed readable TXT EditionFile
+actor + fixed readable EPUB or TXT EditionFile
   -> select exact actor credential version
   -> create Run (actor/client UUID idempotency + source revision/SHA + credential snapshot)
-  -> Relay + Lingua status/version/pipeline/provider/idempotency checks
+  -> format-specific Lingua status/version/pipeline/provider/idempotency checks
   -> deterministic Project + scoped Job requests and stored correlation IDs
   -> Lingua Job executes with opaque credential_scope + Job correlation
   -> private Relay validates scope/binding/model/service Bearer and atomically claims a first Job ID
@@ -248,7 +248,8 @@ actor + fixed readable TXT EditionFile
   -> on-demand selected-Run sync/control (no worker or scheduler)
   -> terminal successful Artifact metadata
   -> same-origin bounded streaming download + size/SHA/format validation
-  -> shared generated-ingestion kernel + one DB transaction + file compensation
+  -> EPUB archive/package/language reinspection or TXT normalization
+  -> generated-ingestion transaction + exact file compensation
   -> draft/ai/generated Edition owned by library owner, attributed to actor
   -> creator-only preview -> administrator-only ready publication
 ```
@@ -324,7 +325,9 @@ storage. It cannot be downgraded because placeholder deletion is destructive. Al
 the credential-version binding non-null on every Run. It refuses any existing unscoped v0.9 Run
 instead of inventing a payer or deleting orchestration history. Alembic `20260726_0008` adds
 version-bound Provider routing/model/thinking metadata, preserves legacy v1 ciphertext, and
-enforces one current configuration and one monotonic version sequence per User.
+enforces one current configuration and one monotonic version sequence per User. Alembic
+`20260727_0009` widens only the durable Run source-format check to `epub | txt`; it preserves
+existing TXT rows and refuses downgrade while an EPUB Run exists.
 
 Deployment order is:
 
@@ -334,6 +337,7 @@ validate candidate/config/topology -> stop writers -> sanitized count preflight
 -> explicit approval for destructive migration/reset -> Alembic 20260723_0006
 -> fail-closed unscoped-Run check -> Alembic 20260726_0007
 -> version-bound Provider route/model/thinking migration -> Alembic 20260726_0008
+-> EPUB/TXT Translation Run constraint migration -> Alembic 20260727_0009
 -> volume integrity audit -> API/Web health + credential capability matrix
 -> LinguaSpindle >=0.3.2 + private Relay network/secret/health verification
 -> scoped synthetic translation without a paid Provider call
@@ -355,7 +359,7 @@ generated Editions. Remote Projects are never cleaned by pattern or inventory gu
 
 v0.10.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
 public registration/catalogue, payments, advertising, public/raw downloads, native clients,
-scheduled jobs, object storage, Series nesting/reordering, EPUB/manga translation, per-chapter
-review, per-Run Provider switching, arbitrary/unallowlisted custom upstreams, automatic Provider
-failover, site-funded fallback, budgets/quotas, vault-master-key rotation or arbitrary Artifact
-URLs. Adding any durable boundary requires a new explicit milestone and ADR.
+scheduled jobs, object storage, Series nesting/reordering, manga or other-document translation,
+per-chapter review, per-Run Provider switching, arbitrary/unallowlisted custom upstreams,
+automatic Provider failover, site-funded fallback, budgets/quotas, vault-master-key rotation or
+arbitrary Artifact URLs. Adding any durable boundary requires a new explicit milestone and ADR.

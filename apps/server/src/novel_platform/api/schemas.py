@@ -395,6 +395,7 @@ class TranslationServiceStatusResponse(BaseModel):
     enabled: bool
     available: bool
     version: str | None
+    source_format: FileFormat
     pipeline_key: str
     pipeline_version: str | None
     provider_id: str

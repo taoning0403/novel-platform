@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novel_platform.application.editions.commands import CreateEdition
 from novel_platform.application.editions.service import EditionService
 from novel_platform.application.errors import ApplicationError
+from novel_platform.application.library.epub import inspect_epub
 from novel_platform.application.library.filenames import sanitize_filename
 from novel_platform.application.library.storage import FileStorage, StorageError
 from novel_platform.application.library.text import normalize_text
@@ -30,6 +31,7 @@ from novel_platform.infrastructure.database.models import (
 from novel_platform.infrastructure.integrations.linguaspindle import (
     LinguaSpindleGateway,
     RemoteArtifact,
+    translation_format_contract,
 )
 from novel_platform.infrastructure.repositories.library import LibraryRepository
 from novel_platform.infrastructure.repositories.translation_runs import TranslationRunRepository
@@ -62,10 +64,21 @@ class GeneratedTranslationIngestionService:
         run = await self.runs.get(owner_user_id, run_id)
         if run is None:
             raise ApplicationError("translation_run_not_found", "翻译任务不存在。", status_code=404)
-        self._validate_artifact(run.remote_project_id, run.remote_job_id, artifact)
+        format_contract = translation_format_contract(run.source_format)
+        self._validate_artifact(
+            run.remote_project_id,
+            run.remote_job_id,
+            artifact,
+            source_format=run.source_format,
+        )
 
         source_key = await to_thread.run_sync(self.storage.allocate_temporary)
         normalized_key: str | None = None
+        normalized_size: int | None = None
+        normalized_sha256: str | None = None
+        text_encoding: str | None = None
+        content_item_count: int | None = None
+        extracted_metadata: dict[str, object] = {}
         moved: list[tuple[str, str]] = []
         try:
             source_path = self.storage.temporary_path(source_key)
@@ -89,21 +102,49 @@ class GeneratedTranslationIngestionService:
                     status_code=502,
                 )
 
-            normalized_key = await to_thread.run_sync(self.storage.allocate_temporary)
-            normalized_path = self.storage.temporary_path(normalized_key)
-            parsed = await to_thread.run_sync(
-                partial(
-                    normalize_text,
-                    source_path,
-                    normalized_path,
-                    requested_encoding="auto",
-                    inferred_title=PurePath(artifact.filename).stem or "translated",
+            if run.source_format is FileFormat.TXT:
+                normalized_key = await to_thread.run_sync(self.storage.allocate_temporary)
+                normalized_path = self.storage.temporary_path(normalized_key)
+                parsed_text = await to_thread.run_sync(
+                    partial(
+                        normalize_text,
+                        source_path,
+                        normalized_path,
+                        requested_encoding="auto",
+                        inferred_title=PurePath(artifact.filename).stem or "translated",
+                    )
                 )
-            )
-            normalized_size = (await to_thread.run_sync(normalized_path.stat)).st_size
-            normalized_sha256 = await to_thread.run_sync(
-                self.storage.calculate_temporary_checksum, normalized_key
-            )
+                normalized_size = (await to_thread.run_sync(normalized_path.stat)).st_size
+                normalized_sha256 = await to_thread.run_sync(
+                    self.storage.calculate_temporary_checksum, normalized_key
+                )
+                text_encoding = parsed_text.encoding
+                content_item_count = parsed_text.content_item_count
+                extracted_metadata = dict(parsed_text.metadata)
+            else:
+                parsed_epub = await to_thread.run_sync(
+                    partial(
+                        inspect_epub,
+                        source_path,
+                        max_entry_count=self.settings.max_epub_entry_count,
+                        max_uncompressed_bytes=self.settings.max_epub_uncompressed_bytes,
+                        max_cover_bytes=self.settings.max_cover_bytes,
+                        max_cover_pixels=self.settings.max_cover_pixels,
+                    )
+                )
+                artifact_language = parsed_epub.metadata.get("language")
+                if (
+                    not isinstance(artifact_language, str)
+                    or artifact_language.strip().casefold()
+                    != run.target_language.strip().casefold()
+                ):
+                    raise ApplicationError(
+                        "translation_artifact_language_mismatch",
+                        "EPUB 翻译产物的目标语言与任务不一致。",
+                        status_code=502,
+                    )
+                content_item_count = parsed_epub.content_item_count
+                extracted_metadata = dict(parsed_epub.metadata)
 
             locked = await self.runs.get(owner_user_id, run_id, for_update=True)
             if locked is None:
@@ -128,10 +169,12 @@ class GeneratedTranslationIngestionService:
 
             source_storage_key = await to_thread.run_sync(self.storage.commit_temporary, source_key)
             moved.append((source_key, source_storage_key))
-            normalized_storage_key = await to_thread.run_sync(
-                self.storage.commit_temporary, normalized_key
-            )
-            moved.append((normalized_key, normalized_storage_key))
+            normalized_storage_key: str | None = None
+            if normalized_key is not None:
+                normalized_storage_key = await to_thread.run_sync(
+                    self.storage.commit_temporary, normalized_key
+                )
+                moved.append((normalized_key, normalized_storage_key))
 
             source_file = await self.library.add_stored_file(
                 StoredFileModel(
@@ -139,28 +182,32 @@ class GeneratedTranslationIngestionService:
                     created_by_user_id=locked.created_by_user_id,
                     storage_key=source_storage_key,
                     original_filename=sanitize_filename(artifact.filename),
-                    media_type="text/plain",
-                    file_format=FileFormat.TXT,
+                    media_type=format_contract.artifact_media_type,
+                    file_format=locked.source_format,
                     purpose=StoredFilePurpose.EDITION_SOURCE,
                     size_bytes=artifact.size,
                     sha256=artifact.checksum,
                 )
             )
-            normalized_file = await self.library.add_stored_file(
-                StoredFileModel(
-                    owner_user_id=locked.library_owner_user_id,
-                    created_by_user_id=locked.created_by_user_id,
-                    storage_key=normalized_storage_key,
-                    original_filename=sanitize_filename(
-                        f"{PurePath(artifact.filename).stem or 'translated'}.utf8.txt"
-                    ),
-                    media_type="text/plain; charset=utf-8",
-                    file_format=FileFormat.TXT,
-                    purpose=StoredFilePurpose.NORMALIZED_TEXT,
-                    size_bytes=normalized_size,
-                    sha256=normalized_sha256,
+            normalized_file: StoredFileModel | None = None
+            if normalized_storage_key is not None:
+                if normalized_size is None or normalized_sha256 is None:
+                    raise RuntimeError("normalized TXT metadata was not calculated")
+                normalized_file = await self.library.add_stored_file(
+                    StoredFileModel(
+                        owner_user_id=locked.library_owner_user_id,
+                        created_by_user_id=locked.created_by_user_id,
+                        storage_key=normalized_storage_key,
+                        original_filename=sanitize_filename(
+                            f"{PurePath(artifact.filename).stem or 'translated'}.utf8.txt"
+                        ),
+                        media_type="text/plain; charset=utf-8",
+                        file_format=FileFormat.TXT,
+                        purpose=StoredFilePurpose.NORMALIZED_TEXT,
+                        size_bytes=normalized_size,
+                        sha256=normalized_sha256,
+                    )
                 )
-            )
             edition = await self.editions.create(
                 locked.book_id,
                 locked.library_owner_user_id,
@@ -175,7 +222,7 @@ class GeneratedTranslationIngestionService:
                     status=EditionStatus.DRAFT,
                     metadata={
                         "generated_by": "linguaspindle",
-                        "pipeline": "novel_txt_v1",
+                        "pipeline": format_contract.pipeline_key,
                     },
                 ),
                 created_by_user_id=locked.created_by_user_id,
@@ -185,12 +232,14 @@ class GeneratedTranslationIngestionService:
                 EditionFileModel(
                     edition_id=edition.id,
                     stored_file_id=source_file.id,
-                    normalized_stored_file_id=normalized_file.id,
+                    normalized_stored_file_id=(
+                        normalized_file.id if normalized_file is not None else None
+                    ),
                     revision=1,
                     is_current=True,
-                    text_encoding=parsed.encoding,
-                    content_item_count=parsed.content_item_count,
-                    extracted_metadata=dict(parsed.metadata),
+                    text_encoding=text_encoding,
+                    content_item_count=content_item_count,
+                    extracted_metadata=extracted_metadata,
                 )
             )
             now = datetime.now(UTC)
@@ -230,15 +279,19 @@ class GeneratedTranslationIngestionService:
         project_id: str | None,
         job_id: str | None,
         artifact: RemoteArtifact,
+        *,
+        source_format: FileFormat,
     ) -> None:
+        format_contract = translation_format_contract(source_format)
         if (
             project_id is None
             or job_id is None
             or artifact.project_id != project_id
             or artifact.job_id != job_id
-            or artifact.kind != "novel_export_txt"
-            or artifact.media_type.split(";", 1)[0].strip().lower() != "text/plain"
-            or PurePath(artifact.filename).suffix.lower() != ".txt"
+            or artifact.kind != format_contract.artifact_kind
+            or artifact.media_type.split(";", 1)[0].strip().lower()
+            != format_contract.artifact_media_type
+            or PurePath(artifact.filename).suffix.lower() != format_contract.extension
             or artifact.size <= 0
         ):
             raise ApplicationError(

@@ -203,7 +203,8 @@ owner; current-month totals use UTC month boundaries.
 `edition_translation_runs` is durable orchestration state, not a queue or LinguaSpindle mirror.
 It stores:
 
-- library owner, actor, Book, fixed source Edition + EditionFile + revision + SHA-256 + `txt`;
+- library owner, actor, Book, fixed source Edition + EditionFile + revision + SHA-256 +
+  `epub | txt`;
 - exact non-null Provider credential-version foreign key;
 - target language, requested title, optional same-Book generated Edition to supersede;
 - non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs,
@@ -224,7 +225,9 @@ bootstrap, every Provider call must match the persisted Job correlation.
 The source snapshot never follows a later file replacement. Only a verified successful Artifact
 can create one `draft + ai + generated` Edition and file relation. That Edition's creator is the
 Run actor; its owner remains the site owner. Creator/admin may see the draft; only admin changes it
-to `ready`. Partial/failed/corrupt output leaves `generated_edition_id` null.
+to `ready`. TXT output stores the downloaded text plus its normalized UTF-8 StoredFile. EPUB output
+stores one revalidated `application/epub+zip` Edition source with no normalized TXT relation.
+Partial/failed/corrupt/format-mismatched output leaves `generated_edition_id` null.
 
 ## Private reading state
 
@@ -248,7 +251,7 @@ belongs to at most one Series; `(series_id, position)` provides stable append or
 Series removes memberships only. Reader queries filter members through Book readability and hide
 an empty result.
 
-## v0.5, v0.9 and v0.10 migrations
+## v0.5 through EPUB-translation migrations
 
 Migration `20260715_0005` adds the site/credential/Passkey/challenge schema and expands
 User/Device/Session/audit rows without deleting content or private reading state. The separate
@@ -277,3 +280,8 @@ fabricating attribution. The operator must retain the pre-upgrade backup, explic
 those orchestration rows under the approved deployment procedure, and rerun. A direct
 v0.8-to-v0.10 upgrade first creates an empty Run table in `0006`, so `0007` is non-destructive for
 that path.
+
+Migration `20260726_0008` adds immutable Provider routing/model/thinking metadata and preserves
+legacy v1 credential semantics. Migration `20260727_0009` changes only the Run source-format
+check from TXT to `epub | txt`; it does not rewrite existing TXT rows. Downgrade refuses while any
+EPUB Run remains because converting or deleting that durable history would be untruthful.

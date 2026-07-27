@@ -242,7 +242,7 @@ async function main() {
             ACCEPTANCE_TAG: `${candidateTag}-regression`,
             ACCEPTANCE_INHERITED_TAG: `${candidateTag}-regression-v080`,
             ACCEPTANCE_COMMAND: "acceptance:v0100",
-            ACCEPTANCE_EXPECTED_REVISION: "20260726_0008",
+            ACCEPTANCE_EXPECTED_REVISION: "20260727_0009",
             ACCEPTANCE_LINGUASPINDLE_VERSION: "0.3.2",
             ACCEPTANCE_LINGUASPINDLE_VERSION_RANGE: ">=0.3.2,<0.4.0",
             ACCEPTANCE_PROVIDER_CREDENTIAL_MASTER_KEY:

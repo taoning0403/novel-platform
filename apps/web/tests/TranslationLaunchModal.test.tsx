@@ -71,6 +71,7 @@ const service: TranslationServiceStatus = {
   enabled: true,
   available: true,
   version: "0.3.2",
+  source_format: "txt",
   pipeline_key: "novel_txt_v1",
   pipeline_version: "1",
   provider_id: "mock",
@@ -140,6 +141,7 @@ describe("TranslationLaunchModal", () => {
     );
 
     expect(await screen.findByText(/Mock Provider · mock-v1/)).toBeInTheDocument();
+    expect(api.translationServiceStatus).toHaveBeenCalledWith("txt");
     expect(screen.getByText(/个人凭据 v3/)).toBeInTheDocument();
     expect(screen.getByText(/DeepSeek · deepseek-reasoner · 思考模式/))
       .toBeInTheDocument();
@@ -166,6 +168,43 @@ describe("TranslationLaunchModal", () => {
     expect(payload).not.toHaveProperty("base_url");
     expect(payload).not.toHaveProperty("download_url");
     expect(onCreated).toHaveBeenCalledWith(createdRun);
+  });
+
+  it("queries EPUB capability and explains the structure-preserving output", async () => {
+    const epubSource: Edition = {
+      ...source,
+      current_file: source.current_file
+        ? {
+            ...source.current_file,
+            file_format: "epub",
+            original_filename: "source.epub",
+            media_type: "application/epub+zip",
+            text_encoding: null,
+          }
+        : null,
+    };
+    const epubBook = { ...book, editions: [epubSource] } as BookDetail;
+    vi.spyOn(api, "translationServiceStatus").mockResolvedValue({
+      ...service,
+      source_format: "epub",
+      pipeline_key: "novel_epub_v1",
+    });
+    vi.spyOn(api, "getProviderCredential").mockResolvedValue(configuredCredential);
+
+    render(
+      <TranslationLaunchModal
+        book={epubBook}
+        edition={epubSource}
+        open
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/章节顺序、目录、链接、图片与样式/))
+      .toBeInTheDocument();
+    expect(screen.getByText(/EPUB · novel_epub_v1/)).toBeInTheDocument();
+    expect(api.translationServiceStatus).toHaveBeenCalledWith("epub");
   });
 
   it("blocks launch and routes to credential settings when no personal key is configured", async () => {

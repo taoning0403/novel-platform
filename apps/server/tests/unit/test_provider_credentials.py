@@ -29,6 +29,7 @@ from novel_platform.application.provider_credentials.service import (
 )
 from novel_platform.application.translations.service import TranslationRunService
 from novel_platform.config import DatabaseSettings, ProviderRelaySettings, Settings
+from novel_platform.domain.library.models import FileFormat
 from novel_platform.infrastructure.database.models import ProviderCredentialVersionModel
 from novel_platform.infrastructure.integrations.linguaspindle import LinguaServiceStatus
 from novel_platform.infrastructure.repositories.provider_credentials import UsageTotals
@@ -250,6 +251,7 @@ def test_legacy_v1_run_snapshot_ignores_migrated_routing_and_thinking_columns() 
             enabled=True,
             available=True,
             version="0.3.2",
+            source_format=FileFormat.TXT,
             pipeline_key="novel_txt_v1",
             pipeline_version="1",
             provider_id="openai-compatible",
@@ -365,6 +367,7 @@ def test_v2_run_snapshot_projects_non_empty_provider_display_name(
             enabled=True,
             available=True,
             version="0.3.2",
+            source_format=FileFormat.TXT,
             pipeline_key="novel_txt_v1",
             pipeline_version="1",
             provider_id="openai-compatible",

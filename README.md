@@ -5,7 +5,8 @@
 漫读 v0.10.0 (`novel-platform`) is a private, self-hosted digital reading and
 collection-management site designed for a personal, non-commercial deployment. One administrator
 owns a shared EPUB/TXT collection. A small number of invited people can read published Editions;
-selected credentials may also upload file-backed contributions or request TXT novel translation.
+selected credentials may also upload file-backed contributions or request EPUB/TXT novel
+translation.
 Each person keeps independent progress, settings, preferences, devices, and Sessions.
 The current Web interface is Chinese-localized.
 
@@ -39,8 +40,9 @@ before exposing an installation to the Internet.
   one-time-displayed credentials with explicit capability snapshots for invited people.
 - Attribute uploaded/generated Books, Editions, files, imports, and Translation Runs to the
   durable User while retaining one administrator-owned library and creator-aware mutation rules.
-- Translate readable TXT Editions through Server-only private LinguaSpindle HTTP with persisted,
-  idempotent Runs, bounded artifact ingestion, creator draft preview, and administrator publish.
+- Translate readable EPUB/TXT Editions through Server-only private LinguaSpindle HTTP with
+  persisted idempotent Runs, structure-preserving EPUB output, bounded Artifact ingestion,
+  creator draft preview, and administrator publish.
 - Configure, rotate, or remove only your own write-only Provider key; bind every Run to one
   encrypted credential version and display sanitized monthly/all-time token usage without
   returning key-derived material.
@@ -280,10 +282,11 @@ filtered readable projection:
 Read-only credentials may update only their own progress, status, Reader Settings,
 preferred/last-opened Edition, device names, and Session/device revocations. `library.upload`
 permits file-backed create/add plus management of that User's own uploaded resources;
-`translation.use` independently permits readable-TXT translation and management of that User's
-own Runs/generated Editions. Neither grants Series, raw download, publish, reader/site/audit, or
-Passkey administration. A Book creator cannot delete a Book containing another User's
-contribution. Backend checks capability and resource creator; hiding buttons is not security.
+`translation.use` independently permits readable EPUB/TXT translation and management of that
+User's own Runs/generated Editions. Neither grants Series, raw download, publish,
+reader/site/audit, or Passkey administration. A Book creator cannot delete a Book containing
+another User's contribution. Backend checks capability and resource creator; hiding buttons is
+not security.
 
 The accepted v0.4 Reader, file-revision, Edition-identity, source/supersedes, progress-conflict,
 and Series invariants remain unchanged.
@@ -345,6 +348,9 @@ Runs or restore/reset the exact disposable environment before retrying.
 Alembic `20260726_0008` adds immutable Provider kind/name/base URL/model/thinking metadata, one
 current configuration and one per-User version sequence. It preserves existing v1 OpenAI
 ciphertext and uses v2 authenticated data for new versions.
+
+Alembic `20260727_0009` permits EPUB as well as TXT Translation Run sources without rewriting
+existing TXT rows. Downgrade is refused while any EPUB Run remains.
 
 Stop writers, create a coordinated `scripts/backup-library.sh` backup, and pass an isolated
 `scripts/restore-library.sh --test` before migration. Keep the matching
@@ -576,8 +582,8 @@ All API endpoints use `/api/v1`:
 - `/books`, nested `/editions`, `/series`: readable queries plus capability/creator-aware library
   mutations (Series remains administrator-only);
 - `/imports`: administrator or `library.upload` inspect/commit/revision operations, actor-isolated;
-- nested `/translation-runs` and `/translations`: actor-scoped TXT translation creation, listing,
-  controls, synchronization, draft preview, and administrator publication;
+- nested `/translation-runs` and `/translations`: actor-scoped EPUB/TXT translation creation,
+  listing, controls, synchronization, draft preview, and administrator publication;
 - `/editions/{id}/file`: administrator-only raw download;
 - protected Book cover endpoints and `/editions/{id}/reader/*`: safe readable assets;
 - `/books/{id}/preferences`, `/reader/settings`, `/reader/recent`: viewer-private state;

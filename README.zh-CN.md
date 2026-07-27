@@ -4,7 +4,7 @@
 
 漫读 v0.10.0（`novel-platform`）是一套私有、自托管的数字阅读与藏书整理站点，产品设计
 面向个人、非商业部署。唯一管理员拥有共享的 EPUB/TXT 藏书；少量受邀人可以阅读已发布
-Edition，管理员还可按凭证分别授予文件上传或 TXT 小说翻译能力。每个人分别保存自己的
+Edition，管理员还可按凭证分别授予文件上传或 EPUB/TXT 小说翻译能力。每个人分别保存自己的
 进度、阅读设置、偏好、设备和会话。当前 Web 界面使用中文。
 
 项目刻意不提供公开注册或目录、公开原文件下载、用户名/密码登录、评论、
@@ -32,8 +32,8 @@ Provider 路由增量，package/API metadata 暂时仍为 v0.10.0。候选与部
   能力快照的访问凭证。
 - 上传或生成的 Book、Edition、文件、Import 与 Translation Run 归属到真实持久 User，同时
   保持唯一管理员馆藏 owner 与按创建者限制的操作规则。
-- 通过仅 Server 可达的 LinguaSpindle 私网 HTTP 翻译可读 TXT，持久化幂等 Run、限制 Artifact
-  导入，并提供创建者草稿预览和管理员发布。
+- 通过仅 Server 可达的 LinguaSpindle 私网 HTTP 翻译可读 EPUB/TXT，持久化幂等 Run、保留
+  EPUB 结构、限制 Artifact 导入，并提供创建者草稿预览和管理员发布。
 - 每人只能配置、轮换或删除自己的只写 Provider Key；每个 Run 固定一个加密凭据版本，并
   展示脱敏的本月/累计 Token 用量，不返回任何 Key 派生信息。
 - 会话绑定服务器授权设备，刷新令牌单次轮换，每个受保护请求重新验证当前授权状态；安全
@@ -256,7 +256,7 @@ auth audit cleanup
 
 只读凭证只能更新自己的进度、状态、Reader Settings、首选/最近打开 Edition、设备名称及
 会话/设备撤销。`library.upload` 允许文件型创建/追加并管理本人上传资源；
-`translation.use` 独立允许翻译可读 TXT 并管理本人 Run/生成 Edition。两者都不授予 Series、
+`translation.use` 独立允许翻译可读 EPUB/TXT 并管理本人 Run/生成 Edition。两者都不授予 Series、
 原文件下载、生成译本发布、阅读者/站点/审计或 Passkey 管理。Book 创建者不能删除含他人
 贡献的整本 Book。后端同时检查当前 capability 与资源 creator；隐藏按钮不是安全控制。
 
@@ -310,6 +310,9 @@ Translation Run 必填的凭据版本外键。历史 v0.9 Run 没有真实付款
 
 Alembic `20260726_0008` 新增不可变的 Provider 类型/名称/Base URL/模型/思考状态、每位 User
 一个当前配置及一条版本序列；既有 v1 OpenAI 密文保持兼容，新版本使用 v2 认证数据。
+
+Alembic `20260727_0009` 允许 EPUB 与 TXT 作为 Translation Run 原文格式，不改写既有 TXT
+数据；存在任意 EPUB Run 时拒绝降级。
 
 迁移前停止写入，执行 `scripts/backup-library.sh`，并通过隔离的
 `scripts/restore-library.sh --test`。匹配的 `PROVIDER_CREDENTIAL_MASTER_KEY` 必须另行保护：
@@ -509,8 +512,8 @@ Series、持久性、备份/恢复和泄漏断言均在当前门禁中重放。
 - `/books`、嵌套 `/editions`、`/series`：可读查询与 capability/creator 感知的馆藏变更
   （Series 仍仅管理员）；
 - `/imports`：管理员或 `library.upload` 检查/提交/文件修订，并按 actor 隔离；
-- 嵌套 `/translation-runs` 与 `/translations`：按 actor 隔离的 TXT 翻译创建、列表、控制、
-  同步、草稿预览和管理员发布；
+- 嵌套 `/translation-runs` 与 `/translations`：按 actor 隔离的 EPUB/TXT 翻译创建、列表、
+  控制、同步、草稿预览和管理员发布；
 - `/editions/{id}/file`：仅管理员原始下载；
 - 受保护 Book 封面和 `/editions/{id}/reader/*`：安全可读资源；
 - `/books/{id}/preferences`、`/reader/settings`、`/reader/recent`：当前阅读者私有状态；

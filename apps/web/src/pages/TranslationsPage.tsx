@@ -185,14 +185,18 @@ export function TranslationsPage() {
     setError(null);
     setCredentialError(null);
     try {
-      const [nextService, nextCredential, nextRuns] = await Promise.all([
-        api.translationServiceStatus(),
+      const [nextCredential, nextRuns] = await Promise.all([
         api.getProviderCredential().catch((caught: unknown) => {
           setCredentialError(userFacingError(caught));
           return null;
         }),
         api.listTranslationRuns(),
       ]);
+      const statusRun = nextRuns.find((run) => run.id === selectedIdRef.current)
+        ?? nextRuns[0];
+      const nextService = await api.translationServiceStatus(
+        statusRun?.source_format ?? "txt",
+      );
       setService(nextService);
       setCredential(nextCredential);
       setRuns(nextRuns);
@@ -549,6 +553,13 @@ export function TranslationsPage() {
                   { key: "target", label: "目标语言", children: selected.target_language },
                   { key: "source", label: "原文 Edition", children: selected.source_edition_title },
                   { key: "file", label: "固定文件", children: `r${selected.source_revision} · ${selected.source_format.toUpperCase()}` },
+                  {
+                    key: "output",
+                    label: "输出约定",
+                    children: selected.source_format === "epub"
+                      ? "结构保持 EPUB（章节、目录、链接与资源）"
+                      : "UTF-8 TXT",
+                  },
                   {
                     key: "sha",
                     label: "SHA-256",
