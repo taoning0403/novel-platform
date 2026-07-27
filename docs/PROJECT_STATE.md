@@ -1,10 +1,10 @@
 # Project state
 
 Last reviewed against the repository and staging deployment on 2026-07-27. Staging runs the
-unversioned post-v0.10 Provider-routing increment from Novel Platform commit
-`93675b9198e99e9078baafd32cb6800af18cdd82` with LinguaSpindle commit
-`1eeb5b029703c941c2fb4052d79e72767142cd19`. Package/API metadata remains v0.10.0 and
-the staging database is at Alembic `20260726_0008`.
+unversioned post-v0.10 EPUB-translation increment from Novel Platform commit
+`adb6d876d8addb49ad6d0433e3e1fe9acff8a6ff` with LinguaSpindle commit
+`e089449781458587e7bc8d8a1a2ec843cc1eda81`. Package/API metadata remains v0.10.0 and
+the staging database is at Alembic `20260727_0009`.
 
 ## Current milestone
 
@@ -21,15 +21,11 @@ exact version and sends only its opaque UUID4 scope to standalone LinguaSpindle
 scope, Job, model and fixed upstream before decrypting that actor's key. There is no administrator
 or shared-key fallback.
 
-The deployed post-v0.10 Provider-routing increment is governed by ADR 0020. It keeps package/API
+The deployed post-v0.10 increments are governed by ADRs 0020 and 0021. They keep package/API
 metadata at v0.10.0 while adding OpenAI, DeepSeek, Kimi and operator-allowlisted custom
-configurations plus a default-off thinking switch.
-
-The current source branch adds the unversioned EPUB-translation increment governed by ADR 0021.
-It extends the same private scoped execution from TXT to common valid, unencrypted EPUB 2/3,
-using LinguaSpindle's native structure-preserving Pipeline and Alembic `20260727_0009`. This
-increment has not been deployed; staging remains at the Provider-routing baseline and database
-revision `20260726_0008`.
+configurations, a default-off thinking switch, and private structure-preserving translation for
+common valid, unencrypted EPUB 2/3 through LinguaSpindle's native Pipeline and Alembic
+`20260727_0009`.
 
 ## Implemented v0.10 surface
 
@@ -194,7 +190,7 @@ revision `20260726_0008`.
   refresh, Compose validation and script syntax checks. The exact-commit
   `acceptance-v0100-provider-routing*` gate passed on `e91a41a` with all 6 criteria and 5 steps,
   including the inherited v0.8/v0.9 regressions.
-- The source-only EPUB increment passes Server Ruff format/check, strict mypy, 112 unit tests and
+- The EPUB increment passes Server Ruff format/check, strict mypy, 112 unit tests and
   all 34 PostgreSQL integration tests; Web lint, all 60 tests and the production build; repeatable
   OpenAPI generation; translation Compose parsing; and deployment/restore script syntax checks.
   LinguaSpindle passes Ruff, strict mypy across 43 targets, compileall, dependency/Compose checks
@@ -203,9 +199,16 @@ revision `20260726_0008`.
 - The initial EPUB candidate `pnpm acceptance` advanced an empty database through Alembic
   `20260727_0009`, then stopped in the inherited v0.5 browser replay because its broad historical
   language locator matched two operation radios and the language textbox. The locator now targets
-  the exact language textbox without changing the scenario or criterion; a complete candidate
-  rerun is still required before any new full acceptance PASS, real-container LinguaSpindle chain
-  or deployment is claimed.
+  the exact language textbox without changing the scenario or criterion. The complete gate then
+  passed on exact commit `adb6d876d8addb49ad6d0433e3e1fe9acff8a6ff`: 84 core, 9 v0.8
+  hardening and 11 v0.9 criteria replayed successfully before all 6 current criteria and all 5
+  current steps passed. Fake Provider transport passed; no paid or real-Provider request ran.
+- Production verification on `adb6d876` passed the `0008` to `0009` migration, application and
+  public HTTPS health, private-network and host-port checks, source-format constraint inspection,
+  coordinated backup and isolated database/library restore. Existing counts remained 2 Users,
+  1 Book, 1 Edition, 1 EditionFile and 0 Translation Runs. LinguaSpindle `e089449` remained at
+  schema versions 1 through 5 and passed health and dependency checks against its preserved data
+  volume.
 - External verification on `e91a41a` passed revision-0008 deployment, HTTPS/API/container health,
   migration and library integrity audit, restart/stop-start/recreate persistence, topology and
   secret-agreement checks, sanitized resource reporting, artifact leak scanning, coordinated
@@ -235,13 +238,15 @@ revision `20260726_0008`.
 
 ## Deployment state
 
-Staging at `https://novel.mine-novel.top` runs the post-v0.10 Provider-routing increment at exact
-commit `93675b9198e99e9078baafd32cb6800af18cdd82`, deployed on 2026-07-26 at
-15:48:57Z. This revision includes the Scheme C Web interaction refresh. The database remains at
-Alembic `20260726_0008`; LinguaSpindle v0.3.2 remains at schema 5. No Alembic
-downgrade was performed or enabled.
+Staging at `https://novel.mine-novel.top` runs the post-v0.10 EPUB-translation increment at exact
+commit `adb6d876d8addb49ad6d0433e3e1fe9acff8a6ff`, deployed on 2026-07-27 at
+09:45:33Z. This revision includes the Provider-routing and Scheme C Web increments. The database
+is at Alembic `20260727_0009`; no downgrade was performed or enabled.
 
-The source-only EPUB increment and Alembic `20260727_0009` are not deployed.
+LinguaSpindle v0.3.2 runs commit `e089449781458587e7bc8d8a1a2ec843cc1eda81` in image
+`lingua-spindle:0.3.2-e089449`, started on 2026-07-27 at 09:40:49Z. It remains healthy at schema
+versions 1 through 5. The stopped, network-disconnected previous container and immutable prior
+release remain available for rollback.
 
 The protected pre-routing environment backup is
 `.env.staging.pre-provider-routing-20260726T131839Z` with mode 0600. The migration preparation
@@ -251,6 +256,11 @@ deployment created `novel-platform-v0100-20260726T132053Z`. The final `e91a41a` 
 backup `novel-platform-v0100-20260726T133950Z` passed a fresh isolated database/library restore.
 The Scheme C Web deployment created the coordinated backup
 `novel-platform-v0100-20260726T154811Z`; no database revision change was required.
+The EPUB deployment created `novel-platform-v0100-20260727T094445Z`; its database dump, library
+archive, checksums, stored-file references and revision passed an isolated restore whose temporary
+database and volume were verified removed. LinguaSpindle was backed up consistently while stopped
+under `pre-e089449-20260727T093317Z`; the archive and SQLite integrity checks passed before the
+new container was started.
 
 The deployed custom-route allow-list is empty. OpenAI, DeepSeek and Kimi preset routes are
 available, while custom Provider destinations fail closed until the operator adds an exact
@@ -269,15 +279,16 @@ Runtime inspection confirms:
 - Current secret values were absent from deployment logs, reports, image configuration and image
   history. The authenticated absent-scope probe stopped at Relay's expected sanitized 404 and did
   not contact the fixed upstream.
-- Existing 2 Users, 1 Book and 1 Edition remain. Provider credential versions, usage records,
-  Translation Runs and LinguaSpindle Projects/Jobs are all empty.
-- The Scheme C deployment script and post-deploy healthcheck passed. External checks returned
-  HTTPS 200, HTTP-to-HTTPS 308 and `{"status":"ok"}` from API readiness; Web, Server, Relay and
-  PostgreSQL are healthy, with only Web published on loopback `127.0.0.1:8080`.
+- Existing 2 Users, 1 Book and 1 Edition remain. One current encrypted Provider credential version
+  exists; Provider usage records, Translation Runs and LinguaSpindle Projects/Jobs/Artifacts are
+  all empty.
+- The EPUB deployment script and post-deploy healthcheck passed. External checks returned HTTPS
+  200 and `{"status":"ok"}` from API readiness; Web, Server, Relay, PostgreSQL and LinguaSpindle
+  are healthy, with only Web published on loopback `127.0.0.1:8080`.
 
-No Provider key has been submitted and no real Provider request has been made. Real translation
-requires a `translation.use` actor to configure a personal key; paid/content-egress verification
-remains explicitly pending.
+This deployment did not read, print, submit or call with the stored Provider key, and Provider
+usage remains empty. Paid/content-egress verification remains explicitly pending and requires a
+separate authorized request by a `translation.use` actor.
 
 ## Update triggers
 

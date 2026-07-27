@@ -272,10 +272,10 @@ their original fixed route/model and thinking disabled. Alembic `20260727_0009` 
 the Translation Run source-format constraint from TXT to `epub | txt`; it preserves existing TXT
 rows and refuses downgrade while any EPUB Run remains.
 
-The EPUB-translation increment remains a deployment candidate; the deployed Provider-routing
-baseline remains at `20260726_0008` until the exact EPUB candidate passes the local gate and
-external deployment checks. Do not report deployment PASS merely because package metadata,
-focused tests or migration code exist.
+The EPUB-translation increment is deployed at Alembic `20260727_0009` after its exact candidate
+passed the complete local gate and external deployment checks. For every later candidate, do not
+report deployment PASS merely because package metadata, focused tests or migration code exist;
+repeat the exact-commit gate and the external checks below.
 
 ### 1. Candidate, data and topology baseline
 
@@ -287,7 +287,7 @@ focused tests or migration code exist.
 2. Record sanitized Novel Platform revision/counts, Compose project, containers, networks,
    published ports and database/library mounts. Explicitly record the count of
    `edition_translation_runs`; do not record User IDs, titles, paths, hashes or remote IDs.
-3. Separately inventory the LinguaSpindle v0.3.1 deployment: exact image/commit, schema, container,
+3. Separately inventory the LinguaSpindle v0.3.2 deployment: exact image/commit, schema, container,
    `linguaspindle-private`, SQLite/Artifact volume, health and host-port absence. Novel Platform
    scripts do not own or back up these resources.
 4. Copy the existing Novel Platform and LinguaSpindle mode-600 environment files to separately
