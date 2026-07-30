@@ -3,12 +3,12 @@
 set -Eeuo pipefail
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIRECTORY/.." && pwd)"
+REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIRECTORY/../../.." && pwd)"
 target_ref="${1:-}"
 [[ -n "$target_ref" ]] || { printf 'usage: %s TARGET_COMMIT\n' "$0" >&2; exit 2; }
 
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+# shellcheck source=../staging-lib.sh
+source "$SCRIPT_DIRECTORY/../staging-lib.sh"
 load_staging_environment
 validate_staging_environment
 
@@ -17,7 +17,7 @@ git -C "$REPOSITORY_ROOT" diff --quiet --ignore-submodules -- \
 target_commit="$(git -C "$REPOSITORY_ROOT" rev-parse --verify "$target_ref^{commit}")"
 current_commit="$(git -C "$REPOSITORY_ROOT" rev-parse HEAD)"
 
-"$SCRIPT_DIRECTORY/backup-library.sh"
+"$SCRIPT_DIRECTORY/../data/backup-library.sh"
 git -C "$REPOSITORY_ROOT" switch --detach "$target_commit"
 build_services=(migrate server web)
 if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then

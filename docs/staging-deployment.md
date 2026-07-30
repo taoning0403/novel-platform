@@ -92,7 +92,7 @@ Generate a new mode-600 environment only for a new host:
 
 ```bash
 cd /srv/novel-platform/app
-./scripts/create-staging-env.sh https://reading.example.com
+./scripts/staging/setup/create-staging-env.sh https://reading.example.com
 ```
 
 The command generates independent database, JWT, refresh/throttle-hash, credential/device-hash,
@@ -171,8 +171,9 @@ reach the intended Provider origins without adding a Provider key to host config
 destination must support an OpenAI-compatible `/models` response as well as Chat Completions.
 
 Keep `LINGUASPINDLE_ENABLED=false` until LinguaSpindle has been upgraded and its separate backup
-and restore have passed. Once enabled, `scripts/healthcheck-staging.sh` fails closed unless the
-fixed external network maps the configured DNS alias to exactly one LinguaSpindle container, that
+and restore have passed. Once enabled,
+`scripts/staging/lifecycle/healthcheck-staging.sh` fails closed unless the fixed external network
+maps the configured DNS alias to exactly one LinguaSpindle container, that
 container is running and healthy, `/health` reports a compatible `>=0.3.2,<0.4.0` runtime and
 healthy database, migrations are exactly at schema 5, no host port is published, and Server-side
 DNS resolves only to that network endpoint. It also verifies, without printing any secret, that
@@ -240,7 +241,7 @@ before their own one-off operations.
 Build and deploy:
 
 ```bash
-./scripts/deploy-staging.sh
+./scripts/staging/lifecycle/deploy-staging.sh
 ```
 
 On a fresh database, deployment deliberately leaves the administrator pending. Generate the
@@ -279,7 +280,7 @@ repeat the exact-commit gate and the external checks below.
 
 ### 1. Candidate, data and topology baseline
 
-1. Require all local quality gates and `pnpm acceptance:v0100` on the exact candidate commit.
+1. Require all local quality gates and `pnpm acceptance -- v0100` on the exact candidate commit.
    Record `artifacts/acceptance-v0100-provider-routing.{md,json}` and
    `artifacts/acceptance-v0100-provider-routing-regression*` without overwriting archived v0.10 or
    historical v0.9 artifacts. The final candidate result remains pending until those reports are
@@ -304,8 +305,8 @@ repeat the exact-commit gate and the external checks below.
 Stop Novel Platform writers and create the current coordinated backup:
 
 ```bash
-./scripts/backup-library.sh
-./scripts/restore-library.sh --test \
+./scripts/staging/data/backup-library.sh
+./scripts/staging/data/restore-library.sh --test \
   /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP \
   /srv/novel-platform/reports/restore-v0100-TIMESTAMP.md
 ```
@@ -338,18 +339,18 @@ After the count is exactly zero, keep `LINGUASPINDLE_ENABLED=false`. A host alre
 `20260723_0006` or `20260726_0007` runs:
 
 ```bash
-./scripts/deploy-staging.sh
+./scripts/staging/lifecycle/deploy-staging.sh
 ```
 
 A host still at `20260715_0005` must additionally review the v0.9 destructive count preflight and
 bind the exact database plus the current isolated-restore PASS report:
 
 ```bash
-./scripts/preflight-v090.sh
+./scripts/staging/lifecycle/preflight-v090.sh
 ALLOW_V090_DESTRUCTIVE_MIGRATION=1 \
 V090_CONFIRM_DATABASE=novel_platform \
 V090_RESTORE_TEST_REPORT=/srv/novel-platform/reports/restore-v0100-TIMESTAMP.md \
-  ./scripts/deploy-staging.sh
+  ./scripts/staging/lifecycle/deploy-staging.sh
 ```
 
 The deploy script creates its normal coordinated backup unless explicitly told not to, stops
@@ -433,7 +434,7 @@ use the current v0.10 section and actual v0.10 script output for a new deploymen
 
 ### 1. Candidate and topology baseline
 
-1. Require all local quality gates and `pnpm acceptance:v090` on the exact candidate SHA. Record
+1. Require all local quality gates and `pnpm acceptance -- v090` on the exact candidate SHA. Record
    `artifacts/acceptance-v090.{md,json}`, inherited regression artifacts and
    `artifacts/visual-v090/` without adding credentials, content or host paths.
 2. Record count-only current Alembic revision, Compose project (`novel-platform-staging`),
@@ -450,7 +451,7 @@ use the current v0.10 section and actual v0.10 script output for a new deploymen
 Start only PostgreSQL from the reviewed checkout, then create the restricted report:
 
 ```bash
-./scripts/preflight-v090.sh
+./scripts/staging/lifecycle/preflight-v090.sh
 ```
 
 The report contains only revision, booleans and counts: Books/Editions/files/Imports/credentials,
@@ -464,8 +465,8 @@ stop. A pre-v0.5 database must complete the historical v0.5 conversion first.
 Stop writers and run the current coordinated backup; database-only backup is not sufficient:
 
 ```bash
-./scripts/backup-library.sh
-./scripts/restore-library.sh --test \
+./scripts/staging/data/backup-library.sh
+./scripts/staging/data/restore-library.sh --test \
   /srv/novel-platform/data/backups/novel-platform-v090-TIMESTAMP \
   /srv/novel-platform/reports/restore-v090-TIMESTAMP.md
 ```
@@ -483,7 +484,7 @@ guards in the trusted terminal and deploy:
 ALLOW_V090_DESTRUCTIVE_MIGRATION=1 \
 V090_CONFIRM_DATABASE=novel_platform \
 V090_RESTORE_TEST_REPORT=/srv/novel-platform/reports/restore-v090-TIMESTAMP.md \
-  ./scripts/deploy-staging.sh
+  ./scripts/staging/lifecycle/deploy-staging.sh
 ```
 
 `deploy-staging.sh` reruns preflight and refuses a missing approval flag, mismatched database name
@@ -538,7 +539,7 @@ v0.8.0 is authentication hardening (ADR 0016). It adds no Alembic revision, API 
 permission, persistent-entity, or data-conversion change. It does change the Compose Web image
 content (real client IP restoration and auth entry rate limiting) and one boot-time validation.
 
-1. Require `pnpm acceptance:v080` to pass on the exact reviewed commit. Record
+1. Require `pnpm acceptance -- v080` to pass on the exact reviewed commit. Record
    `artifacts/acceptance-v080.{md,json}` and `artifacts/acceptance-v080-core.json`.
 2. Create and isolated-restore-test the normal coordinated backup as an operational precaution.
 3. Set `AUTH_COOKIE_SAMESITE=strict` in the mode-600 environment. The server refuses to boot in
@@ -562,7 +563,7 @@ v0.7.0 changes the Web design system, interaction layout, static assets, and app
 only. It adds no Alembic revision, API contract, authentication or authorization protocol,
 permission, persistent entity, or topology change.
 
-1. Require `pnpm acceptance:v070` to pass on the exact reviewed commit. Record
+1. Require `pnpm acceptance -- v070` to pass on the exact reviewed commit. Record
    `artifacts/acceptance-v070.{md,json}`, `artifacts/bundle-v070.{md,json}`, and the 30 sanitized,
    capture-only screenshots in `artifacts/visual-v070/`. There is no reviewed pixel baseline yet.
 2. Create and isolated-restore-test the normal coordinated backup as an operational precaution;
@@ -576,7 +577,7 @@ permission, persistent entity, or topology change.
 
 The historical v0.5.0-to-v0.6.0 upgrade was likewise application-only and added no Alembic, API,
 authentication, persistent-entity, or topology change. Its release evidence remains available
-through `pnpm acceptance:v060` and `artifacts/acceptance-v060.{md,json}`.
+through `pnpm acceptance -- v060` and `artifacts/acceptance-v060.{md,json}`.
 
 Repository acceptance is local evidence only. Until the real-domain checks run under explicit
 deployment authorization, report `LOCAL_PASS / DEPLOYMENT_PENDING`.
@@ -597,8 +598,8 @@ directory is owned by UID/GID 10001 and mode 700.
 With the v0.4-compatible code still checked out:
 
 ```bash
-./scripts/backup-library.sh
-./scripts/restore-library.sh --test BACKUP_DIRECTORY
+./scripts/staging/data/backup-library.sh
+./scripts/staging/data/restore-library.sh --test BACKUP_DIRECTORY
 ```
 
 `backup-library.sh` stops API/Web writers, creates a PostgreSQL custom dump and library archive,
@@ -615,7 +616,7 @@ Add the v0.5 environment names without logging values. Point the stable HTTPS ho
 to the Web service. Check out the reviewed v0.5 commit, then run:
 
 ```bash
-./scripts/deploy-staging.sh
+./scripts/staging/lifecycle/deploy-staging.sh
 ```
 
 The deploy sequence is:
@@ -637,7 +638,7 @@ IDs and rerun with the unique target and every non-target administrator explicit
 ```bash
 V050_TARGET_ADMIN_ID=TARGET_UUID \
 V050_MAP_ADMIN_TO_READER_IDS=OTHER_ADMIN_UUID,ANOTHER_ADMIN_UUID \
-  ./scripts/deploy-staging.sh
+  ./scripts/staging/lifecycle/deploy-staging.sh
 ```
 
 These values are identifiers, not credentials. Conversion changes all content-owner FKs to the
@@ -677,7 +678,7 @@ retained reader identity in the UI; reissue preserves progress/settings/preferen
 ### 7. Post-upgrade verification
 
 ```bash
-./scripts/healthcheck-staging.sh
+./scripts/staging/lifecycle/healthcheck-staging.sh
 docker compose --env-file /srv/novel-platform/config/.env.staging \
   -f compose.staging.yml exec -T server novel-platform auth migration audit
 ```
@@ -694,12 +695,12 @@ Then verify on the real HTTPS origin:
 Generate the current sanitized operational evidence after the functional checks:
 
 ```bash
-./scripts/acceptance-staging-persistence.sh
-./scripts/report-staging-resources.sh post-v050
-./scripts/scan-staging-artifacts.sh
+pnpm acceptance -- staging-persistence
+./scripts/staging/reports/report-staging-resources.sh post-v050
+./scripts/staging/reports/scan-staging-artifacts.sh
 STAGING_LOCAL_ACCEPTANCE_JSON=/srv/novel-platform/reports/acceptance-v050.json \
 STAGING_PASSKEY_RESULT=PASS \
-  ./scripts/generate-staging-deployment-report.sh
+  ./scripts/staging/reports/generate-staging-deployment-report.sh
 ```
 
 The persistence state contains only row counts and hashes over stable database state. The
@@ -733,7 +734,7 @@ credential. The Web application never generates a universal recovery value.
 Create regular coordinated backups:
 
 ```bash
-./scripts/backup-library.sh
+./scripts/staging/data/backup-library.sh
 ```
 
 The v0.10 dump includes site settings, credential history/capabilities, administrator recovery,
@@ -754,7 +755,7 @@ Relay service Bearer rotation is independent and does not re-encrypt stored cred
 Restore-test every backup:
 
 ```bash
-./scripts/restore-library.sh --test \
+./scripts/staging/data/restore-library.sh --test \
   /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP
 ```
 
@@ -762,7 +763,7 @@ An intentional live restore is destructive and needs separate authorization:
 
 ```bash
 ALLOW_STAGING_RESTORE=1 \
-  ./scripts/restore-library.sh --staging BACKUP_DIRECTORY --confirm novel_platform
+  ./scripts/staging/data/restore-library.sh --staging BACKUP_DIRECTORY --confirm novel_platform
 ```
 
 It rejects a schema mismatch before destructive work, repeats the isolated restore, makes a new
@@ -794,7 +795,7 @@ allow-list generations.
 ## Health and exposure checks
 
 ```bash
-./scripts/healthcheck-staging.sh
+./scripts/staging/lifecycle/healthcheck-staging.sh
 ```
 
 The script verifies PostgreSQL/API/Web and enabled Relay health, matching Alembic revision

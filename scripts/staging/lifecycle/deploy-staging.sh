@@ -4,8 +4,8 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+# shellcheck source=../staging-lib.sh
+source "$SCRIPT_DIRECTORY/../staging-lib.sh"
 
 skip_backup=false
 if [[ "${1:-}" == "--skip-backup" ]]; then
@@ -65,7 +65,7 @@ wait_for_postgres 180
 has_revision_table="$(compose exec -T postgres sh -c \
   'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT to_regclass('\''public.alembic_version'\'') IS NOT NULL"')"
 if [[ "$has_revision_table" == "t" && "$skip_backup" == "false" ]]; then
-  BACKUP_LEAVE_APPLICATION_STOPPED=1 "$SCRIPT_DIRECTORY/backup-library.sh"
+  BACKUP_LEAVE_APPLICATION_STOPPED=1 "$SCRIPT_DIRECTORY/../data/backup-library.sh"
 fi
 
 # Ephemeral server tasks share the service's fixed network addresses, so stop the existing

@@ -9,7 +9,7 @@ const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
 const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.9.0";
 const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v090";
-const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v090";
+const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "pnpm acceptance -- v090";
 const acceptanceExpectedRevision =
   process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260723_0006";
 const acceptanceLinguaVersion = process.env.ACCEPTANCE_LINGUASPINDLE_VERSION ?? "0.3.1";
@@ -27,7 +27,7 @@ const requireHistoricalVisualEvidence =
 const jsonPath = path.join(artifacts, `acceptance-${acceptanceTag}.json`);
 const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
 const actionLogPath = path.join(artifacts, `acceptance-${acceptanceTag}-actions.log`);
-const databaseComposeFile = "scripts/acceptance-v090.database.yml";
+const databaseComposeFile = "scripts/acceptance/support/v090.database.yml";
 const databaseProject =
   `novel-${acceptanceTag.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-db-${process.pid}-${Date.now()}`;
 const started = new Date();
@@ -300,7 +300,7 @@ async function main() {
   try {
     await step("Replay applicable v0.8 authentication, Reader and proxy regression", async () => {
       run("run inherited v0.8 regression without rewriting historical evidence", process.execPath, [
-        "scripts/acceptance-v080.mjs",
+        "scripts/acceptance/gates/v080.mjs",
       ], {
         env: {
           ...process.env,
@@ -402,7 +402,7 @@ async function main() {
       run(
         "run the count-only v0.9 preflight",
         "bash",
-        ["scripts/preflight-v090.sh", preflightReport],
+        ["scripts/staging/lifecycle/preflight-v090.sh", preflightReport],
         {
           env: {
             ...databaseEnvironment,

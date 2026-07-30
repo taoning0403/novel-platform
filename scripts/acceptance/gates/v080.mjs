@@ -8,7 +8,7 @@ const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
 const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.8.0";
 const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v080";
-const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v080";
+const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "pnpm acceptance -- v080";
 const acceptanceExpectedRevision =
   process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260715_0005";
 const coreTag = `${acceptanceTag}-core`;
@@ -16,7 +16,7 @@ const markdownPath = path.join(artifacts, `acceptance-${acceptanceTag}.md`);
 const jsonPath = path.join(artifacts, `acceptance-${acceptanceTag}.json`);
 const actionLogPath = path.join(artifacts, `acceptance-${acceptanceTag}-actions.log`);
 const coreJsonPath = path.join(artifacts, `acceptance-${coreTag}.json`);
-const chainComposeFile = "scripts/acceptance-v080.chain.yml";
+const chainComposeFile = "scripts/acceptance/support/v080.chain.yml";
 const started = new Date();
 const actions = [];
 const steps = [];
@@ -344,7 +344,7 @@ async function main() {
   try {
     await step(`Replay all 84 v0.5.0 criteria against v${acceptanceVersion}`, async () => {
       run("run inherited v0.5.0 acceptance core", process.execPath, [
-        "scripts/acceptance-v050.mjs",
+        "scripts/acceptance/gates/v050.mjs",
       ], {
         env: {
           ...process.env,
@@ -423,7 +423,7 @@ async function main() {
         assert(!peerAccepted(bad), `invalid peer ${bad || "(empty)"} must be rejected`);
       }
       const envScript = await readFile(
-        path.join(root, "scripts", "create-staging-env.sh"),
+        path.join(root, "scripts", "staging", "setup", "create-staging-env.sh"),
         "utf8",
       );
       assert(

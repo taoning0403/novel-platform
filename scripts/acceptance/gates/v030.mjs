@@ -773,7 +773,7 @@ async function main() {
       run("docker compose version", "docker", ["compose", "version"]);
     });
     await step("v0.2.0 regression acceptance", async () => {
-      run("v0.2.0 acceptance", process.execPath, ["scripts/acceptance-v020.mjs"]);
+      run("v0.2.0 acceptance", process.execPath, ["scripts/acceptance/gates/v020.mjs"]);
       results.v020_regression = "PASS";
     });
     await step("Generate copyright-free EPUB/TXT fixtures", async () => {
@@ -1046,7 +1046,10 @@ async function main() {
         STAGING_COMPOSE_FILE: path.join(root, "compose.yaml"),
       };
       const backupOutput = run(
-        "complete library backup", "bash", ["scripts/backup-library.sh", backupDirectory],
+        "complete library backup", "bash", [
+          "scripts/staging/data/backup-library.sh",
+          backupDirectory,
+        ],
         { env: operationsEnvironment },
       );
       const backupPath = backupOutput.match(/^backup=(.+)$/m)?.[1];
@@ -1054,7 +1057,7 @@ async function main() {
       run(
         "isolated complete restore test",
         "bash",
-        ["scripts/restore-library.sh", "--test", backupPath, restoreReport],
+        ["scripts/staging/data/restore-library.sh", "--test", backupPath, restoreReport],
         { env: operationsEnvironment },
       );
       const restoreText = await readFile(restoreReport, "utf8");

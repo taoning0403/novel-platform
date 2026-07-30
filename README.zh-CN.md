@@ -314,9 +314,9 @@ Alembic `20260726_0008` 新增不可变的 Provider 类型/名称/Base URL/模�
 Alembic `20260727_0009` 允许 EPUB 与 TXT 作为 Translation Run 原文格式，不改写既有 TXT
 数据；存在任意 EPUB Run 时拒绝降级。
 
-迁移前停止写入，执行 `scripts/backup-library.sh`，并通过隔离的
-`scripts/restore-library.sh --test`。匹配的 `PROVIDER_CREDENTIAL_MASTER_KEY` 必须另行保护：
-PostgreSQL dump 包含凭据密文与用量，但不包含主密钥或 Relay service secret。若备份含
+迁移前停止写入，执行 `scripts/staging/data/backup-library.sh`，并通过隔离的
+`scripts/staging/data/restore-library.sh --test`。匹配的 `PROVIDER_CREDENTIAL_MASTER_KEY`
+必须另行保护：PostgreSQL dump 包含凭据密文与用量，但不包含主密钥或 Relay service secret。若备份含
 自定义 Provider，还必须另行保护匹配的 `PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS` 配置代际；
 manifest 只声明此外部要求，不记录其值。部署
 LinguaSpindle `>=0.3.2,<0.4.0`，把其 OpenAI-compatible base URL 指向私有 Relay `/v1`，运行时
@@ -335,10 +335,10 @@ v0.9.0 新增 Alembic `20260723_0006`：删除无文件占位 Edition/Book 及�
 Translation Run 表。站点未完成 v0.5 转换、owner 不唯一、存在活动 Import 或文件引用异常时
 迁移会失败关闭。迁移不提供 downgrade；回滚必须恢复同一份协调 PostgreSQL + 书库备份。
 
-迁移前必须记录脱敏统计、停止写入、生成 `scripts/backup-library.sh` 备份，并通过
-`scripts/restore-library.sh --test`。实际服务器迁移或可丢弃环境 reset 仍需针对精确目标另行
-批准。不得删除或重建 LinguaSpindle SQLite、Artifact Volume、容器或网络。ADR 0019 与上方
-v0.10 升级已经取代 v0.9 的“运营者持有 Provider Key”部署边界。
+迁移前必须记录脱敏统计、停止写入，生成 `scripts/staging/data/backup-library.sh` 备份，并通过
+`scripts/staging/data/restore-library.sh --test`。实际服务器迁移或可丢弃环境 reset 仍需针对
+精确目标另行批准。不得删除或重建 LinguaSpindle SQLite、Artifact Volume、容器或网络。
+ADR 0019 与上方 v0.10 升级已经取代 v0.9 的“运营者持有 Provider Key”部署边界。
 
 ## v0.7.0 升级到 v0.8.0
 
@@ -370,8 +370,8 @@ v0.6.0 改变 Web 组件基础与静态 Bundle，不新增 API、数据库、认
 
 没有协调完成 PostgreSQL + 书库备份及隔离恢复测试前，禁止对在线数据运行 Alembic。
 
-1. 停止 Web/API 写入并生成 `scripts/backup-library.sh` 备份。
-2. 执行隔离的 `scripts/restore-library.sh --test BACKUP_DIRECTORY`。
+1. 停止 Web/API 写入并生成 `scripts/staging/data/backup-library.sh` 备份。
+2. 执行隔离的 `scripts/staging/data/restore-library.sh --test BACKUP_DIRECTORY`。
 3. 将 schema 升级到 Alembic `20260715_0005`。
 4. 执行 `auth migration preflight`。
 5. 若管理员或内容所有者存在歧义，显式选择 `--target-admin-id`，并通过
@@ -389,7 +389,7 @@ v0.6.0 改变 Web 组件基础与静态 Bundle，不新增 API、数据库、认
 在已配置宿主机上生成协调备份：
 
 ```bash
-./scripts/backup-library.sh
+./scripts/staging/data/backup-library.sh
 ```
 
 脚本会短暂停止写入，生成 PostgreSQL custom dump、书库归档与 manifest，并在发布备份目录前
@@ -402,7 +402,7 @@ Provider allowlist 的值、Relay service secret 及全部 LinguaSpindle 数据/
 始终先在隔离资源中测试恢复：
 
 ```bash
-./scripts/restore-library.sh --test \
+./scripts/staging/data/restore-library.sh --test \
   /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP
 ```
 
@@ -458,9 +458,14 @@ BYOK、Relay、Web、版本/OpenAPI 及拓扑/泄漏契约：
 
 ```bash
 pnpm acceptance
-# 等价命令
-pnpm acceptance:v0100
+# 显式指定当前门禁
+pnpm acceptance -- v0100
+# 查看全部本地与 Staging 目标
+pnpm acceptance -- --list
 ```
+
+`acceptance` 是唯一的 package script 入口。可选目标用于选择历史或 Staging 门禁，不再为每个
+小版本增加一条 package 命令；同时支持 `v0.9.0` 这类语义版本别名。
 
 门禁保留 v0.5 的 84 项适用标准、v0.8 的 9 项加固标准及 v0.9 的 11 项标准，不覆盖历史
 产物。扩展后的 6 项标准包括：继承回归；加密凭据生命周期/用量与 Run scope 固定；Relay
@@ -476,8 +481,8 @@ v0.3.2 + Mock Provider 与真实 OpenAI-compatible Provider 均保持
 精确 commit 的本地报告与外部部署结果后才完成。只有诊断失败的隔离环境时才设置
 `KEEP_ACCEPTANCE_ENV=1`。
 
-历史门禁 `acceptance:v010` 至 `acceptance:v090` 及其证据保持可运行、可追溯；v0.10 不会
-改写历史证据来伪装无文件创建或运营者共享出资 Key 仍兼容。
+历史门禁 `pnpm acceptance -- v010` 至 `pnpm acceptance -- v090` 及其证据保持可运行、
+可追溯；v0.10 不会改写历史证据来伪装无文件创建或运营者共享出资 Key 仍兼容。
 
 ## 已废止的验收语义
 

@@ -3,9 +3,10 @@
 set -Eeuo pipefail
 umask 077
 
-SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+ACCEPTANCE_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+STAGING_DIRECTORY="$(CDPATH= cd -- "$ACCEPTANCE_DIRECTORY/../staging" && pwd)"
+# shellcheck source=../staging/staging-lib.sh
+source "$STAGING_DIRECTORY/staging-lib.sh"
 
 load_staging_environment
 validate_staging_environment
@@ -16,7 +17,7 @@ state_file="$report_directory/persistence-v050-state.json"
 mkdir -p "$report_directory"
 
 verify_state() {
-  "$SCRIPT_DIRECTORY/verify-staging-persistence-state.sh" --verify "$state_file"
+  "$STAGING_DIRECTORY/reports/verify-staging-persistence-state.sh" --verify "$state_file"
 }
 
 wait_for_stack() {
@@ -25,7 +26,7 @@ wait_for_stack() {
   verify_state
 }
 
-"$SCRIPT_DIRECTORY/verify-staging-persistence-state.sh" --capture "$state_file"
+"$STAGING_DIRECTORY/reports/verify-staging-persistence-state.sh" --capture "$state_file"
 verify_state
 compose restart server
 wait_for_stack

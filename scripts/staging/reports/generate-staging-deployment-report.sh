@@ -4,8 +4,8 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+# shellcheck source=../staging-lib.sh
+source "$SCRIPT_DIRECTORY/../staging-lib.sh"
 
 require_command docker
 require_command git
@@ -116,7 +116,7 @@ cat >"$action_log" <<'EOF'
 Novel Platform v0.5.0 staging sanitized action log
 No command arguments containing credentials, environment values, tokens, Cookies, request bodies, database URLs, or host paths are recorded.
 
-[ACTION] verify local acceptance:v050 report
+[ACTION] verify local pnpm acceptance -- v050 report
 [ACTION] validate HTTPS staging environment without printing values
 [ACTION] build immutable images and apply Alembic migration
 [ACTION] run explicit authentication migration preflight/conversion/audit
@@ -143,7 +143,7 @@ cat >"$deployment_report" <<EOF
 
 ## Release gates
 
-- Local \`acceptance:v050\`: $local_acceptance_status
+- Local \`pnpm acceptance -- v050\`: $local_acceptance_status
 - Python unit tests: $unit_tests
 - PostgreSQL integration tests: $integration_tests
 - Web tests: $web_tests
@@ -207,13 +207,13 @@ $container_lines\`\`\`
 
 ## Repeatable operations
 
-- Deploy/update: \`./scripts/update-staging.sh\`
-- Health check: \`./scripts/healthcheck-staging.sh\`
-- Persistence check: \`./scripts/acceptance-staging-persistence.sh\`
-- Complete backup: \`./scripts/backup-library.sh\`
-- Isolated restore test: \`./scripts/restore-library.sh --test BACKUP_DIRECTORY\`
-- Artifact leak scan: \`./scripts/scan-staging-artifacts.sh\`
-- Application-only rollback: \`./scripts/rollback-staging.sh COMMIT\`
+- Deploy/update: \`./scripts/staging/lifecycle/update-staging.sh\`
+- Health check: \`./scripts/staging/lifecycle/healthcheck-staging.sh\`
+- Persistence check: \`pnpm acceptance -- staging-persistence\`
+- Complete backup: \`./scripts/staging/data/backup-library.sh\`
+- Isolated restore test: \`./scripts/staging/data/restore-library.sh --test BACKUP_DIRECTORY\`
+- Artifact leak scan: \`./scripts/staging/reports/scan-staging-artifacts.sh\`
+- Application-only rollback: \`./scripts/staging/lifecycle/rollback-staging.sh COMMIT\`
 
 Rollback never performs an automatic Alembic downgrade. A real database or library restore requires
 separate explicit authorization and must first pass the isolated restore workflow.

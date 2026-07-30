@@ -1,19 +1,21 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 
 import { chromium } from "@playwright/test";
 
 const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
-const screenshotsDirectory = path.join(artifacts, "visual-v060");
-const markdownPath = path.join(artifacts, "acceptance-v060.md");
-const jsonPath = path.join(artifacts, "acceptance-v060.json");
-const actionLogPath = path.join(artifacts, "acceptance-v060-actions.log");
-const coreJsonPath = path.join(artifacts, "acceptance-v060-core.json");
+const screenshotsDirectory = path.join(artifacts, "visual-v070");
+const markdownPath = path.join(artifacts, "acceptance-v070.md");
+const jsonPath = path.join(artifacts, "acceptance-v070.json");
+const actionLogPath = path.join(artifacts, "acceptance-v070-actions.log");
+const coreJsonPath = path.join(artifacts, "acceptance-v070-core.json");
+const bundleJsonPath = path.join(artifacts, "bundle-v070.json");
 const started = new Date();
 const actions = [];
 const uiSteps = [];
@@ -38,6 +40,11 @@ const uiCriterionLabels = [
   "关键页面无浏览器控制台错误",
   "生产 build chunk 和 gzip 大小写入脱敏报告",
   "部署 CSP 允许 Ant Design 运行时样式且仍禁止内联脚本",
+  "漫读简化登录以单一认证任务面为主且保留备案友好入口",
+  "桌面分组侧栏与移动快捷导航/更多菜单覆盖角色任务",
+  "书库提供最近阅读、搜索、筛选和封面主导作品网格",
+  "阅读者管理提供主从布局、移动详情返回和阻断式凭证交付",
+  "Reader 提供自隐藏工具栏、目录轨道和可访问阅读进度轨迹",
 ];
 
 const ids = {
@@ -51,7 +58,7 @@ const ids = {
 };
 const timestamp = "2026-07-16T08:00:00Z";
 const publicSite = {
-  site_name: "林间阅读室",
+  site_name: "漫读",
   purpose_statement: "供站点所有者与少量受邀阅读者非经营性使用。",
   privacy_statement: "仅处理登录、设备授权和阅读同步所需的最少信息。",
   icp_registration_number: null,
@@ -349,6 +356,47 @@ function run(label, executable, args, options = {}) {
     const detail = redact(error.stderr ?? error.stdout ?? error.message);
     throw new Error(`${label} failed${detail ? `: ${detail.slice(-1600)}` : ""}`);
   }
+}
+
+async function generateBundleEvidence() {
+  const dist = path.join(root, "apps", "web", "dist");
+  const assetsDirectory = path.join(dist, "assets");
+  const indexHtml = await readFile(path.join(dist, "index.html"), "utf8");
+  const entryName = indexHtml.match(/src="\/assets\/([^"]+\.js)"/)?.[1];
+  assert(entryName, "Unable to identify the Vite entry chunk");
+
+  const names = (await readdir(assetsDirectory))
+    .filter((name) => name.endsWith(".js") || name.endsWith(".css"))
+    .sort();
+  const chunks = [];
+  for (const name of names) {
+    const contents = await readFile(path.join(assetsDirectory, name));
+    chunks.push({
+      name,
+      type: name.endsWith(".js") ? "js" : "css",
+      raw_bytes: contents.byteLength,
+      gzip_bytes: gzipSync(contents).byteLength,
+    });
+  }
+  const entry = chunks.find((chunk) => chunk.name === entryName);
+  const initialCss = chunks.find(
+    (chunk) => chunk.type === "css" && chunk.name.startsWith("index-"),
+  );
+  assert(entry, "Vite entry chunk is missing from dist/assets");
+  const report = {
+    version: "0.7.0",
+    generated_at: new Date().toISOString(),
+    entry,
+    initial_css: initialCss ?? null,
+    entry_budget: {
+      max_gzip_bytes: 200_000,
+      status: entry.gzip_bytes <= 200_000 ? "PASS" : "FAIL",
+    },
+    chunks,
+  };
+  await mkdir(artifacts, { recursive: true });
+  await writeFile(bundleJsonPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  return report;
 }
 
 async function step(name, action) {
@@ -714,7 +762,7 @@ async function capture(browser, baseUrl, item, viewport, suffix, setup) {
       path: path.join(screenshotsDirectory, filename),
       fullPage: true,
     });
-    screenshots.push(`artifacts/visual-v060/${filename}`);
+    screenshots.push(`artifacts/visual-v070/${filename}`);
   } finally {
     await finishPage(session, `${item.slug}-${suffix}`);
   }
@@ -742,7 +790,7 @@ async function readerVisuals(browser, baseUrl, viewport, suffix) {
       path: path.join(screenshotsDirectory, `reader-light-${suffix}.png`),
       fullPage: true,
     });
-    screenshots.push(`artifacts/visual-v060/reader-light-${suffix}.png`);
+    screenshots.push(`artifacts/visual-v070/reader-light-${suffix}.png`);
 
     await chooseReaderTheme(session.page, "深色");
     backgrounds.push(
@@ -754,7 +802,7 @@ async function readerVisuals(browser, baseUrl, viewport, suffix) {
       path: path.join(screenshotsDirectory, `reader-dark-${suffix}.png`),
       fullPage: true,
     });
-    screenshots.push(`artifacts/visual-v060/reader-dark-${suffix}.png`);
+    screenshots.push(`artifacts/visual-v070/reader-dark-${suffix}.png`);
 
     await chooseReaderTheme(session.page, "护眼");
     backgrounds.push(
@@ -767,7 +815,7 @@ async function readerVisuals(browser, baseUrl, viewport, suffix) {
       path: path.join(screenshotsDirectory, `reader-sepia-${suffix}.png`),
       fullPage: true,
     });
-    screenshots.push(`artifacts/visual-v060/reader-sepia-${suffix}.png`);
+    screenshots.push(`artifacts/visual-v070/reader-sepia-${suffix}.png`);
 
     if (suffix === "mobile") {
       await session.page.getByRole("button", { name: "目录" }).click();
@@ -800,7 +848,7 @@ async function runRoleAndInteractionChecks(browser, baseUrl) {
     await openReady(
       adminSession,
       "/",
-      "整理馆藏，也继续上次的阅读。",
+      "书库",
     );
     const adminNav = adminSession.page.getByRole("navigation", { name: "主导航" });
     await adminNav.getByRole("link", { name: "上传" }).waitFor();
@@ -820,7 +868,7 @@ async function runRoleAndInteractionChecks(browser, baseUrl) {
     await openReady(
       readerSession,
       "/",
-      "安静阅读，也继续上次的位置。",
+      "书库",
     );
     const readerNav = readerSession.page.getByRole("navigation", { name: "主导航" });
     assert(await readerNav.getByRole("link", { name: "上传" }).count() === 0, "Reader navigation exposed Upload");
@@ -860,13 +908,13 @@ async function runRoleAndInteractionChecks(browser, baseUrl) {
     await openReady(
       mobileSession,
       "/",
-      "整理馆藏，也继续上次的阅读。",
+      "书库",
     );
     const trigger = mobileSession.page.getByRole("button", { name: "打开主导航" });
     const box = await trigger.boundingBox();
     assert(box && box.width >= 40 && box.height >= 40, "Mobile navigation trigger is too small");
     await trigger.click();
-    const drawer = mobileSession.page.getByRole("dialog", { name: "林间阅读室" });
+    const drawer = mobileSession.page.getByRole("dialog", { name: "漫读" });
     await drawer.getByRole("link", { name: "管理" }).waitFor();
     await mobileSession.page.keyboard.press("Escape");
     await drawer.waitFor({ state: "hidden" });
@@ -881,14 +929,17 @@ async function runRoleAndInteractionChecks(browser, baseUrl) {
     { width: 1280, height: 800 },
   );
   try {
-    await openReady(adminReaders, "/admin/readers", "受邀阅读者");
-    await adminReaders.page.getByRole("button", { name: "永久撤销" }).click();
+    await openReady(adminReaders, "/admin/readers", "阅读者");
+    await adminReaders.page.getByRole("button", { name: "更多阅读者操作" }).click();
+    await adminReaders.page.getByRole("menuitem", { name: "永久撤销" }).click();
     await adminReaders.page.getByText("永久撤销这份凭证？").waitFor();
     await adminReaders.page.getByRole("button", { name: "取消" }).click();
 
-    await adminReaders.page.getByLabel("显示名称").first().fill("新阅读者");
-    await adminReaders.page.getByRole("button", { name: "创建并显示凭证" }).click();
-    const dialog = adminReaders.page.getByRole("dialog");
+    await adminReaders.page.getByRole("button", { name: "签发凭证" }).click();
+    const createDialog = adminReaders.page.getByRole("dialog", { name: "签发初始凭证" });
+    await createDialog.getByLabel("显示名称").fill("新阅读者");
+    await createDialog.getByRole("button", { name: "创建并显示凭证" }).click();
+    const dialog = adminReaders.page.getByRole("dialog", { name: "保存访问凭证（仅显示一次）" });
     await dialog.getByText(adminReaders.state.oneTimeCredential).waitFor();
     await adminReaders.page.keyboard.press("Escape");
     assert(await dialog.count() === 1, "One-time credential modal closed on Escape");
@@ -927,15 +978,141 @@ async function runRoleAndInteractionChecks(browser, baseUrl) {
   }
 }
 
+async function runQuietTraceChecks(browser, baseUrl) {
+  const login = await createPage(browser, baseUrl, "public", { width: 1440, height: 900 });
+  try {
+    await openReady(login, "/login", publicSite.site_name);
+    await login.page.getByRole("heading", { name: "登录", exact: true }).waitFor();
+    assert(await login.page.locator("main form").count() === 1, "Login must expose one authentication form");
+    await login.page.getByRole("button", { name: "进入书库" }).waitFor();
+    await login.page.getByText("个人非经营性站点", { exact: true }).waitFor();
+    assert(
+      await login.page.getByText("继续你的阅读轨迹", { exact: true }).count() === 0,
+      "Login retained the removed promotional story panel",
+    );
+  } finally {
+    await finishPage(login, "quiet-trace-login");
+  }
+
+  const loginMobile = await createPage(browser, baseUrl, "public", { width: 390, height: 844 });
+  try {
+    await openReady(loginMobile, "/login", publicSite.site_name);
+    await loginMobile.page.getByRole("heading", { name: "登录", exact: true }).waitFor();
+    await loginMobile.page.getByRole("button", { name: "进入书库" }).waitFor();
+    assert(await loginMobile.page.locator("main form").count() === 1, "Mobile Login must expose one authentication form");
+    await assertLayout(loginMobile, "quiet-trace-login-mobile");
+  } finally {
+    await finishPage(loginMobile, "quiet-trace-login-mobile");
+  }
+
+  const desktopShell = await createPage(browser, baseUrl, "admin", { width: 1440, height: 900 });
+  try {
+    await openReady(desktopShell, "/", "书库");
+    const navigation = desktopShell.page.getByRole("navigation", { name: "主导航" });
+    for (const group of ["阅读", "馆藏管理", "个人"]) {
+      await navigation.getByText(group, { exact: true }).waitFor();
+    }
+    assert(await navigation.locator("section").count() === 3, "Desktop navigation groups changed");
+  } finally {
+    await finishPage(desktopShell, "quiet-trace-desktop-shell");
+  }
+
+  const mobileShell = await createPage(browser, baseUrl, "admin", { width: 390, height: 844 });
+  try {
+    await openReady(mobileShell, "/", "书库");
+    const quickNavigation = mobileShell.page.getByRole("navigation", { name: "快捷导航" });
+    await quickNavigation.getByRole("link", { name: "书库" }).waitFor();
+    await quickNavigation.getByRole("button", { name: "更多" }).click();
+    const mobileNavigation = mobileShell.page.getByRole("navigation", { name: "移动主导航" });
+    await mobileNavigation.getByRole("link", { name: "阅读者" }).waitFor();
+    await mobileNavigation.getByRole("link", { name: "安全" }).waitFor();
+  } finally {
+    await finishPage(mobileShell, "quiet-trace-mobile-shell");
+  }
+
+  const library = await createPage(browser, baseUrl, "admin", { width: 1280, height: 800 });
+  try {
+    await openReady(library, "/", "书库");
+    await library.page.getByRole("heading", { name: "最近阅读" }).waitFor();
+    await library.page.getByRole("heading", { name: "全部作品" }).waitFor();
+    await library.page.getByLabel("搜索书名或作者").waitFor();
+    await library.page.getByRole("link", { name: "继续阅读" }).first().waitFor();
+    await library.page.getByRole("link", { name: "查看详情" }).waitFor();
+    await library.page.getByRole("button", { name: "打开筛选" }).click();
+    const filter = library.page.getByRole("dialog", { name: "筛选作品" });
+    await filter.getByLabel("文件格式").waitFor();
+    await filter.getByLabel("语言").waitFor();
+    await filter.getByLabel("版本类型").waitFor();
+  } finally {
+    await finishPage(library, "quiet-trace-library");
+  }
+
+  const libraryMobile = await createPage(browser, baseUrl, "reader", { width: 390, height: 844 });
+  try {
+    await openReady(libraryMobile, "/", "书库");
+    await libraryMobile.page.getByRole("heading", { name: "最近阅读" }).waitFor();
+    await libraryMobile.page.getByLabel("搜索书名或作者").waitFor();
+    await libraryMobile.page.getByRole("link", { name: "查看详情" }).waitFor();
+    await libraryMobile.page.getByRole("button", { name: "打开筛选" }).click();
+    await libraryMobile.page.getByRole("dialog", { name: "筛选作品" }).waitFor();
+    await assertLayout(libraryMobile, "quiet-trace-library-mobile");
+  } finally {
+    await finishPage(libraryMobile, "quiet-trace-library-mobile");
+  }
+
+  const readers = await createPage(browser, baseUrl, "admin", { width: 1280, height: 800 });
+  try {
+    await openReady(readers, "/admin/readers", "阅读者");
+    await readers.page
+      .getByRole("complementary", { name: "阅读者列表", exact: true })
+      .waitFor();
+    await readers.page.getByRole("heading", { name: readerIdentity.display_name }).waitFor();
+    await readers.page.getByRole("tab", { name: "概览" }).waitFor();
+    await readers.page.getByRole("tab", { name: /设备/ }).waitFor();
+    await readers.page.getByRole("button", { name: "更多阅读者操作" }).waitFor();
+  } finally {
+    await finishPage(readers, "quiet-trace-readers-desktop");
+  }
+
+  const readersMobile = await createPage(browser, baseUrl, "admin", { width: 390, height: 844 });
+  try {
+    await openReady(readersMobile, "/admin/readers", "阅读者");
+    const readerList = readersMobile.page.getByRole("complementary", {
+      name: "阅读者列表",
+      exact: true,
+    });
+    await readerList.getByRole("button", { name: new RegExp(readerIdentity.display_name) }).click();
+    await readersMobile.page.getByRole("button", { name: "返回阅读者列表" }).waitFor();
+  } finally {
+    await finishPage(readersMobile, "quiet-trace-readers-mobile");
+  }
+
+  const reader = await createPage(browser, baseUrl, "reader", { width: 1440, height: 900 });
+  try {
+    await openReady(reader, `/read/${ids.edition}`, "第一章");
+    await reader.page.getByLabel("阅读进度 10%").waitFor();
+    const tocRail = reader.page.getByRole("complementary", { name: "目录" });
+    await tocRail.getByRole("navigation", { name: "章节目录" }).waitFor();
+    const toolbar = reader.page.locator("main > header");
+    await reader.page.waitForTimeout(2700);
+    assert(Number(await toolbar.evaluate((element) => getComputedStyle(element).opacity)) === 0, "Reader chrome did not auto-hide");
+    await reader.page.mouse.move(720, 440);
+    await reader.page.waitForTimeout(240);
+    assert(Number(await toolbar.evaluate((element) => getComputedStyle(element).opacity)) > 0.9, "Reader chrome did not return on pointer movement");
+  } finally {
+    await finishPage(reader, "quiet-trace-reader");
+  }
+}
+
 async function writeReports(status, core, bundle, failure) {
   const uiCriteria = uiCriterionLabels.map((label, index) => ({
     number: 85 + index,
     label,
     status: status === "PASS" ? "PASS" : "FAIL",
-    evidence: "v060_ui_browser",
+    evidence: "v070_ui_browser",
   }));
   const report = {
-    version: "0.6.0",
+    version: "0.7.0",
     status,
     started_at: started.toISOString(),
     completed_at: new Date().toISOString(),
@@ -943,13 +1120,18 @@ async function writeReports(status, core, bundle, failure) {
     inherited_v050: {
       status: core?.status ?? "NOT_RUN",
       criteria_count: core?.criteria?.length ?? 0,
-      artifact: "artifacts/acceptance-v060-core.json",
+      artifact: "artifacts/acceptance-v070-core.json",
     },
     ui: {
       criteria: uiCriteria,
       steps: uiSteps,
       responsive_checks: responsiveChecks,
       screenshots,
+      visual_regression: {
+        mode: "capture_only",
+        baseline: null,
+        reason: "No reviewed repository baseline exists for v0.7.0.",
+      },
       console_errors: consoleErrors,
     },
     bundle: bundle
@@ -957,7 +1139,7 @@ async function writeReports(status, core, bundle, failure) {
           entry: bundle.entry,
           initial_css: bundle.initial_css,
           entry_budget: bundle.entry_budget,
-          artifact: "artifacts/bundle-v060.json",
+          artifact: "artifacts/bundle-v070.json",
         }
       : null,
     criteria: [...(core?.criteria ?? []), ...uiCriteria],
@@ -966,20 +1148,22 @@ async function writeReports(status, core, bundle, failure) {
   await mkdir(artifacts, { recursive: true });
   await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
   const markdown = [
-    "# Novel Platform v0.6.0 acceptance",
+    "# Novel Platform v0.7.0 acceptance",
     "",
     `- Status: **${status}**`,
     `- Started: ${report.started_at}`,
     `- Completed: ${report.completed_at}`,
     `- Git commit: ${report.git_commit}`,
     `- Inherited v0.5.0 criteria: ${report.inherited_v050.criteria_count} (${report.inherited_v050.status})`,
-    `- v0.6.0 UI criteria: ${uiCriteria.length}`,
+    `- Retained v0.6.0 UI criteria: 16`,
+    `- v0.7.0 Quiet Trace criteria: ${uiCriteria.length - 16}`,
     `- Responsive layout checks: ${responsiveChecks.length}`,
     `- Sanitized screenshots: ${screenshots.length}`,
+    "- Pixel baseline diff: not configured (no reviewed v0.7.0 repository baseline)",
     `- Initial entry: ${bundle ? `${(bundle.entry.raw_bytes / 1000).toFixed(2)} kB raw / ${(bundle.entry.gzip_bytes / 1000).toFixed(2)} kB gzip` : "not available"}`,
     `- Initial entry 200 kB gzip budget: ${bundle?.entry_budget.status ?? "NOT_RUN"}`,
     "",
-    "## v0.6.0 UI criteria",
+    "## Retained UI and v0.7.0 Quiet Trace criteria",
     "",
     "| # | Status | Criterion |",
     "| ---: | --- | --- |",
@@ -1004,7 +1188,7 @@ async function writeReports(status, core, bundle, failure) {
   await writeFile(
     actionLogPath,
     [
-      "Novel Platform v0.6.0 sanitized acceptance action log",
+      "Novel Platform v0.7.0 sanitized acceptance action log",
       "No command arguments, command output, credentials, tokens, Cookies, request bodies, or host paths are recorded.",
       "",
       ...actions.map((label) => `[ACTION] ${label}`),
@@ -1016,7 +1200,7 @@ async function writeReports(status, core, bundle, failure) {
 
 async function main() {
   await mkdir(screenshotsDirectory, { recursive: true });
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "novel-v060-ui-"));
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "novel-v070-ui-"));
   let preview;
   let browser;
   let core;
@@ -1024,15 +1208,16 @@ async function main() {
   let failure;
 
   try {
-    await step("Replay all 84 v0.5.0 criteria against v0.6.0", async () => {
+    await step("Replay all 84 v0.5.0 criteria against v0.7.0", async () => {
       run("run inherited v0.5.0 acceptance core", process.execPath, [
-        "scripts/acceptance-v050.mjs",
+        "scripts/acceptance/gates/v050.mjs",
       ], {
         env: {
           ...process.env,
-          ACCEPTANCE_VERSION: "0.6.0",
-          ACCEPTANCE_TAG: "v060-core",
-          ACCEPTANCE_COMMAND: "acceptance:v060",
+          ACCEPTANCE_VERSION: "0.7.0",
+          ACCEPTANCE_TAG: "v070-core",
+          ACCEPTANCE_COMMAND: "pnpm acceptance -- v070",
+          ACCEPTANCE_PROFILE: "v070",
         },
       });
       core = JSON.parse(await readFile(coreJsonPath, "utf8"));
@@ -1041,12 +1226,9 @@ async function main() {
       assert(core.criteria.every((item) => item.status === "PASS"), "Inherited criteria contain a failure");
     });
 
-    await step("Generate v0.6.0 bundle evidence", async () => {
+    await step("Generate v0.7.0 bundle evidence", async () => {
       run("build Web production bundle", "pnpm", ["build"]);
-      run("write Web bundle report", process.execPath, ["scripts/report-web-bundle.mjs"]);
-      bundle = JSON.parse(
-        await readFile(path.join(artifacts, "bundle-v060.json"), "utf8"),
-      );
+      bundle = await generateBundleEvidence();
       assert(bundle.entry_budget.status === "PASS", "Initial entry exceeds the 200 kB gzip budget");
     });
 
@@ -1103,9 +1285,9 @@ async function main() {
 
     browser = await chromium.launch({ headless: true });
     const visualPages = [
-      { slug: "login", role: "public", pathname: "/login", heading: "林间阅读室" },
-      { slug: "library-admin", role: "admin", pathname: "/", heading: "整理馆藏，也继续上次的阅读。" },
-      { slug: "library-reader", role: "reader", pathname: "/", heading: "安静阅读，也继续上次的位置。" },
+      { slug: "login", role: "public", pathname: "/login", heading: "漫读" },
+      { slug: "library-admin", role: "admin", pathname: "/", heading: "书库" },
+      { slug: "library-reader", role: "reader", pathname: "/", heading: "书库" },
       { slug: "book-detail", role: "admin", pathname: `/books/${ids.book}`, heading: bookDetail.canonical_title },
       { slug: "series", role: "admin", pathname: "/series", heading: "图书系列" },
       { slug: "upload-before", role: "admin", pathname: "/upload", heading: "上传与版本管理" },
@@ -1125,8 +1307,8 @@ async function main() {
           await session.page.getByRole("heading", { name: "确认导入" }).waitFor();
         },
       },
-      { slug: "admin-dashboard", role: "admin", pathname: "/admin", heading: "林间阅读室" },
-      { slug: "admin-readers", role: "admin", pathname: "/admin/readers", heading: "受邀阅读者" },
+      { slug: "admin-dashboard", role: "admin", pathname: "/admin", heading: "漫读" },
+      { slug: "admin-readers", role: "admin", pathname: "/admin/readers", heading: "阅读者" },
       { slug: "admin-security", role: "admin", pathname: "/admin/security", heading: "Passkey 与管理员会话" },
       { slug: "admin-site", role: "admin", pathname: "/admin/site", heading: "公开站点设置" },
       {
@@ -1220,6 +1402,10 @@ async function main() {
       await runRoleAndInteractionChecks(browser, baseUrl);
     });
 
+    await step("Verify approved Quiet Trace Login, shell, Library, Readers and Reader workflows", async () => {
+      await runQuietTraceChecks(browser, baseUrl);
+    });
+
     await step("Verify key accessible names and clean browser console", async () => {
       const login = await createPage(
         browser,
@@ -1228,16 +1414,18 @@ async function main() {
         { width: 390, height: 844 },
       );
       try {
-        await openReady(login, "/login", "林间阅读室");
+        await openReady(login, "/login", "漫读");
         await login.page.getByRole("heading", { name: "登录" }).waitFor();
         await login.page.getByLabel("访问凭证").waitFor();
         await login.page.getByLabel("设备名称").waitFor();
-        await login.page.getByRole("button", { name: "输入访问凭证" }).waitFor();
+        await login.page.getByRole("button", { name: "进入书库" }).waitFor();
         await login.page.getByRole("button", { name: "使用安全设备登录" }).waitFor();
       } finally {
         await finishPage(login, "accessible-login");
       }
       assert(consoleErrors.length === 0, `Browser console errors: ${consoleErrors.join(" | ")}`);
+      assert(uiCriterionLabels.length === 21, "v0.7.0 UI criterion count changed");
+      assert((core?.criteria.length ?? 0) + uiCriterionLabels.length === 105, "v0.7.0 total criterion count changed");
     });
   } catch (error) {
     failure = error instanceof Error ? error : new Error(String(error));
@@ -1259,14 +1447,14 @@ async function main() {
     || /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/.test(reportContents)
     || reportContents.includes(root)
   ) {
-    failure = new Error("A secret or host path appeared in the v0.6.0 reports");
+    failure = new Error("A secret or host path appeared in the v0.7.0 reports");
     await writeReports("FAIL", core, bundle, failure);
   }
   if (failure) {
     process.stderr.write(`${redact(failure.message)}\n`);
     process.exitCode = 1;
   } else {
-    process.stdout.write(`v0.6.0 acceptance passed: ${markdownPath}\n`);
+    process.stdout.write(`v0.7.0 acceptance passed: ${markdownPath}\n`);
   }
 }
 

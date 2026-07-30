@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+# shellcheck source=../staging-lib.sh
+source "$SCRIPT_DIRECTORY/../staging-lib.sh"
 
 require_command docker
 load_staging_environment

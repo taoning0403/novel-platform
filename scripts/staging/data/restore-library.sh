@@ -4,8 +4,8 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+# shellcheck source=../staging-lib.sh
+source "$SCRIPT_DIRECTORY/../staging-lib.sh"
 
 usage() {
   cat >&2 <<EOF
@@ -604,5 +604,5 @@ if [[ "$LINGUASPINDLE_ENABLED" == "true" ]]; then
   compose up --detach --no-deps provider-relay
 fi
 compose up --detach --no-deps server web
-"$SCRIPT_DIRECTORY/healthcheck-staging.sh"
+"$SCRIPT_DIRECTORY/../lifecycle/healthcheck-staging.sh"
 printf 'live database and library restore PASS\n'

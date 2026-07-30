@@ -65,5 +65,5 @@ when the header happened to be present.
 - The real host-edge chain, real-domain Passkey flows, and production rate-limit thresholds remain
   `DEPLOYMENT_PENDING` items verified on the real HTTPS domain; local acceptance emulates the host
   edge with a second Nginx hop and fixed test addresses.
-- `acceptance:v080` replays the 84-criterion v0.5 core unmodified and adds nine hardening
+- `pnpm acceptance -- v080` replays the 84-criterion v0.5 core unmodified and adds nine hardening
   criteria (106-114); historical gates v050-v070 remain untouched and runnable.

@@ -4,8 +4,8 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=staging-lib.sh
-source "$SCRIPT_DIRECTORY/staging-lib.sh"
+# shellcheck source=../staging-lib.sh
+source "$SCRIPT_DIRECTORY/../staging-lib.sh"
 
 require_command docker
 load_staging_environment
@@ -26,6 +26,6 @@ docker run --rm \
   -v "$REPOSITORY_ROOT:/work:ro" \
   -v "$report_directory:/reports" \
   node:22.17.1-alpine \
-  node /work/scripts/scan-staging-artifacts.mjs
+  node /work/scripts/staging/reports/scan-staging-artifacts.mjs
 
 printf 'report=%s/leak-scan-v050.json\n' "$report_directory"

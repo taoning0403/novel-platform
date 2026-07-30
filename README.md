@@ -352,8 +352,8 @@ ciphertext and uses v2 authenticated data for new versions.
 Alembic `20260727_0009` permits EPUB as well as TXT Translation Run sources without rewriting
 existing TXT rows. Downgrade is refused while any EPUB Run remains.
 
-Stop writers, create a coordinated `scripts/backup-library.sh` backup, and pass an isolated
-`scripts/restore-library.sh --test` before migration. Keep the matching
+Stop writers, create a coordinated `scripts/staging/data/backup-library.sh` backup, and pass an
+isolated `scripts/staging/data/restore-library.sh --test` before migration. Keep the matching
 `PROVIDER_CREDENTIAL_MASTER_KEY` in a separate protected backup: the PostgreSQL dump includes
 credential ciphertext and usage, while the master key and Relay service secret are excluded.
 For backups containing custom credentials, preserve the exact
@@ -378,11 +378,12 @@ Run storage. The migration refuses an incomplete v0.5 conversion, ambiguous owne
 or inconsistent file references. It has no downgrade; rollback restores the matching coordinated
 PostgreSQL + library backup.
 
-Before migration, record sanitized counts, stop writers, create `scripts/backup-library.sh` output,
-and pass `scripts/restore-library.sh --test`. Actual server migration or a disposable reset requires
-explicit approval for the exact target. Never delete/rebuild LinguaSpindle SQLite, artifact volume,
-container, or network. ADR 0019 and the v0.10 upgrade above supersede v0.9's operator-owned
-Provider-key deployment boundary.
+Before migration, record sanitized counts, stop writers, create
+`scripts/staging/data/backup-library.sh` output, and pass
+`scripts/staging/data/restore-library.sh --test`. Actual server migration or a disposable reset
+requires explicit approval for the exact target. Never delete/rebuild LinguaSpindle SQLite,
+artifact volume, container, or network. ADR 0019 and the v0.10 upgrade above supersede v0.9's
+operator-owned Provider-key deployment boundary.
 
 ## v0.7.0 to v0.8.0 security upgrade
 
@@ -423,8 +424,8 @@ downgrade or restore PostgreSQL/library data solely for this UI rollback.
 Do not run Alembic against live data without a coordinated PostgreSQL + library backup and a
 successful isolated restore test.
 
-1. Stop Web/API writers and create `scripts/backup-library.sh` output.
-2. Run the isolated `scripts/restore-library.sh --test BACKUP_DIRECTORY` check.
+1. Stop Web/API writers and create `scripts/staging/data/backup-library.sh` output.
+2. Run the isolated `scripts/staging/data/restore-library.sh --test BACKUP_DIRECTORY` check.
 3. Upgrade schema to Alembic `20260715_0005`.
 4. Run `auth migration preflight`.
 5. If administrators or content owners are ambiguous, choose `--target-admin-id` and explicitly
@@ -447,7 +448,7 @@ raw initialization credential.
 Create a coordinated backup on the configured host:
 
 ```bash
-./scripts/backup-library.sh
+./scripts/staging/data/backup-library.sh
 ```
 
 It briefly stops writers, produces a PostgreSQL custom dump plus library archive and manifest,
@@ -463,7 +464,7 @@ generation.
 Always restore-test into isolated resources first:
 
 ```bash
-./scripts/restore-library.sh --test \
+./scripts/staging/data/restore-library.sh --test \
   /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP
 ```
 
@@ -522,9 +523,15 @@ BYOK, Relay, Web, version/OpenAPI and topology/leak contracts:
 
 ```bash
 pnpm acceptance
-# equivalent
-pnpm acceptance:v0100
+# explicit current target
+pnpm acceptance -- v0100
+# list all local and staging targets
+pnpm acceptance -- --list
 ```
+
+`acceptance` is the only package-script entry point. The optional target selects a historical or
+staging gate without adding one package command per release; semantic aliases such as `v0.9.0`
+are also accepted.
 
 The gate preserves the 84 applicable v0.5 core, 9 v0.8 hardening, and 11 v0.9 criteria without
 rewriting their historical artifacts. Six extended criteria cover the inherited replay; encrypted
@@ -543,9 +550,9 @@ secret injection, network changes, HTTPS/Passkey, persistence and cleanup checks
 report and external deployment result are recorded. Set
 `KEEP_ACCEPTANCE_ENV=1` only when preserving a failed isolated environment for local diagnosis.
 
-Historical gates `acceptance:v010` through `acceptance:v090` remain directly runnable with their
-historical evidence and contracts. v0.10 does not rewrite them to claim fileless creation or a
-shared operator-funded translation key remains supported.
+Historical gates `pnpm acceptance -- v010` through `pnpm acceptance -- v090` remain directly
+runnable with their historical evidence and contracts. v0.10 does not rewrite them to claim
+fileless creation or a shared operator-funded translation key remains supported.
 
 ## Superseded acceptance
 

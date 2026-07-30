@@ -16,19 +16,19 @@ migrations, and tests.
 | `docs/DECISIONS.md`, `docs/adr/0012-*` through `0021-*` | Authentication, capability/contributor library, Quiet Trace, proxy hardening, private translation, reader-owned credentials, version-bound Provider routing and structure-preserving EPUB translation decisions. |
 | `compose.yaml` | Isolated local PostgreSQL, migration, API, library volume, and Web topology. |
 | `compose.staging.yml`, `.env.staging.example`, `compose.translation.yml` | HTTPS/WebAuthn single-host contract plus optional Server and database-connected Relay overlay on external `linguaspindle-private`; Relay has no host/proxy port. |
-| `scripts/acceptance-v0100.mjs` | Current Provider-routing candidate gate: v0.9 replay plus six extended encrypted-BYOK/multi-Provider/thinking/Relay/Web/version/topology criteria. |
-| `scripts/acceptance-v090.mjs`, `acceptance-v090.database.yml` | Historical/currently replayed v0.9 gate: applicable 84-core + 9-hardening replay and 11 capability/contributor/translation/operations criteria in isolated resources. |
-| `scripts/acceptance-v080.mjs` | Historical v0.8 gate, parameterized only so v0.9 can replay it into new evidence without overwriting historical artifacts. |
-| `scripts/acceptance-v080.chain.yml`, `acceptance-v080-edge.conf` | Isolated two-hop chain (simulated host edge → staging Nginx → API) with fixed test addresses used only by the v0.8.0 gate. |
-| `scripts/acceptance-v070.mjs` | Historical 105-criterion v0.7 gate retained with its evidence. |
-| `scripts/acceptance-v060.mjs` | Historical 100-criterion v0.6 compatibility gate retained with its evidence. |
-| `scripts/acceptance-v050.mjs` | Parameterized v0.5 core retained as historical evidence and replayed by current gates. |
-| `scripts/acceptance-v010..v040.mjs` | Historical gates retained for evidence; password/ownership assertions are superseded. |
-| `scripts/report-web-bundle.mjs` | Current production chunk inventory, route-scope comparison, accepted baseline sizes, and unchanged 200 kB entry gzip budget. |
-| `scripts/deploy-staging.sh` | Backup, Alembic, explicit auth conversion, volume audit, and safe service start. |
-| `scripts/backup-library.sh`, `restore-library.sh` | Coordinated Novel Platform database/library backup and isolated v0.10 restore verification; includes encrypted Provider rows/usage, declares the separately protected master key and custom-route allow-list as external requirements, and excludes Relay/LinguaSpindle secrets/resources. |
-| `scripts/acceptance-staging-persistence.sh` | Sanitized table/fingerprint persistence across service/database/Compose recreation. |
-| `scripts/{report-staging-resources,scan-staging-artifacts,generate-staging-deployment-report}.sh` | Resource, authentication/Provider-secret leak, and deployment evidence without credentials or host paths. |
+| `scripts/acceptance/run.mjs` | Stable `pnpm acceptance` dispatcher for the current, historical, staging and staging-persistence targets; release additions do not add package-script commands. |
+| `scripts/acceptance/gates/v0100.mjs` | Current Provider-routing candidate gate: v0.9 replay plus six extended encrypted-BYOK/multi-Provider/thinking/Relay/Web/version/topology criteria. |
+| `scripts/acceptance/gates/v090.mjs`, `support/v090.database.yml` | Historical/currently replayed v0.9 gate: applicable 84-core + 9-hardening replay and 11 capability/contributor/translation/operations criteria in isolated resources. |
+| `scripts/acceptance/gates/v080.mjs`, `support/v080.*` | Historical v0.8 gate plus its isolated two-hop proxy chain, parameterized so later gates can replay it without overwriting historical artifacts. |
+| `scripts/acceptance/gates/v060.mjs`, `v070.mjs` | Historical v0.6 compatibility and v0.7 UI gates retained with their evidence. |
+| `scripts/acceptance/gates/v050.mjs` | Parameterized v0.5 core retained as historical evidence and replayed by current gates. |
+| `scripts/acceptance/gates/v010.mjs` through `v040.mjs` | Historical gates retained for evidence; password/ownership assertions are superseded. |
+| `scripts/acceptance/gates/staging-v020.mjs`, `staging-persistence.sh` | Staging functional and sanitized table/fingerprint persistence checks exposed through the stable dispatcher. |
+| `scripts/reports/report-web-bundle.mjs` | Current production chunk inventory, route-scope comparison, accepted baseline sizes, and unchanged 200 kB entry gzip budget. |
+| `scripts/staging/staging-lib.sh`, `setup/` | Shared protected-environment/Compose helpers plus one-time server bootstrap and environment creation. |
+| `scripts/staging/lifecycle/` | Deployment, update, application-only rollback, health verification and guarded v0.9 preflight operations. |
+| `scripts/staging/data/` | Coordinated library/PostgreSQL backup and restore plus explicit library cleanup; v0.10 restore includes encrypted Provider rows/usage and externally protected key/allow-list requirements. |
+| `scripts/staging/reports/` | Sanitized resource, persistence, deployment and secret/artifact-leak evidence without credentials or host paths. |
 | `docs/staging-deployment.md` | HTTPS, v0.9/v0.10 guarded migration, vault/Relay secret boundary, private translation topology, backup/restore, verification and rollback runbook. |
 
 ## Server (`apps/server`)

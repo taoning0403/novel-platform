@@ -234,14 +234,14 @@ async function main() {
       run(
         "run inherited v0.9 gate without rewriting historical evidence",
         process.execPath,
-        ["scripts/acceptance-v090.mjs"],
+        ["scripts/acceptance/gates/v090.mjs"],
         {
           env: {
             ...process.env,
             ACCEPTANCE_VERSION: "0.10.0",
             ACCEPTANCE_TAG: `${candidateTag}-regression`,
             ACCEPTANCE_INHERITED_TAG: `${candidateTag}-regression-v080`,
-            ACCEPTANCE_COMMAND: "acceptance:v0100",
+            ACCEPTANCE_COMMAND: "pnpm acceptance -- v0100",
             ACCEPTANCE_EXPECTED_REVISION: "20260727_0009",
             ACCEPTANCE_LINGUASPINDLE_VERSION: "0.3.2",
             ACCEPTANCE_LINGUASPINDLE_VERSION_RANGE: ">=0.3.2,<0.4.0",
@@ -341,12 +341,13 @@ async function main() {
           readFile(path.join(root, "apps/web/src/layouts/AppShell.tsx"), "utf8"),
         ]);
       assert(rootPackage.version === "0.10.0", "root package version is not 0.10.0");
+      const acceptanceScriptNames = Object.keys(rootPackage.scripts ?? {}).filter(
+        (name) => name === "acceptance" || name.startsWith("acceptance:"),
+      );
       assert(
-        rootPackage.scripts?.acceptance === "node scripts/acceptance-v0100.mjs" &&
-          rootPackage.scripts?.["acceptance:v0100"] ===
-            "node scripts/acceptance-v0100.mjs" &&
-          rootPackage.scripts?.["acceptance:v090"] === "node scripts/acceptance-v090.mjs",
-        "package scripts do not select v0.10 while retaining the v0.9 gate",
+        rootPackage.scripts?.acceptance === "node scripts/acceptance/run.mjs" &&
+          acceptanceScriptNames.length === 1,
+        "package scripts must expose only the stable acceptance runner",
       );
       assert(webPackage.version === "0.10.0", "Web package version is not 0.10.0");
       assert(clientPackage.version === "0.10.0", "API client package version is not 0.10.0");
@@ -543,29 +544,41 @@ async function main() {
         readFile(path.join(root, "compose.staging.yml"), "utf8"),
         readFile(path.join(root, ".env.example"), "utf8"),
         readFile(path.join(root, ".env.staging.example"), "utf8"),
-        readFile(path.join(root, "scripts/healthcheck-staging.sh"), "utf8"),
-        readFile(path.join(root, "scripts/deploy-staging.sh"), "utf8"),
-        readFile(path.join(root, "scripts/staging-lib.sh"), "utf8"),
-        readFile(path.join(root, "scripts/restore-library.sh"), "utf8"),
-        readFile(path.join(root, "scripts/backup-library.sh"), "utf8"),
-        readFile(path.join(root, "scripts/scan-staging-artifacts.mjs"), "utf8"),
-        readFile(path.join(root, "scripts/scan-staging-artifacts.sh"), "utf8"),
-        readFile(path.join(root, "scripts/verify-staging-persistence-state.sh"), "utf8"),
+        readFile(
+          path.join(root, "scripts/staging/lifecycle/healthcheck-staging.sh"),
+          "utf8",
+        ),
+        readFile(path.join(root, "scripts/staging/lifecycle/deploy-staging.sh"), "utf8"),
+        readFile(path.join(root, "scripts/staging/staging-lib.sh"), "utf8"),
+        readFile(path.join(root, "scripts/staging/data/restore-library.sh"), "utf8"),
+        readFile(path.join(root, "scripts/staging/data/backup-library.sh"), "utf8"),
+        readFile(
+          path.join(root, "scripts/staging/reports/scan-staging-artifacts.mjs"),
+          "utf8",
+        ),
+        readFile(
+          path.join(root, "scripts/staging/reports/scan-staging-artifacts.sh"),
+          "utf8",
+        ),
+        readFile(
+          path.join(root, "scripts/staging/reports/verify-staging-persistence-state.sh"),
+          "utf8",
+        ),
       ]);
       run(
         "parse the fail-closed staging healthcheck",
         "bash",
-        ["-n", "scripts/healthcheck-staging.sh"],
+        ["-n", "scripts/staging/lifecycle/healthcheck-staging.sh"],
       );
       run(
         "parse disabled-Relay cleanup in the staging deploy script",
         "bash",
-        ["-n", "scripts/deploy-staging.sh"],
+        ["-n", "scripts/staging/lifecycle/deploy-staging.sh"],
       );
       run(
         "parse the staging persistence fingerprint verifier",
         "bash",
-        ["-n", "scripts/verify-staging-persistence-state.sh"],
+        ["-n", "scripts/staging/reports/verify-staging-persistence-state.sh"],
       );
       assert(
         stagingPersistenceState.includes("configuration_fingerprint") &&

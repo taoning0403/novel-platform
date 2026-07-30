@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIRECTORY/.." && pwd)"
+REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIRECTORY/../../.." && pwd)"
 target_ref="${1:-${STAGING_GIT_REF:-origin/main}}"
 
 git -C "$REPOSITORY_ROOT" diff --quiet --ignore-submodules -- \

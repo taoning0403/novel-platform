@@ -11,7 +11,7 @@ const root = process.cwd();
 const artifacts = path.join(root, "artifacts");
 const acceptanceVersion = process.env.ACCEPTANCE_VERSION ?? "0.5.0";
 const acceptanceTag = process.env.ACCEPTANCE_TAG ?? "v050";
-const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "acceptance:v050";
+const acceptanceCommand = process.env.ACCEPTANCE_COMMAND ?? "pnpm acceptance -- v050";
 const acceptanceProfile = process.env.ACCEPTANCE_PROFILE ?? "v050";
 const acceptanceExpectedRevision =
   process.env.ACCEPTANCE_EXPECTED_REVISION ?? "20260715_0005";
@@ -1238,13 +1238,16 @@ async function main() {
       };
       const backupOutput = run(
         `create complete ${releaseLabel} database and library backup`,
-        "bash", ["scripts/backup-library.sh", backupDirectory], { env: operationsEnvironment },
+        "bash",
+        ["scripts/staging/data/backup-library.sh", backupDirectory],
+        { env: operationsEnvironment },
       );
       const backupPath = backupOutput.match(/^backup=(.+)$/m)?.[1];
       assert(backupPath, "backup script did not report an output directory");
       run(
         "restore backup into isolated database and isolated volume",
-        "bash", ["scripts/restore-library.sh", "--test", backupPath, restoreReport],
+        "bash",
+        ["scripts/staging/data/restore-library.sh", "--test", backupPath, restoreReport],
         { env: operationsEnvironment },
       );
       const restoreText = await readFile(restoreReport, "utf8");
@@ -1316,7 +1319,10 @@ async function main() {
       for (const script of (await filesUnder(path.join(root, "scripts"))).filter((file) => file.endsWith(".sh"))) {
         run(`bash syntax ${path.basename(script)}`, "bash", ["-n", script]);
       }
-      run("Node syntax acceptance-v050", process.execPath, ["--check", "scripts/acceptance-v050.mjs"]);
+      run("Node syntax acceptance-v050", process.execPath, [
+        "--check",
+        "scripts/acceptance/gates/v050.mjs",
+      ]);
       results.web_quality = "PASS";
       results.security_audit = "PASS";
     });
