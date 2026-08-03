@@ -8,8 +8,11 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
+import pytest
 import pytest_asyncio
 from sqlalchemy import select, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from novel_platform.api.dependencies.storage import get_file_storage
@@ -173,12 +176,52 @@ class AppHarness:
             return len(list(rows))
 
 
+def _require_isolated_test_database(database_url: str) -> None:
+    try:
+        parsed = make_url(database_url)
+    except ArgumentError as error:
+        raise RuntimeError("TEST_DATABASE_URL is not a valid database URL") from error
+    target_override_keys = {
+        "database",
+        "dbname",
+        "host",
+        "hostaddr",
+        "port",
+        "service",
+        "servicefile",
+    }
+    query_keys = {str(key).lower() for key in parsed.query}
+    if query_keys & target_override_keys:
+        raise RuntimeError(
+            "TEST_DATABASE_URL query parameters must not override the database target"
+        )
+    database_name = (parsed.database or "").lower()
+    database_name_parts = database_name.replace("-", "_").split("_")
+    if "test" not in database_name_parts:
+        raise RuntimeError("TEST_DATABASE_URL database name must contain a distinct 'test' segment")
+    database_host = (parsed.host or "").lower()
+    local_hosts = {"", "localhost", "127.0.0.1", "::1"}
+    if (
+        database_host not in local_hosts
+        and os.getenv("ALLOW_REMOTE_TEST_DATABASE", "").strip() != "1"
+    ):
+        raise RuntimeError(
+            "remote TEST_DATABASE_URL requires ALLOW_REMOTE_TEST_DATABASE=1 "
+            "after isolation is verified"
+        )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_integration_database() -> None:
+    database_url = os.getenv("TEST_DATABASE_URL")
+    if database_url:
+        _require_isolated_test_database(database_url)
+
+
 @pytest_asyncio.fixture
 async def app_harness(tmp_path: Path) -> AsyncIterator[AppHarness]:
     database_url = os.getenv("TEST_DATABASE_URL")
     if not database_url:
-        import pytest
-
         pytest.skip("TEST_DATABASE_URL is not configured")
 
     engine = create_async_engine(database_url)

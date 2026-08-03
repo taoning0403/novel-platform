@@ -180,7 +180,7 @@ async function waitForDatabase(environment, timeoutMs = 120_000) {
         "docker",
         [
           "compose", "-p", databaseProject, "-f", databaseComposeFile,
-          "exec", "-T", "postgres", "pg_isready", "-U", "novel_platform", "-d", "novel_platform",
+          "exec", "-T", "postgres", "pg_isready", "-U", "novel_platform", "-d", "novel_platform_test",
         ],
         { cwd: root, env: environment, stdio: "ignore" },
       );
@@ -343,7 +343,7 @@ async function main() {
       await waitForDatabase(databaseEnvironment);
     });
 
-    const testDatabaseUrl = `postgresql+psycopg://novel_platform:novel_platform_acceptance@127.0.0.1:${databasePort}/novel_platform`;
+    const testDatabaseUrl = `postgresql+psycopg://novel_platform:novel_platform_acceptance@127.0.0.1:${databasePort}/novel_platform_test`;
     await step("Exercise the guarded count-only v0.9 migration preflight", async () => {
       run(
         "prepare a v0.5 schema for v0.9 preflight",
@@ -371,7 +371,7 @@ async function main() {
           "ENVIRONMENT=development",
           `PUBLIC_BASE_URL=http://localhost:${databasePort}`,
           `V090_POSTGRES_PORT=${databasePort}`,
-          "POSTGRES_DB=novel_platform",
+          "POSTGRES_DB=novel_platform_test",
           "POSTGRES_USER=novel_platform",
           `POSTGRES_PASSWORD=${"p".repeat(40)}`,
           `CORS_ORIGINS='[\"http://localhost:${databasePort}\"]'`,

@@ -1,0 +1,2152 @@
+{
+  "schema_version": 2,
+  "generated_from": {
+    "commit": "3a379001e9091e92eb858286d9f3331657aaf767",
+    "date": "2026-07-30T17:08:18+08:00"
+  },
+  "thresholds": {
+    "python": {
+      "file_effective_lines": 400,
+      "function_effective_lines": 60,
+      "cyclomatic_complexity": 10,
+      "nesting_depth": 4
+    },
+    "typescript": {
+      "file_effective_lines": 300,
+      "function_effective_lines": 60,
+      "cyclomatic_complexity": 10,
+      "nesting_depth": 4
+    }
+  },
+  "exclusions": [
+    {
+      "path": "apps/server/migrations/versions/*.py",
+      "metrics": [
+        "file_effective_lines",
+        "function_effective_lines",
+        "cyclomatic_complexity",
+        "nesting_depth"
+      ],
+      "reason": "Alembic revisions are linear, reviewable migration records."
+    },
+    {
+      "path": "packages/api-client/src/schema.d.ts",
+      "metrics": [
+        "file_effective_lines",
+        "function_effective_lines",
+        "cyclomatic_complexity",
+        "nesting_depth"
+      ],
+      "reason": "Generated from the checked OpenAPI contract."
+    },
+    {
+      "path": "apps/server/src/novel_platform/infrastructure/database/models.py",
+      "metrics": [
+        "file_effective_lines"
+      ],
+      "reason": "Declarative SQLAlchemy mappings; function metrics remain enforced."
+    },
+    {
+      "path": "apps/server/src/novel_platform/api/schemas.py",
+      "metrics": [
+        "file_effective_lines"
+      ],
+      "reason": "Declarative Pydantic contracts; function metrics remain enforced."
+    }
+  ],
+  "violations": [
+    {
+      "language": "python",
+      "path": "apps/server/scripts/cleanup_library_storage.py",
+      "symbol": "main",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/scripts/cleanup_library_storage.py",
+      "symbol": "main",
+      "metric": "function_effective_lines",
+      "value": 97,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/api/errors/handlers.py",
+      "symbol": "register_error_handlers",
+      "metric": "function_effective_lines",
+      "value": 75,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/api/serializers.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 429,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/api/serializers.py",
+      "symbol": "book_list_item",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/api/translation_responses.py",
+      "symbol": "translation_run_responses",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/api/translation_responses.py",
+      "symbol": "translation_run_responses",
+      "metric": "function_effective_lines",
+      "value": 94,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/migration_service.py",
+      "symbol": "AuthMigrationService.convert",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/migration_service.py",
+      "symbol": "AuthMigrationService.convert",
+      "metric": "function_effective_lines",
+      "value": 83,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/migration_service.py",
+      "symbol": "AuthMigrationService.integrity_audit",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/migration_service.py",
+      "symbol": "AuthMigrationService.preflight",
+      "metric": "function_effective_lines",
+      "value": 61,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 786,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "AuthService._reader_login",
+      "metric": "function_effective_lines",
+      "value": 97,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "AuthService.active_context",
+      "metric": "cyclomatic_complexity",
+      "value": 24,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "AuthService.credential_login",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "AuthService.credential_login",
+      "metric": "function_effective_lines",
+      "value": 72,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "AuthService.credential_login",
+      "metric": "nesting_depth",
+      "value": 5,
+      "threshold": 4
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/service.py",
+      "symbol": "AuthService.refresh",
+      "metric": "function_effective_lines",
+      "value": 98,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/webauthn_service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 415,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/webauthn_service.py",
+      "symbol": "WebAuthnService.verify_authentication",
+      "metric": "function_effective_lines",
+      "value": 77,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/auth/webauthn_service.py",
+      "symbol": "WebAuthnService.verify_registration",
+      "metric": "function_effective_lines",
+      "value": 91,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/editions/service.py",
+      "symbol": "EditionService.update",
+      "metric": "function_effective_lines",
+      "value": 70,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 559,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._apply_cover",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._apply_operation",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._apply_operation",
+      "metric": "function_effective_lines",
+      "value": 100,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._prepare_assets",
+      "metric": "cyclomatic_complexity",
+      "value": 16,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._prepare_assets",
+      "metric": "function_effective_lines",
+      "value": 69,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._validate_actor_command",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService._validate_command",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService.commit",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/commit_service.py",
+      "symbol": "ImportCommitService.commit",
+      "metric": "function_effective_lines",
+      "value": 102,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/epub.py",
+      "symbol": "_validate_archive_contents",
+      "metric": "nesting_depth",
+      "value": 5,
+      "threshold": 4
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/epub.py",
+      "symbol": "_validate_archive_entry",
+      "metric": "cyclomatic_complexity",
+      "value": 16,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/epub.py",
+      "symbol": "inspect_epub",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/epub.py",
+      "symbol": "inspect_epub",
+      "metric": "function_effective_lines",
+      "value": 87,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/file_service.py",
+      "symbol": "LibraryFileService.delete_book",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/inspection_service.py",
+      "symbol": "ImportInspectionService.inspect",
+      "metric": "function_effective_lines",
+      "value": 92,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/policy.py",
+      "symbol": "LibraryResourcePolicy._can_translate_edition",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/policy.py",
+      "symbol": "LibraryResourcePolicy.book_permissions",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/policy.py",
+      "symbol": "LibraryResourcePolicy.edition_permissions",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/text.py",
+      "symbol": "detect_text_encoding",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/library/text.py",
+      "symbol": "normalize_text",
+      "metric": "cyclomatic_complexity",
+      "value": 16,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/preferences/service.py",
+      "symbol": "PreferenceService.update",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/provider_credentials/service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 627,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/provider_credentials/service.py",
+      "symbol": "ProviderCredentialService._selectable_models",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/provider_credentials/service.py",
+      "symbol": "ProviderCredentialService.discover_models",
+      "metric": "function_effective_lines",
+      "value": 68,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/provider_credentials/service.py",
+      "symbol": "ProviderCredentialService.rotate",
+      "metric": "function_effective_lines",
+      "value": 70,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/provider_credentials/service.py",
+      "symbol": "ProviderCredentialService.status",
+      "metric": "cyclomatic_complexity",
+      "value": 16,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 795,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "_EpubSanitizer.handle_starttag",
+      "metric": "cyclomatic_complexity",
+      "value": 22,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "_toc_from_nav",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "_toc_from_ncx",
+      "metric": "cyclomatic_complexity",
+      "value": 18,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "_validated_archive_names",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "build_epub_publication",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "build_epub_publication",
+      "metric": "function_effective_lines",
+      "value": 65,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "build_text_publication",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/content.py",
+      "symbol": "read_text_section",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 420,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/service.py",
+      "symbol": "ReaderService.open",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/service.py",
+      "symbol": "ReaderService.open",
+      "metric": "function_effective_lines",
+      "value": 81,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/service.py",
+      "symbol": "ReaderService.save_progress",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/reader/service.py",
+      "symbol": "ReaderService.save_progress",
+      "metric": "function_effective_lines",
+      "value": 87,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/readers/service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 446,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/readers/service.py",
+      "symbol": "ReaderManagementService.update_reader",
+      "metric": "cyclomatic_complexity",
+      "value": 19,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/readers/service.py",
+      "symbol": "ReaderManagementService.update_reader",
+      "metric": "function_effective_lines",
+      "value": 77,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/site/service.py",
+      "symbol": "SiteSettingsService.update",
+      "metric": "cyclomatic_complexity",
+      "value": 14,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/ingestion_service.py",
+      "symbol": "GeneratedTranslationIngestionService.ingest",
+      "metric": "cyclomatic_complexity",
+      "value": 25,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/ingestion_service.py",
+      "symbol": "GeneratedTranslationIngestionService.ingest",
+      "metric": "function_effective_lines",
+      "value": 215,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 807,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService._ensure_remote",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService._ensure_remote",
+      "metric": "function_effective_lines",
+      "value": 97,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService.control",
+      "metric": "cyclomatic_complexity",
+      "value": 22,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService.control",
+      "metric": "function_effective_lines",
+      "value": 121,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService.create",
+      "metric": "cyclomatic_complexity",
+      "value": 21,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService.create",
+      "metric": "function_effective_lines",
+      "value": 127,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService.sync",
+      "metric": "cyclomatic_complexity",
+      "value": 18,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/application/translations/service.py",
+      "symbol": "TranslationRunService.sync",
+      "metric": "function_effective_lines",
+      "value": 62,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/cli.py",
+      "symbol": "run",
+      "metric": "cyclomatic_complexity",
+      "value": 14,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/cli.py",
+      "symbol": "run",
+      "metric": "nesting_depth",
+      "value": 9,
+      "threshold": 4
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/config.py",
+      "symbol": "ProviderRelaySettings.validate_relay_configuration",
+      "metric": "cyclomatic_complexity",
+      "value": 23,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/config.py",
+      "symbol": "Settings._validate_provider_credential_configuration",
+      "metric": "cyclomatic_complexity",
+      "value": 28,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/config.py",
+      "symbol": "Settings.validate_auth_configuration",
+      "metric": "cyclomatic_complexity",
+      "value": 38,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/config.py",
+      "symbol": "Settings.validate_auth_configuration",
+      "metric": "function_effective_lines",
+      "value": 79,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/config.py",
+      "symbol": "normalize_provider_base_url",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/integrations/linguaspindle.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 641,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/integrations/linguaspindle.py",
+      "symbol": "LinguaSpindleClient._json",
+      "metric": "cyclomatic_complexity",
+      "value": 14,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/integrations/linguaspindle.py",
+      "symbol": "LinguaSpindleClient._json",
+      "metric": "nesting_depth",
+      "value": 5,
+      "threshold": 4
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/integrations/linguaspindle.py",
+      "symbol": "LinguaSpindleClient.download_artifact",
+      "metric": "nesting_depth",
+      "value": 5,
+      "threshold": 4
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/integrations/linguaspindle.py",
+      "symbol": "LinguaSpindleClient.service_status",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/integrations/linguaspindle.py",
+      "symbol": "LinguaSpindleClient.service_status",
+      "metric": "function_effective_lines",
+      "value": 83,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/repositories/books.py",
+      "symbol": "BookRepository.list_page",
+      "metric": "function_effective_lines",
+      "value": 69,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/repositories/books.py",
+      "symbol": "BookRepository.list_readable_page",
+      "metric": "function_effective_lines",
+      "value": 88,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/repositories/library.py",
+      "symbol": "LibraryRepository.book_summaries",
+      "metric": "cyclomatic_complexity",
+      "value": 21,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/repositories/library.py",
+      "symbol": "LibraryRepository.book_summaries",
+      "metric": "function_effective_lines",
+      "value": 143,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/infrastructure/storage/local.py",
+      "symbol": "LocalFileStorage._list_storage_keys",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 443,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "_bound_provider_destination",
+      "metric": "cyclomatic_complexity",
+      "value": 18,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "_call_upstream",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "_call_upstream",
+      "metric": "function_effective_lines",
+      "value": 69,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "_sanitize_upstream_response",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "chat_completions",
+      "metric": "cyclomatic_complexity",
+      "value": 17,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/src/novel_platform/relay.py",
+      "symbol": "chat_completions",
+      "metric": "function_effective_lines",
+      "value": 80,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/conftest.py",
+      "symbol": "AppHarness.provision_admin",
+      "metric": "function_effective_lines",
+      "value": 93,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_api_workflow.py",
+      "symbol": "test_admin_file_backed_edition_workflow_and_legacy_removal",
+      "metric": "function_effective_lines",
+      "value": 138,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_auth_and_isolation.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 592,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_auth_and_isolation.py",
+      "symbol": "test_credential_capabilities_are_snapshot_scoped_and_database_authoritative",
+      "metric": "function_effective_lines",
+      "value": 96,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_auth_and_isolation.py",
+      "symbol": "test_reader_credential_lifecycle_device_limit_and_concurrency",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_auth_and_isolation.py",
+      "symbol": "test_reader_credential_lifecycle_device_limit_and_concurrency",
+      "metric": "function_effective_lines",
+      "value": 102,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_auth_and_isolation.py",
+      "symbol": "test_reader_suspend_expiry_reissue_and_uniform_failures",
+      "metric": "function_effective_lines",
+      "value": 106,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_auth_and_isolation.py",
+      "symbol": "test_refresh_rotation_private_session_isolation_and_admin_emergency_controls",
+      "metric": "function_effective_lines",
+      "value": 81,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_contributor_library.py",
+      "symbol": "test_contributor_upload_attribution_isolation_and_resource_policy",
+      "metric": "function_effective_lines",
+      "value": 254,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_library_imports.py",
+      "symbol": "test_epub_cover_filters_failures_and_single_owner_storage",
+      "metric": "function_effective_lines",
+      "value": 95,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_library_imports.py",
+      "symbol": "test_txt_import_revision_relationship_and_transactional_cleanup",
+      "metric": "function_effective_lines",
+      "value": 131,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 1149,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_empty_database_upgrade_and_cli_only_admin_initialization",
+      "metric": "function_effective_lines",
+      "value": 141,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_epub_translation_migration_preserves_txt_and_guards_downgrade",
+      "metric": "function_effective_lines",
+      "value": 190,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_multi_provider_migration_downgrade_refuses_incompatible_rows",
+      "metric": "function_effective_lines",
+      "value": 67,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_multi_provider_migration_preserves_legacy_credential_semantics",
+      "metric": "function_effective_lines",
+      "value": 121,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_provider_credential_migration_refuses_and_preserves_unscoped_runs",
+      "metric": "function_effective_lines",
+      "value": 124,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_v040_explicit_multi_owner_conversion_preserves_ids_and_private_state",
+      "metric": "function_effective_lines",
+      "value": 365,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_migrations.py",
+      "symbol": "test_v090_migration_blocks_active_import_and_backfills_read_capability",
+      "metric": "function_effective_lines",
+      "value": 91,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_reader_series.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 409,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_reader_series.py",
+      "symbol": "test_shared_library_reader_projection_private_state_and_rbac",
+      "metric": "function_effective_lines",
+      "value": 260,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 1616,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_epub_translation_uses_matching_pipeline_and_ingests_one_valid_epub",
+      "metric": "function_effective_lines",
+      "value": 89,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_partial_or_corrupt_translation_never_creates_an_edition",
+      "metric": "function_effective_lines",
+      "value": 67,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_provider_credential_rotation_scopes_runs_and_removal_revokes_versions",
+      "metric": "function_effective_lines",
+      "value": 247,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_provider_model_discovery_contract_capability_and_no_persistence",
+      "metric": "function_effective_lines",
+      "value": 106,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_provider_relay_hardens_forwarding_and_persists_sanitized_usage",
+      "metric": "function_effective_lines",
+      "value": 348,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_successful_translation_ingestion_draft_visibility_publication_and_deletion",
+      "metric": "function_effective_lines",
+      "value": 174,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/integration/test_translation_runs.py",
+      "symbol": "test_translation_capability_idempotency_isolation_and_retry",
+      "metric": "function_effective_lines",
+      "value": 167,
+      "threshold": 60
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/unit/test_provider_credentials.py",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 917,
+      "threshold": 400
+    },
+    {
+      "language": "python",
+      "path": "apps/server/tests/unit/test_provider_credentials.py",
+      "symbol": "test_model_discovery_uses_bound_targets_and_returns_all_valid_unique_ids",
+      "metric": "function_effective_lines",
+      "value": 61,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/api/client.ts",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 566,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/api/client.ts",
+      "symbol": "request",
+      "metric": "cyclomatic_complexity",
+      "value": 14,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/auth/AuthProvider.tsx",
+      "symbol": "AuthProvider",
+      "metric": "function_effective_lines",
+      "value": 146,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/features/editions/EditionCard.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 382,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/features/editions/EditionCard.tsx",
+      "symbol": "EditionCard",
+      "metric": "cyclomatic_complexity",
+      "value": 43,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/features/editions/EditionCard.tsx",
+      "symbol": "EditionCard",
+      "metric": "function_effective_lines",
+      "value": 336,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/features/translations/TranslationLaunchModal.tsx",
+      "symbol": "TranslationLaunchModal",
+      "metric": "cyclomatic_complexity",
+      "value": 32,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/features/translations/TranslationLaunchModal.tsx",
+      "symbol": "TranslationLaunchModal",
+      "metric": "function_effective_lines",
+      "value": 252,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/features/translations/TranslationLaunchModal.tsx",
+      "symbol": "TranslationLaunchModal.submit",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/layouts/AppShell.tsx",
+      "symbol": "AppShell",
+      "metric": "cyclomatic_complexity",
+      "value": 29,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/layouts/AppShell.tsx",
+      "symbol": "AppShell",
+      "metric": "function_effective_lines",
+      "value": 199,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminAuditPage.tsx",
+      "symbol": "AdminAuditPage",
+      "metric": "function_effective_lines",
+      "value": 201,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminReadersPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 1017,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminReadersPage.tsx",
+      "symbol": "AdminReadersPage",
+      "metric": "cyclomatic_complexity",
+      "value": 18,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminReadersPage.tsx",
+      "symbol": "AdminReadersPage",
+      "metric": "function_effective_lines",
+      "value": 407,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminReadersPage.tsx",
+      "symbol": "ReaderDetail",
+      "metric": "cyclomatic_complexity",
+      "value": 44,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminReadersPage.tsx",
+      "symbol": "ReaderDetail",
+      "metric": "function_effective_lines",
+      "value": 526,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminSecurityPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 312,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminSecurityPage.tsx",
+      "symbol": "AdminSecurityPage",
+      "metric": "cyclomatic_complexity",
+      "value": 13,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminSecurityPage.tsx",
+      "symbol": "AdminSecurityPage",
+      "metric": "function_effective_lines",
+      "value": 301,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminSitePage.tsx",
+      "symbol": "AdminSitePage",
+      "metric": "cyclomatic_complexity",
+      "value": 14,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/AdminSitePage.tsx",
+      "symbol": "AdminSitePage",
+      "metric": "function_effective_lines",
+      "value": 231,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/BookDetailPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 304,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/BookDetailPage.tsx",
+      "symbol": "BookDetailPage",
+      "metric": "cyclomatic_complexity",
+      "value": 25,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/BookDetailPage.tsx",
+      "symbol": "BookDetailPage",
+      "metric": "function_effective_lines",
+      "value": 284,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/DevicesPage.tsx",
+      "symbol": "DevicesPage",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/DevicesPage.tsx",
+      "symbol": "DevicesPage",
+      "metric": "function_effective_lines",
+      "value": 114,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/LibraryPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 318,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/LibraryPage.tsx",
+      "symbol": "LibraryPage",
+      "metric": "cyclomatic_complexity",
+      "value": 19,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/LibraryPage.tsx",
+      "symbol": "LibraryPage",
+      "metric": "function_effective_lines",
+      "value": 297,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/LoginPage.tsx",
+      "symbol": "LoginPage",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/LoginPage.tsx",
+      "symbol": "LoginPage",
+      "metric": "function_effective_lines",
+      "value": 136,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProfilePage.tsx",
+      "symbol": "ProfilePage",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProfilePage.tsx",
+      "symbol": "ProfilePage",
+      "metric": "function_effective_lines",
+      "value": 87,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 758,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
+      "symbol": "ProviderCredentialPage",
+      "metric": "cyclomatic_complexity",
+      "value": 66,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
+      "symbol": "ProviderCredentialPage",
+      "metric": "function_effective_lines",
+      "value": 652,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
+      "symbol": "ProviderCredentialPage.loadModelCatalog",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
+      "symbol": "ProviderCredentialPage.saveCredential",
+      "metric": "function_effective_lines",
+      "value": 67,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ReaderPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 820,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ReaderPage.tsx",
+      "symbol": "ReaderPage",
+      "metric": "cyclomatic_complexity",
+      "value": 24,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ReaderPage.tsx",
+      "symbol": "ReaderPage",
+      "metric": "function_effective_lines",
+      "value": 739,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/ReaderPage.tsx",
+      "symbol": "publicationStartsWithHeading",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SeriesDetailPage.tsx",
+      "symbol": "SeriesDetailPage",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SeriesDetailPage.tsx",
+      "symbol": "SeriesDetailPage",
+      "metric": "function_effective_lines",
+      "value": 181,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SeriesPage.tsx",
+      "symbol": "SeriesPage",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SeriesPage.tsx",
+      "symbol": "SeriesPage",
+      "metric": "function_effective_lines",
+      "value": 102,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SeriesUploadPage.tsx",
+      "symbol": "SeriesUploadPage",
+      "metric": "function_effective_lines",
+      "value": 185,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SessionsPage.tsx",
+      "symbol": "SessionsPage",
+      "metric": "cyclomatic_complexity",
+      "value": 11,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/SessionsPage.tsx",
+      "symbol": "SessionsPage",
+      "metric": "function_effective_lines",
+      "value": 98,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/TranslationsPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 600,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/TranslationsPage.tsx",
+      "symbol": "TranslationsPage",
+      "metric": "cyclomatic_complexity",
+      "value": 47,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/TranslationsPage.tsx",
+      "symbol": "TranslationsPage",
+      "metric": "function_effective_lines",
+      "value": 461,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/TranslationsPage.tsx",
+      "symbol": "TranslationsPage.<callback:8>.tick",
+      "metric": "cyclomatic_complexity",
+      "value": 12,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/UploadPage.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 583,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/UploadPage.tsx",
+      "symbol": "UploadPage",
+      "metric": "cyclomatic_complexity",
+      "value": 35,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/UploadPage.tsx",
+      "symbol": "UploadPage",
+      "metric": "function_effective_lines",
+      "value": 522,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/UploadPage.tsx",
+      "symbol": "UploadPage.commit",
+      "metric": "cyclomatic_complexity",
+      "value": 22,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/UploadPage.tsx",
+      "symbol": "UploadPage.inspect",
+      "metric": "cyclomatic_complexity",
+      "value": 15,
+      "threshold": 10
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/src/pages/UploadPage.tsx",
+      "symbol": "UploadPage.inspect",
+      "metric": "function_effective_lines",
+      "value": 61,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/AdminReadersPage.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 121,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/AuthFlow.test.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 368,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/EditionCard.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 155,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/LibraryPage.test.tsx",
+      "symbol": "<callback:3>",
+      "metric": "function_effective_lines",
+      "value": 90,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/ProviderCredentialPage.test.tsx",
+      "symbol": "<callback:5>",
+      "metric": "function_effective_lines",
+      "value": 333,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/ProviderCredentialPage.test.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 386,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/ReaderPage.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 150,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/SeriesUploadPage.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 83,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/TranslationLaunchModal.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 137,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/TranslationsPage.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 121,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/UploadPage.test.tsx",
+      "symbol": "<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 415,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/UploadPage.test.tsx",
+      "symbol": "<callback:2>.<callback:1>",
+      "metric": "function_effective_lines",
+      "value": 89,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/UploadPage.test.tsx",
+      "symbol": "<callback:2>.<callback:2>",
+      "metric": "function_effective_lines",
+      "value": 102,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/UploadPage.test.tsx",
+      "symbol": "<file>",
+      "metric": "file_effective_lines",
+      "value": 467,
+      "threshold": 300
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/apiClient.test.ts",
+      "symbol": "<callback:3>",
+      "metric": "function_effective_lines",
+      "value": 207,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/apiClient.test.ts",
+      "symbol": "<callback:3>.<callback:4>",
+      "metric": "function_effective_lines",
+      "value": 109,
+      "threshold": 60
+    },
+    {
+      "language": "typescript",
+      "path": "apps/web/tests/apiClient.test.ts",
+      "symbol": "<callback:3>.<callback:4>.<callback:1>",
+      "metric": "function_effective_lines",
+      "value": 81,
+      "threshold": 60
+    }
+  ],
+  "dependency_baseline": {
+    "python_cycles": 0,
+    "typescript_cycles": 0,
+    "python_reverse_edges": {
+      "application_to_infrastructure": [
+        {
+          "from": "novel_platform.application.access",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.auth.admin_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.auth.admin_service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.auth.admin_service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.auth.admin_service",
+          "to": "novel_platform.infrastructure.repositories.users"
+        },
+        {
+          "from": "novel_platform.application.auth.audit_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.auth.audit_service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.auth.audit_service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.auth.context",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.auth.migration_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.auth.migration_service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.auth.migration_service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.auth.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.auth.service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.auth.service",
+          "to": "novel_platform.infrastructure.repositories.credentials"
+        },
+        {
+          "from": "novel_platform.application.auth.service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.auth.service",
+          "to": "novel_platform.infrastructure.repositories.users"
+        },
+        {
+          "from": "novel_platform.application.auth.webauthn_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.auth.webauthn_service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.auth.webauthn_service",
+          "to": "novel_platform.infrastructure.repositories.credentials"
+        },
+        {
+          "from": "novel_platform.application.auth.webauthn_service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.books.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.books.service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.editions.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.editions.service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.editions.service",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.library.commit_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.library.commit_service",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.library.file_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.library.file_service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.library.file_service",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.library.file_service",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.library.inspection_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.library.inspection_service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.library.inspection_service",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.library.inspection_service",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.library.policy",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.library.policy",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.library.policy",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.preferences.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.preferences.service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.preferences.service",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.preferences.service",
+          "to": "novel_platform.infrastructure.repositories.preferences"
+        },
+        {
+          "from": "novel_platform.application.provider_credentials.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.provider_credentials.service",
+          "to": "novel_platform.infrastructure.integrations.provider_http"
+        },
+        {
+          "from": "novel_platform.application.provider_credentials.service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.provider_credentials.service",
+          "to": "novel_platform.infrastructure.repositories.provider_credentials"
+        },
+        {
+          "from": "novel_platform.application.reader.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.reader.service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.reader.service",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.reader.service",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.reader.service",
+          "to": "novel_platform.infrastructure.repositories.reader"
+        },
+        {
+          "from": "novel_platform.application.readers.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.readers.service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.readers.service",
+          "to": "novel_platform.infrastructure.repositories.credentials"
+        },
+        {
+          "from": "novel_platform.application.readers.service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.readers.service",
+          "to": "novel_platform.infrastructure.repositories.users"
+        },
+        {
+          "from": "novel_platform.application.series.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.series.service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.series.service",
+          "to": "novel_platform.infrastructure.repositories.series"
+        },
+        {
+          "from": "novel_platform.application.site.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.site.service",
+          "to": "novel_platform.infrastructure.repositories.auth"
+        },
+        {
+          "from": "novel_platform.application.site.service",
+          "to": "novel_platform.infrastructure.repositories.site"
+        },
+        {
+          "from": "novel_platform.application.translations.ingestion_service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.translations.ingestion_service",
+          "to": "novel_platform.infrastructure.integrations.linguaspindle"
+        },
+        {
+          "from": "novel_platform.application.translations.ingestion_service",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.translations.ingestion_service",
+          "to": "novel_platform.infrastructure.repositories.translation_runs"
+        },
+        {
+          "from": "novel_platform.application.translations.service",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.application.translations.service",
+          "to": "novel_platform.infrastructure.integrations.linguaspindle"
+        },
+        {
+          "from": "novel_platform.application.translations.service",
+          "to": "novel_platform.infrastructure.repositories.books"
+        },
+        {
+          "from": "novel_platform.application.translations.service",
+          "to": "novel_platform.infrastructure.repositories.editions"
+        },
+        {
+          "from": "novel_platform.application.translations.service",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.application.translations.service",
+          "to": "novel_platform.infrastructure.repositories.translation_runs"
+        },
+        {
+          "from": "novel_platform.application.users.service",
+          "to": "novel_platform.infrastructure.database.models"
+        }
+      ],
+      "api_to_infrastructure": [
+        {
+          "from": "novel_platform.api.dependencies.auth",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.dependencies.database",
+          "to": "novel_platform.infrastructure.database.session"
+        },
+        {
+          "from": "novel_platform.api.dependencies.storage",
+          "to": "novel_platform.infrastructure.storage.local"
+        },
+        {
+          "from": "novel_platform.api.dependencies.translation",
+          "to": "novel_platform.infrastructure.integrations.linguaspindle"
+        },
+        {
+          "from": "novel_platform.api.file_responses",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.library_responses",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.library_responses",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.api.library_responses",
+          "to": "novel_platform.infrastructure.repositories.users"
+        },
+        {
+          "from": "novel_platform.api.routes.books",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.api.routes.books",
+          "to": "novel_platform.infrastructure.repositories.reader"
+        },
+        {
+          "from": "novel_platform.api.routes.books",
+          "to": "novel_platform.infrastructure.repositories.series"
+        },
+        {
+          "from": "novel_platform.api.routes.editions",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.api.routes.editions",
+          "to": "novel_platform.infrastructure.repositories.reader"
+        },
+        {
+          "from": "novel_platform.api.routes.imports",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.api.routes.provider_credentials",
+          "to": "novel_platform.infrastructure.repositories.provider_credentials"
+        },
+        {
+          "from": "novel_platform.api.routes.reader",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.routes.series",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.api.routes.translation_runs",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.serializers",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.serializers",
+          "to": "novel_platform.infrastructure.repositories.library"
+        },
+        {
+          "from": "novel_platform.api.translation_responses",
+          "to": "novel_platform.infrastructure.database.models"
+        },
+        {
+          "from": "novel_platform.api.translation_responses",
+          "to": "novel_platform.infrastructure.integrations.linguaspindle"
+        },
+        {
+          "from": "novel_platform.api.translation_responses",
+          "to": "novel_platform.infrastructure.repositories.users"
+        }
+      ]
+    },
+    "allowed_edges": [
+      {
+        "from": "novel_platform.infrastructure.storage.local",
+        "to": "novel_platform.application.library.storage",
+        "reason": "The local infrastructure adapter implements the application-owned storage port."
+      }
+    ]
+  }
+}

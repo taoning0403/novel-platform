@@ -168,6 +168,27 @@ common valid, unencrypted EPUB 2/3 through LinguaSpindle's native Pipeline and A
 - This refresh changes only React/CSS/test code under `apps/web`; Server behavior, API contracts,
   persistence, authentication, authorization and Reader publication chrome are unchanged.
 
+## Repository engineering baseline
+
+- The repository provides project-local `architecture-audit`, `incremental-refactor`, and
+  `code-change-verification` Skills under `.agents/skills`. They establish a read-only
+  architecture audit, one-responsibility refactoring slices, and the change-aware `pnpm verify`
+  entry without changing product behavior.
+- The reviewed quality ratchet records current Python/TypeScript file size, function size,
+  complexity and nesting debt as explicit JSON. Historical entries may remain but cannot grow;
+  new violations, static import cycles, or prohibited dependency-direction edges fail.
+- Python files use a 400-effective-line reference and TypeScript/TSX files use 300; both use 60
+  effective lines per function, complexity 10 and nesting depth 4. Generated contracts and
+  migrations are excluded, while declarative model/schema registries receive only a documented
+  file-size exception.
+- The repository CI workflow is configured to run the repository-wide quality and Skill-structure
+  checks before the existing Web gates. Runtime, API, persistence, migration and deployment
+  behavior are unchanged by this tooling baseline.
+- PostgreSQL integration fixtures reject database names without a distinct `test` segment and
+  require `ALLOW_REMOTE_TEST_DATABASE=1` for a non-local host. The same prerequisite is enforced
+  by the unified verifier before any selected integration or migration check. Both reject URL
+  query parameters that could override the reviewed host or database target.
+
 ## Verification state
 
 - Archived outputs are `artifacts/acceptance-v0100.{md,json}`. The v0.10 gate passed on commit

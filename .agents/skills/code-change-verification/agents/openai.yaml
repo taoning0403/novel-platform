@@ -1,0 +1,4 @@
+interface:
+  display_name: "Code Change Verification"
+  short_description: "Run deterministic checks for changed repository surfaces"
+  default_prompt: "Use $code-change-verification to run the checks required by this repository change."

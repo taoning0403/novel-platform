@@ -10,9 +10,11 @@ migrations, and tests.
 | `README.md`, `README.zh-CN.md` | English and Simplified Chinese project overview, local start, CLI initialization, security configuration, checks, and release gate. |
 | `LICENSE`, `NOTICE`, `SECURITY.md`, `SECURITY.zh-CN.md` | Apache-2.0 project license, Psycopg LGPL third-party notice, and bilingual private vulnerability-reporting policy. |
 | `AGENTS.md`, `.agents/skills/repo-context/` | Required repository workflow and context-first navigation. |
+| `.agents/skills/{architecture-audit,incremental-refactor,code-change-verification}/` | Read-only architecture audit, repository-specific incremental refactoring, and deterministic change-aware verification workflows. |
 | `.agents/skills/novel-platform-design-system/` | Approved 漫读 Quiet Trace tokens, layout, interaction, accessibility, and verification constraints for Web UI work. |
 | `docs/PROJECT_STATE.md` | Deployed v0.10.0 baseline plus current post-v0.10 Provider-routing scope, verification, omissions, and deployment state. |
 | `docs/architecture.md`, `docs/data-model.md` | Boundaries, flows, relationships, and invariants. |
+| `docs/architecture/refactor-baseline.md` | Evidence-based code-size, complexity, dependency, test-protection, compatibility, and refactoring-priority baseline; recommendations are not approved architecture decisions. |
 | `docs/DECISIONS.md`, `docs/adr/0012-*` through `0021-*` | Authentication, capability/contributor library, Quiet Trace, proxy hardening, private translation, reader-owned credentials, version-bound Provider routing and structure-preserving EPUB translation decisions. |
 | `compose.yaml` | Isolated local PostgreSQL, migration, API, library volume, and Web topology. |
 | `compose.staging.yml`, `.env.staging.example`, `compose.translation.yml` | HTTPS/WebAuthn single-host contract plus optional Server and database-connected Relay overlay on external `linguaspindle-private`; Relay has no host/proxy port. |
@@ -25,6 +27,7 @@ migrations, and tests.
 | `scripts/acceptance/gates/v010.mjs` through `v040.mjs` | Historical gates retained for evidence; password/ownership assertions are superseded. |
 | `scripts/acceptance/gates/staging-v020.mjs`, `staging-persistence.sh` | Staging functional and sanitized table/fingerprint persistence checks exposed through the stable dispatcher. |
 | `scripts/reports/report-web-bundle.mjs` | Current production chunk inventory, route-scope comparison, accepted baseline sizes, and unchanged 200 kB entry gzip budget. |
+| `.agents/skills/code-change-verification/scripts/verify.py` | Root `pnpm verify` dispatcher for the quality ratchet and change-appropriate Web, Server, API, migration, integration, and acceptance checks. |
 | `scripts/staging/staging-lib.sh`, `setup/` | Shared protected-environment/Compose helpers plus one-time server bootstrap and environment creation. |
 | `scripts/staging/lifecycle/` | Deployment, update, application-only rollback, health verification and guarded v0.9 preflight operations. |
 | `scripts/staging/data/` | Coordinated library/PostgreSQL backup and restore plus explicit library cleanup; v0.10 restore includes encrypted Provider rows/usage and externally protected key/allow-list requirements. |
@@ -133,3 +136,5 @@ migrations, and tests.
 | Web layout/component system | design-system skill + provider + AppShell + shared UI | Web tests, production build, bundle report, inherited v0.6 browser acceptance, v0.7 task paths and capture-only browser evidence |
 | Deployment/upgrade | settings, Compose overlays, staging scripts | config/secret validation, 0007 unscoped-Run preflight, 0008 routing constraints, coordinated backup/external-key/allow-list restore, network/port audit |
 | Durable design | current code and consolidated docs | new ADR and decision-index entry |
+| Repository-wide refactor or boundary change | `$architecture-audit`, then `$incremental-refactor` | `pnpm verify` plus the affected focused and full gates |
+| Quality baseline or verification routing | `$code-change-verification` | `pnpm verify -- --quality-only --all`, then the checks selected for the changed surface |

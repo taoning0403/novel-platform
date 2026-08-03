@@ -15,7 +15,8 @@
     "build": "pnpm --filter @novel-platform/web build",
     "dev": "pnpm --filter @novel-platform/web dev",
     "lint": "pnpm --filter @novel-platform/web lint",
-    "test": "pnpm --filter @novel-platform/web test"
+    "test": "pnpm --filter @novel-platform/web test",
+    "verify": "uv run --project apps/server python .agents/skills/code-change-verification/scripts/verify.py"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

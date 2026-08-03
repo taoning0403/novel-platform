@@ -1,0 +1,4 @@
+interface:
+  display_name: "Architecture Audit"
+  short_description: "Audit repository boundaries before structural changes"
+  default_prompt: "Use $architecture-audit to audit this repository change before restructuring modules."
