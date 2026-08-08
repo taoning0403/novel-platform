@@ -576,6 +576,26 @@ async function main() {
         ["-n", "scripts/staging/lifecycle/deploy-staging.sh"],
       );
       run(
+        "preserve the caller directory when sourcing the staging library",
+        "bash",
+        [
+          "-c",
+          `set -Eeuo pipefail
+caller_directory="$1"
+expected_root="$2"
+SCRIPT_DIRECTORY="$caller_directory"
+source "$caller_directory/../staging-lib.sh"
+[[ "$SCRIPT_DIRECTORY" == "$caller_directory" ]]
+[[ "$REPOSITORY_ROOT" == "$expected_root" ]]
+[[ -x "$SCRIPT_DIRECTORY/../data/backup-library.sh" ]]
+[[ -x "$SCRIPT_DIRECTORY/preflight-v090.sh" ]]
+[[ -x "$SCRIPT_DIRECTORY/healthcheck-staging.sh" ]]`,
+          "staging-library-source-contract",
+          path.join(root, "scripts/staging/lifecycle"),
+          root,
+        ],
+      );
+      run(
         "parse the staging persistence fingerprint verifier",
         "bash",
         ["-n", "scripts/staging/reports/verify-staging-persistence-state.sh"],

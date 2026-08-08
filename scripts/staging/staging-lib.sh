@@ -2,8 +2,8 @@
 
 set -Eeuo pipefail
 
-SCRIPT_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPOSITORY_ROOT="$(CDPATH= cd -- "$SCRIPT_DIRECTORY/../.." && pwd)"
+STAGING_LIB_DIRECTORY="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPOSITORY_ROOT="$(CDPATH= cd -- "$STAGING_LIB_DIRECTORY/../.." && pwd)"
 STAGING_ROOT="${STAGING_ROOT:-/srv/novel-platform}"
 STAGING_ENV_FILE="${STAGING_ENV_FILE:-$STAGING_ROOT/config/.env.staging}"
 STAGING_COMPOSE_FILE="${STAGING_COMPOSE_FILE:-$REPOSITORY_ROOT/compose.staging.yml}"
