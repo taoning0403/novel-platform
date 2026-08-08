@@ -1,10 +1,10 @@
 # Project state
 
-Last reviewed against the repository and staging deployment on 2026-07-27. Staging runs the
-unversioned post-v0.10 EPUB-translation increment from Novel Platform commit
-`adb6d876d8addb49ad6d0433e3e1fe9acff8a6ff` with LinguaSpindle commit
+Last reviewed against the repository and staging deployment on 2026-08-08. Staging runs the
+behavior-preserving incremental-refactor release from Novel Platform commit
+`4590e5782a75815209c6883cd166603c283e4152` with LinguaSpindle commit
 `e089449781458587e7bc8d8a1a2ec843cc1eda81`. Package/API metadata remains v0.10.0 and
-the staging database is at Alembic `20260727_0009`.
+the staging database remains at Alembic `20260727_0009`.
 
 ## Current milestone
 
@@ -238,6 +238,17 @@ common valid, unencrypted EPUB 2/3 through LinguaSpindle's native Pipeline and A
   entry chunk remains within the 200 kB gzip budget at 198.26 kB. Mock-API visual checks at
   1440x900 and 390x844 cover Library, Book detail, Upload and Translations with no horizontal
   overflow.
+- The 2026-08-08 behavior-preserving refactor passes 132 Server unit, 27 PostgreSQL integration
+  and 64 Web tests plus Ruff, formatting, strict mypy, ESLint, build, API-contract, migration,
+  architecture and complete v0.10 acceptance gates. The quality ratchet reports 6,958 metrics,
+  209 reviewed historical violations without worsening, zero Python/TypeScript cycles and zero
+  configured boundary violations. Exact release `4590e578...` has a matching PASS acceptance
+  artifact with all five current steps; real/paid Provider traffic was not part of the proof.
+- A guarded deployment exposed a historical staging-script reorganization defect before
+  application stop or migration: the sourced library overwrote the caller's script directory.
+  The old immutable release was restored first. Commit `fa03414` adds a red-to-green source
+  contract and changes only the library's private variable name; direct, routed and exact-release
+  acceptance plus an independent code review passed before the deployment retry.
 
 ## Deliberately not implemented
 
@@ -259,10 +270,13 @@ common valid, unencrypted EPUB 2/3 through LinguaSpindle's native Pipeline and A
 
 ## Deployment state
 
-Staging at `https://novel.mine-novel.top` runs the post-v0.10 EPUB-translation increment at exact
-commit `adb6d876d8addb49ad6d0433e3e1fe9acff8a6ff`, deployed on 2026-07-27 at
-09:45:33Z. This revision includes the Provider-routing and Scheme C Web increments. The database
-is at Alembic `20260727_0009`; no downgrade was performed or enabled.
+Staging at `https://novel.mine-novel.top` runs exact Novel Platform release
+`4590e5782a75815209c6883cd166603c283e4152`, deployed on 2026-08-08 at 04:09:51Z. This
+revision includes the post-v0.10 EPUB, Provider-routing and Scheme C Web increments plus the
+behavior-preserving Translation-control and Provider-form responsibility extractions. The
+database remains at Alembic `20260727_0009`; no migration content changed and no downgrade was
+performed or enabled. Local `release`, `origin/release`, the immutable remote checkout and
+`current-release.json` all matched the full deployed SHA.
 
 LinguaSpindle v0.3.2 runs commit `e089449781458587e7bc8d8a1a2ec843cc1eda81` in image
 `lingua-spindle:0.3.2-e089449`, started on 2026-07-27 at 09:40:49Z. It remains healthy at schema
@@ -282,6 +296,13 @@ archive, checksums, stored-file references and revision passed an isolated resto
 database and volume were verified removed. LinguaSpindle was backed up consistently while stopped
 under `pre-e089449-20260727T093317Z`; the archive and SQLite integrity checks passed before the
 new container was started.
+The refactor deployment preflight created
+`novel-platform-v0100-20260808T034026Z`, whose database and library passed isolated restore before
+release switching. The final `4590e578...` deployment created
+`novel-platform-v0100-20260808T040859Z`; its mode-protected manifest and a fresh isolated restore
+report passed, and the temporary restore database and Docker volume were both verified absent.
+The prior immutable application release `v0.10.0-adb6d87` remains intact at the same schema
+revision for application-only rollback. Verified Git bundles and both new backups are retained.
 
 The deployed custom-route allow-list is empty. OpenAI, DeepSeek and Kimi preset routes are
 available, while custom Provider destinations fail closed until the operator adds an exact
@@ -300,12 +321,12 @@ Runtime inspection confirms:
 - Current secret values were absent from deployment logs, reports, image configuration and image
   history. The authenticated absent-scope probe stopped at Relay's expected sanitized 404 and did
   not contact the fixed upstream.
-- Existing 2 Users, 1 Book and 1 Edition remain. One current encrypted Provider credential version
-  exists; Provider usage records, Translation Runs and LinguaSpindle Projects/Jobs/Artifacts are
-  all empty.
-- The EPUB deployment script and post-deploy healthcheck passed. External checks returned HTTPS
-  200 and `{"status":"ok"}` from API readiness; Web, Server, Relay, PostgreSQL and LinguaSpindle
-  are healthy, with only Web published on loopback `127.0.0.1:8080`.
+- Existing 2 Users, 1 Book and 1 Edition remain; Translation Runs remain 0. The refactor did not
+  change persistent semantics or rewrite existing rows/data.
+- The final deployment script, isolated restore, post-deploy healthcheck and artifact leak scan
+  passed. External checks returned `{"status":"ok"}` from HTTPS API readiness and HTTP 308 to
+  HTTPS. Web, Server, Relay, PostgreSQL and LinguaSpindle are healthy; only Web binds loopback
+  `127.0.0.1:8080`, while external probes to 5432, 8000, 8080, 8765 and 8790 were closed.
 
 This deployment did not read, print, submit or call with the stored Provider key, and Provider
 usage remains empty. Paid/content-egress verification remains explicitly pending and requires a

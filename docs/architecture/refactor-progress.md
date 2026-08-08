@@ -12,7 +12,7 @@
 | Translation control-action domain policy | P1 selected | complete | none |
 | Provider credential deterministic form model | P1 selected | complete | none |
 | Other P1/P2/P3 candidates | deferred | not started | use `refactor-plan.md`; do not expand this run |
-| Commit, promote to `release`, push and guarded single-host deployment | added delivery scope | in progress | verify the exact release merge commit before deployment |
+| Commit, promote to `release`, push and guarded single-host deployment | added delivery scope | complete | none; deployed exact `release@4590e57` |
 
 ## Baseline before implementation
 
@@ -80,8 +80,28 @@
 | post-review combined verifier attempt | `TEST_DATABASE_URL=... pnpm verify` | FAIL | mypy caught the first method-replacement attempt; acceptance also exited 1; all other routed gates passed |
 | acceptance failure diagnosis | report + exact BYOK Vitest command | FAIL then PASS | history replay passed; four 5-second Web waits failed under sustained local load, then the exact 32 cases passed 32/32 without timeout/test changes |
 | complete local acceptance rerun | `pnpm acceptance -- v0100` | PASS | all 84 core + 9 hardening + 11 v0.9 criteria and five current v0.10 steps passed; report still names pre-commit HEAD, so it is not release-SHA evidence |
-| final inventory | `source_inventory.py --root .` | PASS | Server source 126/18,653; Server tests 25/8,318; Web source 66/15,912; Web tests 14/3,311; generated contract, migrations and scripts unchanged |
+| pre-delivery inventory | `source_inventory.py --root .` | PASS | Server source 126/18,653; Server tests 25/8,318; Web source 66/15,912; Web tests 14/3,311; generated contract, migrations and scripts unchanged at the refactor checkpoint |
 | environment cleanup | stop exact temporary databases and inspect task processes/resources | PASS | removed `novel-platform-refactor-test-019fdf0f` and `novel-platform-refactor-final-019fdf0f`; no task Vitest/pytest/acceptance process or v0.10 network remained |
+| initial delivery | commit/push `develop`, merge/push `release` | PASS | `17f241d` code, `b231fd9` evidence docs, and initial release merge `e471bbf`; release tree equalled `develop` |
+| initial release verifier | `TEST_DATABASE_URL=... pnpm verify` on `e471bbf` | BLOCKED + PASS | every runtime/configuration/migration/acceptance gate passed; quality alone was BLOCKED because the old `origin/release` comparison ancestor predated the quality policy |
+| initial release quality | `pnpm verify -- --base 8c1f098... --quality-only --all` | BASELINE FAILURE + PASS | trusted reviewed base; 6,958 metrics/209 historical, no worsening, 0 cycles/boundary violations; 5 Skills and 38 self-tests passed |
+| initial release exact acceptance | v0.10 acceptance JSON compared to `git rev-parse HEAD` | PASS | report status/commit matched `e471bbf`; no real or paid Provider request |
+| initial deployment protection | SHA-256 Git bundle, coordinated backup, isolated restore | PASS | immutable `v0.10.0-e471bbf`; backup `novel-platform-v0100-20260808T034026Z`; restore report PASS |
+| initial deployment attempt | `sudo -n ./scripts/staging/lifecycle/deploy-staging.sh` | FAIL | image builds passed, then automatic backup resolved to missing `scripts/data/backup-library.sh`; failure occurred before migration/application stop |
+| initial deployment rollback | atomic symlink return to `v0.10.0-adb6d87` plus readiness | PASS | old release and four application containers remained healthy; database stayed at `20260727_0009` |
+| D1 characterization | isolated staging-library source contract | FAIL then PASS | original library overwrote caller `SCRIPT_DIRECTORY`; after private-variable rename caller/root/backup/preflight/healthcheck paths all passed |
+| D1 local verification | all staging `bash -n`, Node syntax and `git diff --check` | PASS | no syntax or whitespace failure |
+| D1 first acceptance | `pnpm acceptance -- v0100` | BLOCKED then PASS | sandbox denied loopback listen with `EPERM`; identical approved out-of-sandbox command passed |
+| D1 change-aware verifier | `pnpm verify -- --show-paths` | PASS | routed only the complete acceptance gate; unrelated Server/Web/database/configuration gates correctly skipped |
+| D1 quality-only verifier | `pnpm verify -- --quality-only --all` | BASELINE FAILURE + PASS | 6,958 metrics/209 historical, no worsening; 0 cycles/boundary violations; 5 Skills and 38 self-tests passed |
+| D1 review | independent `$code-review-and-quality` | APPROVE | Critical/Required/Optional/Nit all 0 |
+| final release candidate assembly | push `develop@fa03414`; local merge `release@4590e57` | PASS | local release tree exactly equalled `origin/develop`; candidate was not pushed before exact verification |
+| final release exact verification | `pnpm verify -- --show-paths`, exact acceptance JSON, quality-only | PASS + BASELINE FAILURE | `release@4590e578...`; acceptance five steps PASS and report commit matched; quality debt unchanged |
+| final release push and remote audit | push `release@4590e57`; `git ls-remote` | PASS | `origin/develop=fa03414`, `origin/release=4590e57`; no force push |
+| final staging deployment | fixed deploy script on immutable `v0.10.0-4590e57` | PASS | automatic backup `novel-platform-v0100-20260808T040859Z`; migration stayed `20260727_0009`; full healthcheck passed |
+| final restore and leak evidence | isolated restore plus `scan-staging-artifacts.sh` | PASS | restore report and mode-600 leak report passed; no temporary restore database/volume remained |
+| final external/topology evidence | HTTPS readiness, redirect, port and count checks | PASS | readiness `ok`, HTTP 308 to HTTPS, ports 5432/8000/8080/8765/8790 closed externally; Users/Books/Editions/Runs remained 2/1/1/0 |
+| post-delivery inventory | `source_inventory.py --root .` | PASS | product/test/generated/migration counts unchanged; repository scripts 32/12,814 after the source-contract regression |
 
 ## Slice S1 — Translation control-action domain policy
 
@@ -134,6 +154,32 @@
   URL rejection subcondition and isolating key-only/base-URL-only in-flight races—are non-blocking
   follow-ups and do not justify expanding this refactor slice.
 
+## Slice D1 — Staging script source-directory contract
+
+- Status: complete; a deployment-blocking historical defect was reproduced, minimally fixed,
+  verified, independently approved, released and deployed.
+- Responsibility: the shared staging library may calculate its own repository root but must not
+  overwrite a sourcing lifecycle/data/report script's `SCRIPT_DIRECTORY`.
+- Modified files: `scripts/staging/staging-lib.sh` and the v0.10 acceptance gate. The library's
+  private directory variable is now `STAGING_LIB_DIRECTORY`; no deployment configuration,
+  topology, secret, schema or product runtime behavior changed.
+- Test protection: an isolated Bash source contract preserves the lifecycle caller directory,
+  verifies `REPOSITORY_ROOT`, and resolves the backup, v0.9 preflight and final healthcheck
+  executables. The exact contract exited 1 before the fix and 0 after it. The root cause also
+  repairs the latent rollback and live-restore paths without line-by-line special cases.
+- Trigger: the first guarded deployment built all images, then failed before application stop or
+  migration when the automatic backup path resolved to the old pre-reorganization location. The
+  app symlink was atomically returned to the old immutable release and health rechecked before
+  implementation began.
+- Verification: complete v0.10 acceptance passed directly, through the diff-routed verifier, and
+  again on exact release `4590e578...`; all staging Bash and Node syntax checks passed. The
+  repository quality ratchet remained 6,958/209 with no worsening, cycle or configured boundary
+  violation. Independent review reported no finding.
+- Compatibility: backup remains mandatory; no `--skip-backup`, dirty-deploy override, migration
+  downgrade or test/rule relaxation was used.
+- Rollback: revert `fa03414`; the prior immutable application release remains at
+  `v0.10.0-adb6d87` with the same Alembic revision for application-only rollback.
+
 ## Compatibility-layer ledger
 
 No temporary compatibility layer has been introduced. The Server policy migrated both internal
@@ -143,7 +189,7 @@ callers in one slice; the Web Page remains the existing public route/export.
 
 - Source inventory after both slices: Server source 126 files/18,653 lines; Server tests
   25/8,318; Web source 66/15,912; Web tests 14/3,311; migrations 10/2,555; generated API
-  contract area 4/25,975; repository scripts 32/12,794.
+  contract area 4/25,975; repository scripts 32/12,814 after delivery Slice D1.
 - Quality scan: 6,958 metrics and 209 reviewed historical entries: 29 file-size, 96
   function-length, 79 complexity, and 5 nesting. Product source accounts for 21, 56, 77, and 5
   respectively.
@@ -157,10 +203,13 @@ callers in one slice; the Web Page remains the existing public route/export.
   deployment topology are unchanged.
 - The exact temporary loopback PostgreSQL container was stopped and removed after final
   verification. Existing unrelated stopped Compose containers were not modified.
-- At the refactor verification checkpoint no commit, push, deployment, publication, production
-  mutation, or paid/external Provider call had been performed. The user subsequently authorized
-  release promotion and guarded deployment; exact-commit and deployment evidence will be appended
-  after that separate delivery phase.
+- Refactor code was committed on `develop`, promoted through the existing literal `release`
+  history without force-push, and deployed to the repository-defined single-host staging target.
+  The deployed and remotely pushed release is exact commit
+  `4590e5782a75815209c6883cd166603c283e4152`; the later evidence-only documentation commit remains
+  a develop follow-up and is not represented as deployed code.
+- Deployment retained the old immutable release, the verified Git bundle and coordinated backups
+  for rollback. No paid/external Provider call or user-content egress was performed.
 
 ## Remaining risks
 
@@ -174,3 +223,7 @@ callers in one slice; the Web Page remains the existing public route/export.
 - LinguaSpindle code/configuration and paid Provider calls remain outside scope. The existing
   single-host deployment may be health/topology checked, but this refactor does not alter its
   private integration protocol.
+- The verifier currently routes the changed v0.10 acceptance gate to acceptance, but a change to
+  `scripts/staging/**/*.sh` alone is not independently routed. Adding an explicit staging-script
+  route and router self-test is a P1 verification-infrastructure follow-up; the release was
+  protected by explicit acceptance, syntax and exact-SHA checks in this run.
