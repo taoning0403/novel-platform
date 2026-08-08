@@ -11,6 +11,10 @@ from novel_platform.api.schemas import (
 from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.errors import ApplicationError
 from novel_platform.domain.editions.models import EditionStatus
+from novel_platform.domain.translations.control import (
+    TranslationControlAction,
+    control_actions_for_status,
+)
 from novel_platform.domain.translations.models import (
     TERMINAL_TRANSLATION_RUN_STATUSES,
     TranslationCleanupStatus,
@@ -24,7 +28,7 @@ from novel_platform.infrastructure.database.models import (
 from novel_platform.infrastructure.integrations.linguaspindle import LinguaServiceStatus
 from novel_platform.infrastructure.repositories.users import UserRepository
 
-type TranslationAction = Literal["pause", "resume", "cancel", "retry", "sync", "cleanup"]
+type TranslationAction = TranslationControlAction | Literal["sync", "cleanup"]
 
 
 def translation_service_response(
@@ -146,25 +150,7 @@ async def translation_run_responses(
 def _available_actions(
     run: EditionTranslationRunModel,
 ) -> list[TranslationAction]:
-    actions: list[TranslationAction] = []
-    if run.status in {TranslationRunStatus.QUEUED, TranslationRunStatus.RUNNING}:
-        actions.append("pause")
-    if run.status is TranslationRunStatus.PAUSED:
-        actions.append("resume")
-    if run.status in {
-        TranslationRunStatus.PREPARING,
-        TranslationRunStatus.QUEUED,
-        TranslationRunStatus.RUNNING,
-        TranslationRunStatus.PAUSED,
-        TranslationRunStatus.CANCELLING,
-        TranslationRunStatus.ATTENTION_REQUIRED,
-    }:
-        actions.append("cancel")
-    if run.status in {
-        TranslationRunStatus.FAILED,
-        TranslationRunStatus.PARTIALLY_SUCCEEDED,
-    }:
-        actions.append("retry")
+    actions: list[TranslationAction] = [*control_actions_for_status(run.status)]
     if run.status is not TranslationRunStatus.SUCCEEDED and run.remote_job_id is not None:
         actions.append("sync")
     if (

@@ -65,6 +65,7 @@ migrations, and tests.
 | `application/books/`, `editions/`, `series/` | Readable, owner/creator-aware library orchestration and deletion dependencies. |
 | `application/library/` | Actor-attributed EPUB/TXT inspect/commit/revision, generated ingestion reuse and safe storage lifecycle. |
 | `application/translations/` | EPUB/TXT Run state machine/orchestration, deterministic remote correlation, sync/control/cleanup and format-validated atomic generated ingestion. |
+| `domain/translations/control.py` | Ordered Translation Run status-to-control-action policy shared by Application command validation and API action projection. |
 | `application/provider_credentials/` | Bounded live model discovery, AES-256-GCM credential encryption, immutable version lifecycle, configuration fail-closed behavior and safe status projection. |
 | `application/reader/` | Safe EPUB/TXT projection, protected resources, progress/settings/recent state. |
 | `infrastructure/repositories/credentials.py` | Credential capability, Passkey, challenge and device-secret lookups/counting plus bounded challenge deletion. |
@@ -112,7 +113,8 @@ migrations, and tests.
 | `apps/web/src/pages/LibraryPage.tsx`, `BookDetailPage.tsx` | Collection discovery plus server-projected creator/capability actions and translation launch. |
 | `apps/web/src/features/editions/EditionCard.tsx` | Reader-safe actions plus projected upload/generated mutation and translate/retranslate controls. |
 | `apps/web/src/features/translations/`, `pages/TranslationsPage.tsx` | Narrow launch modal and Quiet Trace actor-scoped master-detail workspace with polling and draft publish. |
-| `apps/web/src/pages/ProviderCredentialPage.tsx` | Quiet Trace write-only Provider-key flow with live model-catalogue selection, configure/rotate/remove and sanitized usage view. |
+| `apps/web/src/features/provider-credentials/credentialFormModel.ts` | Pure Provider credential form transitions, model/thinking projections, URL validation and catalogue/update request decisions; it does not retain secret state or perform network effects. |
+| `apps/web/src/pages/ProviderCredentialPage.tsx` | Quiet Trace write-only Provider-key lifecycle and asynchronous catalogue/configure/rotate/remove orchestration plus sanitized usage view. |
 | `apps/web/src/pages/Series*.tsx`, `UploadPage.tsx` | Readable Series/admin Series mutation plus capability-aware file-backed imports. |
 | `apps/web/src/pages/ReaderPage.tsx` | Responsive safe Reader with edge progress, TOC/settings, recoverable quiet chrome, restore, synchronization, conflict, and Edition switch. |
 | `apps/web/src/pages/{Devices,Sessions,Profile}Page.tsx` | Viewer-private identity, device, and Session controls. |

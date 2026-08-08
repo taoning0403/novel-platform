@@ -32,6 +32,7 @@ from novel_platform.domain.editions.models import (
     EditionStatus,
 )
 from novel_platform.domain.library.models import FileFormat
+from novel_platform.domain.translations.control import control_actions_for_status
 from novel_platform.domain.translations.models import (
     TERMINAL_TRANSLATION_RUN_STATUSES,
     TranslationCleanupStatus,
@@ -318,23 +319,7 @@ class TranslationRunService:
         action: str,
     ) -> EditionTranslationRunModel:
         run = await self.get(scope, run_id)
-        allowed: dict[str, set[TranslationRunStatus]] = {
-            "pause": {TranslationRunStatus.QUEUED, TranslationRunStatus.RUNNING},
-            "resume": {TranslationRunStatus.PAUSED},
-            "cancel": {
-                TranslationRunStatus.PREPARING,
-                TranslationRunStatus.QUEUED,
-                TranslationRunStatus.RUNNING,
-                TranslationRunStatus.PAUSED,
-                TranslationRunStatus.CANCELLING,
-                TranslationRunStatus.ATTENTION_REQUIRED,
-            },
-            "retry": {
-                TranslationRunStatus.FAILED,
-                TranslationRunStatus.PARTIALLY_SUCCEEDED,
-            },
-        }
-        if action not in allowed or run.status not in allowed[action]:
+        if action not in control_actions_for_status(run.status):
             raise ApplicationError(
                 "translation_control_conflict",
                 "翻译任务当前不能执行该操作。",

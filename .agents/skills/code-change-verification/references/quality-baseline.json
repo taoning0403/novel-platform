@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "generated_from": {
-    "commit": "3a379001e9091e92eb858286d9f3331657aaf767",
-    "date": "2026-07-30T17:08:18+08:00"
+    "commit": "8c1f09802af104323b4bddd9cbb397d3ba90d713",
+    "date": "2026-08-03T16:43:53+08:00"
   },
   "thresholds": {
     "python": {
@@ -612,7 +612,7 @@
       "path": "apps/server/src/novel_platform/application/translations/service.py",
       "symbol": "<file>",
       "metric": "file_effective_lines",
-      "value": 807,
+      "value": 792,
       "threshold": 400
     },
     {
@@ -636,7 +636,7 @@
       "path": "apps/server/src/novel_platform/application/translations/service.py",
       "symbol": "TranslationRunService.control",
       "metric": "cyclomatic_complexity",
-      "value": 22,
+      "value": 21,
       "threshold": 10
     },
     {
@@ -644,7 +644,7 @@
       "path": "apps/server/src/novel_platform/application/translations/service.py",
       "symbol": "TranslationRunService.control",
       "metric": "function_effective_lines",
-      "value": 121,
+      "value": 105,
       "threshold": 60
     },
     {
@@ -1404,7 +1404,7 @@
       "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
       "symbol": "<file>",
       "metric": "file_effective_lines",
-      "value": 758,
+      "value": 624,
       "threshold": 300
     },
     {
@@ -1412,7 +1412,7 @@
       "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
       "symbol": "ProviderCredentialPage",
       "metric": "cyclomatic_complexity",
-      "value": 66,
+      "value": 49,
       "threshold": 10
     },
     {
@@ -1420,23 +1420,7 @@
       "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
       "symbol": "ProviderCredentialPage",
       "metric": "function_effective_lines",
-      "value": 652,
-      "threshold": 60
-    },
-    {
-      "language": "typescript",
-      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
-      "symbol": "ProviderCredentialPage.loadModelCatalog",
-      "metric": "cyclomatic_complexity",
-      "value": 11,
-      "threshold": 10
-    },
-    {
-      "language": "typescript",
-      "path": "apps/web/src/pages/ProviderCredentialPage.tsx",
-      "symbol": "ProviderCredentialPage.saveCredential",
-      "metric": "function_effective_lines",
-      "value": 67,
+      "value": 565,
       "threshold": 60
     },
     {

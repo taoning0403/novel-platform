@@ -3,6 +3,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -10,9 +11,20 @@ import {
 import { api, userFacingError } from "../api/client";
 import type {
   ProviderCredentialStatus,
-  ProviderCredentialUpdate,
   ProviderKind,
 } from "../api/types";
+import {
+  canLoadModelCatalog,
+  canSubmitCredential,
+  credentialFormReducer,
+  credentialUpdate,
+  initialCredentialFormState,
+  modelCatalogRequest,
+  providerOptions,
+  providerPresentation,
+  providerPresets,
+  thinkingPresentation,
+} from "../features/provider-credentials/credentialFormModel";
 import { ErrorNotice, LoadingBlock } from "../shared/AsyncState";
 import { formatDate } from "../shared/format";
 import { DestructiveAction } from "../ui/components/DestructiveAction";
@@ -34,37 +46,6 @@ const emptyUsage = {
   },
 };
 
-const providerPresets: Record<
-  Exclude<ProviderKind, "custom">,
-  { label: string; baseUrl: string }
-> = {
-  openai_compatible: {
-    label: "OpenAI",
-    baseUrl: "https://api.openai.com/v1",
-  },
-  deepseek: {
-    label: "DeepSeek",
-    baseUrl: "https://api.deepseek.com/v1",
-  },
-  kimi: {
-    label: "Kimi",
-    baseUrl: "https://api.moonshot.cn/v1",
-  },
-};
-
-const providerOptions = [
-  ...Object.entries(providerPresets).map(([value, preset]) => ({
-    value: value as Exclude<ProviderKind, "custom">,
-    label: preset.label,
-    title: preset.label,
-  })),
-  {
-    value: "custom" as const,
-    label: "自定义 Provider",
-    title: "自定义 Provider",
-  },
-];
-
 const emptyCredential: ProviderCredentialStatus = {
   configured: false,
   provider: "openai_compatible",
@@ -81,47 +62,20 @@ function formatUsageCount(value: number): string {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
 
-function isSafeCustomBaseUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:"
-      && url.username === ""
-      && url.password === ""
-      && url.search === ""
-      && url.hash === ""
-    );
-  } catch {
-    return false;
-  }
-}
-
-function supportsThinking(provider: ProviderKind, model: string): boolean {
-  return (
-    provider === "deepseek"
-    || (provider === "kimi" && model.trim() === "kimi-k2.5")
-  );
-}
-
-function normalizeThinkingEnabled(
-  provider: ProviderKind,
-  model: string,
-  enabled: boolean,
-): boolean {
-  if (provider === "deepseek" && model.trim() === "deepseek-reasoner") {
-    return true;
-  }
-  return supportsThinking(provider, model) && enabled;
-}
-
 export function ProviderCredentialPage() {
   const [credential, setCredential] = useState<ProviderCredentialStatus | null>(null);
-  const [provider, setProvider] = useState<ProviderKind>("openai_compatible");
-  const [model, setModel] = useState("");
-  const [modelCatalog, setModelCatalog] = useState<string[]>([]);
-  const [customName, setCustomName] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [thinkingEnabled, setThinkingEnabled] = useState(false);
+  const [form, dispatchForm] = useReducer(
+    credentialFormReducer,
+    initialCredentialFormState,
+  );
+  const {
+    provider,
+    model,
+    modelCatalog,
+    customName,
+    baseUrl,
+    thinkingEnabled,
+  } = form;
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -133,23 +87,21 @@ export function ProviderCredentialPage() {
   const [message, setMessage] = useState<string | null>(null);
   const catalogRequestId = useRef(0);
 
-  const invalidateModelCatalog = useCallback(() => {
+  const resetCatalogRequest = useCallback(() => {
     catalogRequestId.current += 1;
-    setModelCatalog([]);
-    setModel("");
-    setThinkingEnabled(false);
     setIsLoadingModels(false);
     setCatalogError(null);
   }, []);
 
+  const invalidateModelCatalog = useCallback(() => {
+    resetCatalogRequest();
+    dispatchForm({ type: "catalogInvalidated" });
+  }, [resetCatalogRequest]);
+
   const syncFormWithCredential = useCallback((next: ProviderCredentialStatus) => {
-    setProvider(next.provider);
-    invalidateModelCatalog();
-    if (next.provider === "custom") {
-      setCustomName(next.provider_name);
-      setBaseUrl(next.base_url);
-    }
-  }, [invalidateModelCatalog]);
+    resetCatalogRequest();
+    dispatchForm({ type: "credentialSynced", credential: next });
+  }, [resetCatalogRequest]);
 
   const loadCredential = useCallback(async () => {
     setIsLoading(true);
@@ -170,43 +122,23 @@ export function ProviderCredentialPage() {
   }, [loadCredential]);
 
   async function loadModelCatalog() {
-    const submittedApiKey = apiKey;
-    const submittedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
-    if (submittedApiKey.trim() === "") {
-      setCatalogError("请先输入 API Key。");
-      return;
-    }
-    if (provider === "custom" && !isSafeCustomBaseUrl(submittedBaseUrl)) {
-      setCatalogError(
-        "自定义 Base URL 必须是 HTTPS 地址，且不能包含用户名、密码、查询参数或片段。",
-      );
+    const decision = modelCatalogRequest(form, apiKey);
+    if (decision.kind === "error") {
+      setCatalogError(decision.message);
       return;
     }
 
-    const requestProvider = provider;
+    const requestProvider = decision.provider;
     const requestId = catalogRequestId.current + 1;
     catalogRequestId.current = requestId;
-    setModelCatalog([]);
-    setModel("");
-    setThinkingEnabled(false);
+    dispatchForm({ type: "catalogInvalidated" });
     setIsLoadingModels(true);
     setCatalogError(null);
     setError(null);
     setMessage(null);
 
     try {
-      const result = await api.listProviderModels(
-        requestProvider === "custom"
-          ? {
-              provider: requestProvider,
-              api_key: submittedApiKey,
-              base_url: submittedBaseUrl,
-            }
-          : {
-              provider: requestProvider,
-              api_key: submittedApiKey,
-            },
-      );
+      const result = await api.listProviderModels(decision.request);
       if (catalogRequestId.current !== requestId) return;
       if (result.provider !== requestProvider) {
         setCatalogError("返回的模型目录与当前 Provider 不一致，请检查配置后重试。");
@@ -216,7 +148,7 @@ export function ProviderCredentialPage() {
         setCatalogError("该 Provider 未返回可用模型，请检查 API Key 和地址。");
         return;
       }
-      setModelCatalog(result.models);
+      dispatchForm({ type: "catalogLoaded", models: result.models });
     } catch (caught) {
       if (catalogRequestId.current !== requestId) return;
       setCatalogError(`${userFacingError(caught)} API Key 仍保留在当前页面，可修改后重试。`);
@@ -229,49 +161,12 @@ export function ProviderCredentialPage() {
 
   async function saveCredential(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const submittedApiKey = apiKey;
-    const submittedModel = model;
-    const submittedCustomName = customName.trim();
-    const submittedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
-    if (
-      submittedApiKey.trim() === ""
-      || submittedModel === ""
-      || !modelCatalog.includes(submittedModel)
-    ) return;
-    if (provider === "custom") {
-      if (submittedCustomName === "") {
-        setError("请为自定义 Provider 输入一个名称。");
-        return;
-      }
-      if (!isSafeCustomBaseUrl(submittedBaseUrl)) {
-        setError("自定义 Base URL 必须是 HTTPS 地址，且不能包含用户名、密码、查询参数或片段。");
-        return;
-      }
+    const decision = credentialUpdate(form, apiKey);
+    if (decision.kind === "incomplete") return;
+    if (decision.kind === "error") {
+      setError(decision.message);
+      return;
     }
-
-    const payload: ProviderCredentialUpdate = provider === "custom"
-      ? {
-          api_key: submittedApiKey,
-          provider,
-          model: submittedModel,
-          base_url: submittedBaseUrl,
-          custom_name: submittedCustomName,
-          thinking_enabled: normalizeThinkingEnabled(
-            provider,
-            submittedModel,
-            thinkingEnabled,
-          ),
-        }
-      : {
-          api_key: submittedApiKey,
-          provider,
-          model: submittedModel,
-          thinking_enabled: normalizeThinkingEnabled(
-            provider,
-            submittedModel,
-            thinkingEnabled,
-          ),
-        };
 
     // Clear the only React copy before the request begins. It is never restored on failure.
     setApiKey("");
@@ -280,7 +175,7 @@ export function ProviderCredentialPage() {
     setError(null);
     setMessage(null);
     try {
-      const nextCredential = await api.updateProviderCredential(payload);
+      const nextCredential = await api.updateProviderCredential(decision.payload);
       setCredential(nextCredential);
       syncFormWithCredential(nextCredential);
       setMessage(
@@ -344,41 +239,16 @@ export function ProviderCredentialPage() {
   const hasCurrentMonthUsage = (
     usage.current_month.request_count > 0 || usage.current_month.total_tokens > 0
   );
-  const selectedProviderName = provider === "custom"
-    ? customName.trim() || "自定义 Provider"
-    : providerPresets[provider].label;
-  const selectedBaseUrl = provider === "custom"
-    ? baseUrl
-    : providerPresets[provider].baseUrl;
-  const keyLabel = `${selectedProviderName} API Key`;
-  const selectedModelAvailable = model !== "" && modelCatalog.includes(model);
-  const deepSeekThinkingModelsAvailable = (
-    modelCatalog.includes("deepseek-chat")
-    && modelCatalog.includes("deepseek-reasoner")
-  );
-  const thinkingSupported = selectedModelAvailable && supportsThinking(provider, model);
-  const thinkingHelp = model === ""
-    ? "先读取模型列表并选择模型；支持时可在这里开启思考模式。"
-    : provider === "deepseek"
-      ? deepSeekThinkingModelsAvailable
-        ? "默认关闭。开启后模型会切换为 deepseek-reasoner，可能需要更多响应时间和 Token。"
-        : "当前模型目录未同时提供 deepseek-chat 和 deepseek-reasoner，无法切换思考模式。"
-    : provider === "kimi"
-      ? thinkingSupported
-        ? "默认关闭。开启后 Kimi 可能需要更多响应时间，并产生更多 Token 消耗。"
-        : "Kimi 仅在模型为 kimi-k2.5 时支持思考模式；当前模型会保持关闭。"
-      : "当前 Provider 没有可验证的统一开关，思考模式保持关闭。";
+  const providerView = providerPresentation(form);
+  const thinkingView = thinkingPresentation(form);
   const thinkingControlDisabled = (
     isSaving
     || isDeleting
     || isLoadingModels
-    || !thinkingSupported
-    || (provider === "deepseek" && !deepSeekThinkingModelsAvailable)
+    || !thinkingView.supported
+    || (provider === "deepseek" && !thinkingView.deepSeekModelsAvailable)
   );
-  const canLoadModels = (
-    apiKey.trim() !== ""
-    && (provider !== "custom" || baseUrl.trim() !== "")
-  );
+  const canLoadModels = canLoadModelCatalog(form, apiKey);
 
   return (
     <main className={styles.page}>
@@ -499,9 +369,9 @@ export function ProviderCredentialPage() {
                   options={providerOptions}
                   value={provider}
                   onChange={(value: ProviderKind) => {
-                    setProvider(value);
                     setApiKey("");
-                    invalidateModelCatalog();
+                    resetCatalogRequest();
+                    dispatchForm({ type: "providerChanged", provider: value });
                     setError(null);
                     setMessage(null);
                   }}
@@ -523,7 +393,10 @@ export function ProviderCredentialPage() {
                       maxLength={120}
                       placeholder="例如 我的兼容服务"
                       value={customName}
-                      onChange={(event) => setCustomName(event.target.value)}
+                      onChange={(event) => dispatchForm({
+                        type: "customNameChanged",
+                        customName: event.target.value,
+                      })}
                       disabled={isSaving || isDeleting}
                       required
                     />
@@ -548,9 +421,12 @@ export function ProviderCredentialPage() {
                       aria-describedby="provider-base-url-help"
                       value={baseUrl}
                       onChange={(event) => {
-                        setBaseUrl(event.target.value);
                         setApiKey("");
-                        invalidateModelCatalog();
+                        resetCatalogRequest();
+                        dispatchForm({
+                          type: "baseUrlChanged",
+                          baseUrl: event.target.value,
+                        });
                         setError(null);
                         setMessage(null);
                       }}
@@ -565,14 +441,14 @@ export function ProviderCredentialPage() {
               ) : (
                 <div className={styles.presetEndpoint} aria-live="polite">
                   <span>API Base URL</span>
-                  <code>{selectedBaseUrl}</code>
+                  <code>{providerView.baseUrl}</code>
                 </div>
               )}
             </div>
 
             <div className={styles.secretRow}>
               <label className={styles.field} htmlFor="provider-api-key">
-                {keyLabel}
+                {providerView.keyLabel}
                 <Input
                   className={styles.technicalInput}
                   id="provider-api-key"
@@ -636,12 +512,10 @@ export function ProviderCredentialPage() {
                   }
                   value={model || undefined}
                   onChange={(nextModel: string | undefined) => {
-                    const selectedModel = nextModel ?? "";
-                    setModel(selectedModel);
-                    setThinkingEnabled(
-                      provider === "deepseek"
-                      && selectedModel === "deepseek-reasoner",
-                    );
+                    dispatchForm({
+                      type: "modelSelected",
+                      model: nextModel ?? "",
+                    });
                     setError(null);
                     setMessage(null);
                   }}
@@ -666,7 +540,7 @@ export function ProviderCredentialPage() {
                     思考模式
                   </span>
                   <span className={styles.thinkingHelp} id="provider-thinking-help">
-                    {thinkingHelp}
+                    {thinkingView.help}
                   </span>
                 </div>
                 <label
@@ -678,18 +552,11 @@ export function ProviderCredentialPage() {
                     id="provider-thinking-enabled"
                     aria-labelledby="provider-thinking-label"
                     aria-describedby="provider-thinking-help"
-                    checked={thinkingSupported && thinkingEnabled}
-                    onChange={(checked) => {
-                      setThinkingEnabled(checked);
-                      if (provider === "deepseek") {
-                        const nextModel = checked
-                          ? "deepseek-reasoner"
-                          : "deepseek-chat";
-                        if (modelCatalog.includes(nextModel)) {
-                          setModel(nextModel);
-                        }
-                      }
-                    }}
+                    checked={thinkingView.supported && thinkingEnabled}
+                    onChange={(checked) => dispatchForm({
+                      type: "thinkingToggled",
+                      enabled: checked,
+                    })}
                     disabled={thinkingControlDisabled}
                   />
                 </label>
@@ -702,12 +569,7 @@ export function ProviderCredentialPage() {
                 htmlType="submit"
                 loading={isSaving}
                 disabled={(
-                  apiKey.trim() === ""
-                  || !selectedModelAvailable
-                  || (
-                    provider === "custom"
-                    && (customName.trim() === "" || baseUrl.trim() === "")
-                  )
+                  !canSubmitCredential(form, apiKey)
                   || isLoadingModels
                   || isDeleting
                 )}
@@ -744,7 +606,7 @@ export function ProviderCredentialPage() {
             <li>
               <strong>费用归属</strong>
               <span>
-                你发起的请求使用所选 {selectedProviderName} 配置，
+                你发起的请求使用所选 {providerView.name} 配置，
                 Token 费用计入你的 Provider 账户。
               </span>
             </li>
