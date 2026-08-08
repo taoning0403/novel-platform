@@ -1,107 +1,137 @@
 .card {
-  border-color: var(--line);
+  position: relative;
+  padding: 20px 22px;
+  border: 1px solid var(--line-soft);
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: none;
+}
+
+.moreButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  color: var(--muted);
+  letter-spacing: 0.05em;
 }
 
 .header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 20px;
+  padding-right: 42px;
 }
 
-.titleRow {
+.tagRow {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
+}
+
+.tagRow :global(.ant-tag) {
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
 }
 
 .header h3 {
   margin: 0;
   font-family: var(--font-book);
-  font-size: 24px;
-  line-height: 1.35;
+  font-size: 16.5px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
-.progress {
-  margin: 18px 0;
+.header h3 span {
+  margin-left: 6px;
+  color: var(--muted);
+  font-family: var(--font-interface);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
-.actions {
+.meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 6px 16px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
-.primaryLink,
-.defaultLink,
-.textLink {
+.meta span:nth-child(3) {
+  max-width: min(360px, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progressRow {
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.progressRow > span {
+  width: 64px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.progress {
+  min-width: 80px;
+  flex: 1;
+  margin: 0;
+}
+
+.progressRow strong,
+.progressRow small {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 10px;
+}
+
+.readLink {
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 16px;
-  border-radius: 10px;
+  padding: 0 12px;
+  color: var(--brand);
+  font-size: 13px;
   font-weight: 650;
   text-decoration: none;
-  transition: background var(--motion-press) ease, color var(--motion-press) ease, border-color var(--motion-press) ease, transform var(--motion-press) ease;
 }
 
-.primaryLink {
-  color: #fff;
-  background: var(--brand);
-}
-
-.defaultLink {
-  border: 1px solid var(--line);
-  color: var(--ink);
-  background: var(--surface);
-}
-
-.textLink {
-  min-height: 44px;
-  justify-content: flex-start;
-  padding: 0;
-  color: var(--brand);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .primaryLink:hover {
-    background: var(--brand-strong);
-  }
-
-  .defaultLink:hover {
-    border-color: #c7d2e3;
-    background: var(--surface-muted);
-  }
-
-  .textLink:hover {
-    color: var(--brand-strong);
-  }
-}
-
-.primaryLink:active,
-.defaultLink:active,
-.textLink:active {
-  transform: scale(0.97);
+.preferenceHint {
+  color: var(--muted);
+  font-size: 11.5px;
 }
 
 .note {
   display: grid;
-  gap: 5px;
-  margin-top: 18px;
-  padding: 15px 17px;
+  gap: 3px;
+  margin-top: 12px;
+  padding: 11px 13px;
   border-left: 3px solid var(--brand);
   border-radius: 8px;
   color: var(--muted);
   background: rgb(49 94 244 / 5%);
+  font-size: 12px;
 }
 
 .note strong {
@@ -109,70 +139,65 @@
 }
 
 .relationship {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   color: var(--muted);
+  font-size: 12px;
 }
 
-.preference {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 20px;
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.preference p {
-  margin: 0;
-  color: var(--muted);
+.alert {
+  margin-top: 12px;
 }
 
 .form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 20px;
+  gap: 18px;
 }
 
 .field {
   display: grid;
   gap: 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
   font-weight: 650;
 }
 
-.full {
-  grid-column: 1 / -1;
+.deleteCopy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
 }
 
-.formActions {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+@media (hover: hover) and (pointer: fine) {
+  .readLink:hover {
+    border-radius: 8px;
+    color: var(--brand-strong);
+    background: var(--brand-soft);
+  }
 }
 
-@media (max-width: 700px) {
-  .form {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 620px) {
+  .card {
+    padding: 17px 16px;
   }
 
-  .full,
-  .formActions {
-    grid-column: auto;
+  .meta span:nth-child(n + 4) {
+    display: none;
   }
 
-  .preference {
-    align-items: stretch;
-    flex-direction: column;
+  .progressRow {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
-  .actions :global(.ant-btn),
-  .formActions :global(.ant-btn),
-  .primaryLink,
-  .defaultLink,
-  .textLink {
+  .progressRow .progress {
+    min-width: calc(100% - 76px);
+  }
+
+  .preferenceHint {
+    width: 100%;
+  }
+
+  .readLink {
     min-height: 46px;
   }
 }

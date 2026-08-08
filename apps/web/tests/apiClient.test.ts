@@ -91,6 +91,116 @@ describe("authenticated API client", () => {
     expect(window.localStorage.getItem("refresh_token")).toBeNull();
   });
 
+  it("uses the self credential endpoint without persisting or placing the API key in a URL", async () => {
+    setAccessToken("current-access-token");
+    const providerKey = "unit-test-api-client-credential";
+    const fetchMock = vi.fn(async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = String(input);
+      expect(url).not.toContain(providerKey);
+      expect(new Headers(init?.headers).get("Authorization")).toBe(
+        "Bearer current-access-token",
+      );
+      if (url.endsWith("/api/v1/me/provider-credential/models")) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          provider: "deepseek",
+          api_key: providerKey,
+        });
+        return jsonResponse({
+          provider: "deepseek",
+          models: ["deepseek-chat", "deepseek-reasoner"],
+        });
+      }
+      expect(url).toMatch(/\/api\/v1\/me\/provider-credential$/);
+      if (init?.method === "PUT") {
+        expect(JSON.parse(String(init.body))).toEqual({
+          api_key: providerKey,
+          provider: "deepseek",
+          model: "deepseek-reasoner",
+          thinking_enabled: true,
+        });
+        return jsonResponse({
+          configured: true,
+          provider: "deepseek",
+          provider_name: "DeepSeek",
+          base_url: "https://api.deepseek.com/v1",
+          model: "deepseek-reasoner",
+          thinking_enabled: true,
+          version: 1,
+          updated_at: "2026-07-25T09:30:00Z",
+          usage: {
+            all_time: {
+              request_count: 0,
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+            current_month: {
+              request_count: 0,
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+          },
+        });
+      }
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse({
+        configured: false,
+        provider: "openai_compatible",
+        provider_name: "OpenAI",
+        base_url: "https://api.openai.com/v1",
+        model: null,
+        thinking_enabled: false,
+        version: null,
+        updated_at: null,
+        usage: {
+          all_time: {
+            request_count: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          },
+          current_month: {
+            request_count: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          },
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await api.getProviderCredential()).toMatchObject({ configured: false });
+    expect(
+      await api.listProviderModels({
+        provider: "deepseek",
+        api_key: providerKey,
+      }),
+    ).toEqual({
+      provider: "deepseek",
+      models: ["deepseek-chat", "deepseek-reasoner"],
+    });
+    expect(
+      await api.updateProviderCredential({
+        api_key: providerKey,
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        thinking_enabled: true,
+      }),
+    ).toMatchObject({ configured: true, version: 1 });
+    await api.deleteProviderCredential();
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(Object.values(window.localStorage)).not.toContain(providerKey);
+  });
+
   it("refreshes an expired access token before logging out", async () => {
     setAccessToken("expired-access-token");
     let logoutCount = 0;

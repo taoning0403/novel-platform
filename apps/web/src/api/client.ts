@@ -7,8 +7,6 @@ import type {
   BookListItem,
   BookPreference,
   BookPatchPayload,
-  CreateBookPayload,
-  CreateEditionPayload,
   Device,
   Edition,
   FileFormat,
@@ -23,6 +21,10 @@ import type {
   Passkey,
   PasskeyRegistrationResult,
   ProfilePayload,
+  ProviderCredentialStatus,
+  ProviderCredentialUpdate,
+  ProviderModelCatalogRequest,
+  ProviderModelCatalogResponse,
   PublicSiteSettings,
   ReaderCreatePayload,
   ReaderIdentity,
@@ -43,6 +45,10 @@ import type {
   SeriesDetail,
   SeriesPatchPayload,
   TokenResponse,
+  TranslationAction,
+  TranslationRun,
+  TranslationRunCreatePayload,
+  TranslationServiceStatus,
   User,
   WebAuthnOptions,
 } from "./types";
@@ -359,6 +365,20 @@ export const api = {
     request<void>(`/api/v1/devices/${deviceId}/revoke`, { method: "POST" }),
   updateProfile: (payload: ProfilePayload) =>
     request<User>("/api/v1/users/me", { method: "PATCH", body: JSON.stringify(payload) }),
+  getProviderCredential: () =>
+    request<ProviderCredentialStatus>("/api/v1/me/provider-credential"),
+  listProviderModels: (payload: ProviderModelCatalogRequest) =>
+    request<ProviderModelCatalogResponse>("/api/v1/me/provider-credential/models", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateProviderCredential: (payload: ProviderCredentialUpdate) =>
+    request<ProviderCredentialStatus>("/api/v1/me/provider-credential", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteProviderCredential: () =>
+    request<void>("/api/v1/me/provider-credential", { method: "DELETE" }),
   listBooks: (filters: BookFilters = {}, limit = 100, offset = 0) => {
     const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (filters.query) search.set("query", filters.query);
@@ -368,8 +388,6 @@ export const api = {
     if (filters.sort) search.set("sort", filters.sort);
     return request<BookListItem[]>(`/api/v1/books?${search}`);
   },
-  createBook: (payload: CreateBookPayload) =>
-    request<Book>("/api/v1/books", { method: "POST", body: JSON.stringify(payload) }),
   getBook: (bookId: string) => request<BookDetail>(`/api/v1/books/${bookId}`),
   patchBook: (bookId: string, payload: BookPatchPayload) =>
     request<Book>(`/api/v1/books/${bookId}`, {
@@ -378,11 +396,6 @@ export const api = {
     }),
   deleteBook: (bookId: string) =>
     request<void>(`/api/v1/books/${bookId}`, { method: "DELETE" }),
-  createEdition: (bookId: string, payload: CreateEditionPayload) =>
-    request<Edition>(`/api/v1/books/${bookId}/editions`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   patchEdition: (bookId: string, editionId: string, payload: PatchEditionPayload) =>
     request<Edition>(`/api/v1/books/${bookId}/editions/${editionId}`, {
       method: "PATCH",
@@ -455,6 +468,30 @@ export const api = {
     }),
   recentReading: (limit = 12) =>
     request<RecentReading[]>(`/api/v1/reader/recent?limit=${limit}`),
+  translationServiceStatus: (sourceFormat: FileFormat) =>
+    request<TranslationServiceStatus>(
+      `/api/v1/translation-service/status?source_format=${encodeURIComponent(sourceFormat)}`,
+    ),
+  createTranslationRun: (
+    bookId: string,
+    sourceEditionId: string,
+    payload: TranslationRunCreatePayload,
+  ) => request<TranslationRun>(
+    `/api/v1/books/${bookId}/editions/${sourceEditionId}/translation-runs`,
+    { method: "POST", body: JSON.stringify(payload) },
+  ),
+  listTranslationRuns: (bookId?: string) => {
+    const search = new URLSearchParams();
+    if (bookId) search.set("book_id", bookId);
+    const query = search.size > 0 ? `?${search}` : "";
+    return request<TranslationRun[]>(`/api/v1/translation-runs${query}`);
+  },
+  getTranslationRun: (runId: string) =>
+    request<TranslationRun>(`/api/v1/translation-runs/${runId}`),
+  runTranslationAction: (runId: string, action: TranslationAction) =>
+    request<TranslationRun>(`/api/v1/translation-runs/${runId}/${action}`, {
+      method: "POST",
+    }),
   getAdminSite: () => request<SiteSettings>("/api/v1/admin/site"),
   patchAdminSite: (payload: SiteSettingsPatch) =>
     request<SiteSettings>("/api/v1/admin/site", {

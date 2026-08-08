@@ -14,6 +14,13 @@ const independentTranslation: Edition = {
   content_role: "translation",
   translation_origin: "ai",
   creation_method: "uploaded",
+  contributor: {
+    display_name: "测试用户",
+  },
+  can_edit: true,
+  can_delete: true,
+  can_upload_edition: true,
+  can_translate: true,
   source_edition_id: null,
   supersedes_edition_id: null,
   status: "ready",
@@ -40,6 +47,28 @@ const humanEdition: Edition = {
   id: "9e2a8a22-61f3-482f-b910-d715c652d3a4",
   title: "人工精译",
   translation_origin: "human",
+};
+
+const sourceEdition: Edition = {
+  ...independentTranslation,
+  id: "ae2a8a22-61f3-482f-b910-d715c652d3a5",
+  title: "可翻译 TXT 原文",
+  language: "zh-CN",
+  content_role: "source",
+  translation_origin: null,
+  can_translate: true,
+  current_file: {
+    revision: 1,
+    file_format: "txt",
+    original_filename: "source.txt",
+    media_type: "text/plain",
+    size_bytes: 100,
+    text_encoding: "utf-8",
+    content_item_count: 1,
+    uploaded_at: "2026-07-10T08:00:00Z",
+    download_url: null,
+  },
+  reader_available: true,
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -102,10 +131,16 @@ describe("EditionCard", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "删除 Edition" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${independentTranslation.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除版本" }));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(remove).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "删除 Edition" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${independentTranslation.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除版本" }));
     fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith(
       independentTranslation.book_id,
@@ -133,6 +168,10 @@ describe("EditionCard", () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${independentTranslation.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "编辑版本信息" }));
     fireEvent.change(screen.getByLabelText("Edition 名称"), {
       target: { value: "修订后的译文" },
     });
@@ -151,5 +190,45 @@ describe("EditionCard", () => {
       },
     ));
     expect(onUpdated).toHaveBeenCalledWith(updated);
+  });
+
+  it("projects translation and retranslation actions from server permission flags", () => {
+    const onTranslate = vi.fn();
+    const generatedDraft: Edition = {
+      ...aiEdition,
+      current_file: sourceEdition.current_file,
+      reader_available: true,
+      status: "draft",
+      can_translate: true,
+    };
+    render(
+      <MemoryRouter>
+        <EditionCard
+          edition={sourceEdition}
+          allEditions={[sourceEdition]}
+          onUpdated={vi.fn()}
+          onTranslate={onTranslate}
+        />
+        <EditionCard
+          edition={generatedDraft}
+          allEditions={[sourceEdition, generatedDraft]}
+          onUpdated={vi.fn()}
+          onTranslate={onTranslate}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${sourceEdition.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "发起翻译" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: `版本操作：${generatedDraft.title}`,
+    }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "重新翻译" }));
+    expect(onTranslate).toHaveBeenNthCalledWith(1, sourceEdition);
+    expect(onTranslate).toHaveBeenNthCalledWith(2, generatedDraft);
+    expect(screen.getByText("仅创建者预览")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "设为首选" })).toHaveLength(1);
   });
 });

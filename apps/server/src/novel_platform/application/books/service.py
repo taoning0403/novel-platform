@@ -4,8 +4,10 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.books.commands import CreateBook, UpdateBook
 from novel_platform.application.errors import ApplicationError
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.domain.books.models import normalise_book_title
 from novel_platform.domain.editions.models import ContentRole
 from novel_platform.domain.library.models import FileFormat
@@ -19,10 +21,16 @@ class BookService:
         self.repository = BookRepository(session)
 
     async def create(
-        self, command: CreateBook, owner_user_id: UUID, *, commit: bool = True
+        self,
+        command: CreateBook,
+        owner_user_id: UUID,
+        *,
+        created_by_user_id: UUID,
+        commit: bool = True,
     ) -> BookModel:
         book = BookModel(
             owner_user_id=owner_user_id,
+            created_by_user_id=created_by_user_id,
             canonical_title=normalise_book_title(command.canonical_title),
             canonical_author=command.canonical_author,
             description=command.description,
@@ -107,13 +115,35 @@ class BookService:
             )
         return book, await self.repository.readable_editions(book_id, owner_user_id)
 
+    async def visible_detail(
+        self,
+        book_id: UUID,
+        owner_user_id: UUID,
+        viewer_user_id: UUID,
+    ) -> tuple[BookModel, list[BookEditionModel]]:
+        book = await self.repository.get_readable(book_id, owner_user_id)
+        if book is None:
+            raise ApplicationError(
+                "book_not_found",
+                "The requested book does not exist.",
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return book, await self.repository.visible_editions(
+            book_id,
+            owner_user_id,
+            viewer_user_id,
+        )
+
     async def update(
         self,
         book_id: UUID,
         owner_user_id: UUID,
         command: UpdateBook,
+        *,
+        scope: LibraryAccessScope,
     ) -> BookModel:
         book = await self.get(book_id, owner_user_id)
+        await LibraryResourcePolicy(self.session).require_book_edit(scope, book)
         allowed = {"canonical_title", "canonical_author", "description", "metadata"}
         if not command.changes or set(command.changes) - allowed:
             raise ApplicationError(

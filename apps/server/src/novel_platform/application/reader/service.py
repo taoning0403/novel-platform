@@ -19,6 +19,7 @@ from novel_platform.application.reader.content import (
     read_text_section,
 )
 from novel_platform.config import Settings
+from novel_platform.domain.editions.models import EditionStatus
 from novel_platform.domain.library.models import FileFormat
 from novel_platform.domain.reader.models import ReadingStatus
 from novel_platform.infrastructure.database.models import (
@@ -77,7 +78,10 @@ class ReaderService:
         readable_only: bool,
     ) -> OpenedReader:
         edition, file_record = await self._readable_edition(
-            owner_user_id, edition_id, readable_only=readable_only
+            owner_user_id,
+            viewer_user_id,
+            edition_id,
+            readable_only=readable_only,
         )
         publication = await self._publication(file_record)
         book = await self.books.get(edition.book_id, owner_user_id)
@@ -106,18 +110,19 @@ class ReaderService:
             progress.updated_device_id = device_id
             progress.updated_at = now
         reader_settings = await self._settings(viewer_user_id)
-        await self.preferences.update(
-            viewer_user_id,
-            owner_user_id,
-            book.id,
-            {"last_opened_edition_id": edition.id},
-            readable_only=readable_only,
-            commit=False,
-        )
+        if not readable_only or edition.status is EditionStatus.READY:
+            await self.preferences.update(
+                viewer_user_id,
+                owner_user_id,
+                book.id,
+                {"last_opened_edition_id": edition.id},
+                readable_only=readable_only,
+                commit=False,
+            )
         await self.session.commit()
 
         all_editions = (
-            await self.books.readable_editions(book.id, owner_user_id)
+            await self.books.visible_editions(book.id, owner_user_id, viewer_user_id)
             if readable_only
             else await self.books.editions(book.id)
         )
@@ -150,12 +155,16 @@ class ReaderService:
         self,
         *,
         owner_user_id: UUID,
+        viewer_user_id: UUID,
         edition_id: UUID,
         section_id: str,
         readable_only: bool,
     ) -> ReaderSectionContent:
         _, file_record = await self._readable_edition(
-            owner_user_id, edition_id, readable_only=readable_only
+            owner_user_id,
+            viewer_user_id,
+            edition_id,
+            readable_only=readable_only,
         )
         publication = await self._publication(file_record)
         source_file = self._content_file(file_record)
@@ -179,12 +188,16 @@ class ReaderService:
         self,
         *,
         owner_user_id: UUID,
+        viewer_user_id: UUID,
         edition_id: UUID,
         resource_id: str,
         readable_only: bool,
     ) -> ReaderResourceContent:
         _, file_record = await self._readable_edition(
-            owner_user_id, edition_id, readable_only=readable_only
+            owner_user_id,
+            viewer_user_id,
+            edition_id,
+            readable_only=readable_only,
         )
         if file_record.stored_file.file_format is not FileFormat.EPUB:
             raise ApplicationError("reader_resource_not_found", "书内资源不存在。", status_code=404)
@@ -226,7 +239,10 @@ class ReaderService:
         readable_only: bool,
     ) -> ReadingProgressModel:
         edition, file_record = await self._readable_edition(
-            owner_user_id, edition_id, readable_only=readable_only
+            owner_user_id,
+            viewer_user_id,
+            edition_id,
+            readable_only=readable_only,
         )
         publication = await self._publication(file_record)
         if edition_file_revision != file_record.edition_file.revision:
@@ -335,12 +351,17 @@ class ReaderService:
     async def _readable_edition(
         self,
         owner_user_id: UUID,
+        viewer_user_id: UUID,
         edition_id: UUID,
         *,
         readable_only: bool,
     ) -> tuple[BookEditionModel, EditionFileRecord]:
         edition = (
-            await self.editions.get_readable(owner_user_id, edition_id)
+            await self.editions.get_visible_for_reader(
+                owner_user_id,
+                viewer_user_id,
+                edition_id,
+            )
             if readable_only
             else await self.editions.get_for_owner(owner_user_id, edition_id)
         )

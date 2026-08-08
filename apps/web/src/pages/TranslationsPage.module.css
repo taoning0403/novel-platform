@@ -1,0 +1,488 @@
+.page {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.serviceBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 14px;
+  padding: 13px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.credentialBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 0 24px;
+  padding: 13px 16px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--success);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.credentialBar[data-configured="false"] {
+  border-left-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.credentialBar strong,
+.credentialBar small {
+  display: block;
+}
+
+.credentialBar small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.credentialBar > :global(.ant-btn) {
+  min-height: 44px;
+  flex: 0 0 auto;
+}
+
+.serviceBar > div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.serviceBar strong,
+.serviceBar small {
+  display: block;
+}
+
+.serviceBar small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.serviceDot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.serviceDot[data-available="true"] {
+  background: var(--success);
+}
+
+.runGroups {
+  display: grid;
+  gap: 24px;
+}
+
+.groupHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.groupHeading h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+}
+
+.groupHeading span {
+  min-width: 24px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 7px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: var(--surface-muted);
+  font-size: 11.5px;
+}
+
+.activeList {
+  display: grid;
+  gap: 14px;
+}
+
+.runCard {
+  border-color: var(--line-soft);
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.runCard :global(.ant-card-body) {
+  padding: 20px 22px;
+}
+
+.runHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.runHeading > div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.runHeading h3 {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: 16.5px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.runHeading span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.runMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.runProgress {
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.runProgress :global(.ant-progress) {
+  flex: 1;
+  margin: 0;
+}
+
+.runProgress strong {
+  flex: 0 0 auto;
+  color: var(--brand);
+  font-size: 13px;
+}
+
+.runActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settledList {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.runRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.runRow:last-child {
+  border-bottom: 0;
+}
+
+.runRowMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.emptyGroup {
+  padding: 24px 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 13px;
+  text-align: center;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.68fr) minmax(0, 1.55fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.master {
+  position: sticky;
+  top: 28px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.masterHeader {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.masterHeader > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.masterHeader strong {
+  color: var(--brand);
+  font-family: var(--font-book);
+  font-size: 28px;
+}
+
+.masterHeader small {
+  color: var(--muted);
+}
+
+.runList {
+  display: grid;
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+}
+
+.runButton {
+  width: 100%;
+  min-height: 112px;
+  display: grid;
+  gap: 7px;
+  padding: 17px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-press) ease, box-shadow var(--motion-press) ease;
+}
+
+.runButton:last-child {
+  border-bottom: 0;
+}
+
+.runButton:hover {
+  background: var(--surface-muted);
+}
+
+.runButton:focus-visible {
+  outline: 3px solid rgb(49 94 244 / 24%);
+  outline-offset: -3px;
+}
+
+.runSelected {
+  background: var(--brand-soft);
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.runTopline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runTopline strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-book);
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.runButton > span:not(.runTopline),
+.runButton > small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+
+.detailCard {
+  border-color: var(--line-soft);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.detailCard h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.detailHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.detailHeading h2 {
+  margin: 4px 0 6px;
+  font-family: var(--font-book);
+  font-size: clamp(25px, 4vw, 36px);
+}
+
+.detailHeading p:last-child {
+  margin: 0;
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+}
+
+.progress {
+  margin: 22px 0 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.actions button,
+.previewLink {
+  min-height: 44px;
+}
+
+.previewLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--brand);
+  font-weight: 650;
+  text-decoration: none;
+  transition: background var(--motion-press) ease, transform var(--motion-press) ease;
+}
+
+.previewLink:hover {
+  color: #fff;
+  background: var(--brand-strong);
+}
+
+.previewLink:active {
+  transform: scale(0.97);
+}
+
+.previewLink:focus-visible {
+  outline: 3px solid rgb(49 94 244 / 24%);
+  outline-offset: 2px;
+}
+
+.hash {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.cardAlert {
+  margin-top: 18px;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .master {
+    position: static;
+  }
+
+  .runList {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 24px 14px 48px;
+  }
+
+  .serviceBar,
+  .credentialBar,
+  .detailHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .serviceBar > div {
+    align-items: flex-start;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions button,
+  .previewLink,
+  .credentialBar > :global(.ant-btn) {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .runHeading,
+  .runRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .runRow > :global(.ant-btn),
+  .runActions > :global(.ant-btn) {
+    width: 100%;
+    min-height: 46px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runButton,
+  .previewLink {
+    transition-duration: 0.01ms;
+  }
+}

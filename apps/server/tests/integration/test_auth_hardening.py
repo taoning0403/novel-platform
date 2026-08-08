@@ -45,6 +45,7 @@ async def create_reader(
             "expires_at": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
             "max_devices": 3,
             "allow_new_devices": True,
+            "capabilities": ["library.read"],
         },
     )
     assert response.status_code == 201, response.text

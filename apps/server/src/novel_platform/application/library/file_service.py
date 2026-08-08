@@ -7,10 +7,14 @@ from anyio import to_thread
 from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.errors import ApplicationError
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.application.library.storage import FileStorage, StorageError
 from novel_platform.infrastructure.database.models import (
     BookEditionModel,
+    EditionTranslationRunModel,
+    ReadingProgressModel,
     StoredFileModel,
     UserBookPreferenceModel,
 )
@@ -34,6 +38,7 @@ class LibraryFileService:
         self.books = BookRepository(session)
         self.editions = EditionRepository(session)
         self.library = LibraryRepository(session)
+        self.policy = LibraryResourcePolicy(session)
 
     async def edition_download(self, owner_user_id: UUID, edition_id: UUID) -> DownloadableFile:
         edition = await self.editions.get_for_owner(owner_user_id, edition_id)
@@ -82,16 +87,18 @@ class LibraryFileService:
     async def delete_edition(
         self,
         *,
-        owner_user_id: UUID,
+        scope: LibraryAccessScope,
         book_id: UUID,
         edition_id: UUID,
     ) -> None:
+        owner_user_id = scope.owner_user_id
         book = await self.books.get(book_id, owner_user_id)
         if book is None:
             raise ApplicationError("book_not_found", "Book 不存在。", status_code=404)
         edition = await self.editions.get_for_book(book.id, edition_id, for_update=True)
         if edition is None:
             raise ApplicationError("edition_not_found", "Edition 不存在。", status_code=404)
+        await self.policy.require_edition_delete(scope, edition)
         dependents = await self.editions.dependents(edition.id)
         if dependents:
             raise ApplicationError(
@@ -104,7 +111,6 @@ class LibraryFileService:
         await self.session.execute(
             update(UserBookPreferenceModel)
             .where(
-                UserBookPreferenceModel.user_id == owner_user_id,
                 UserBookPreferenceModel.book_id == book.id,
                 UserBookPreferenceModel.preferred_edition_id == edition.id,
             )
@@ -113,11 +119,13 @@ class LibraryFileService:
         await self.session.execute(
             update(UserBookPreferenceModel)
             .where(
-                UserBookPreferenceModel.user_id == owner_user_id,
                 UserBookPreferenceModel.book_id == book.id,
                 UserBookPreferenceModel.last_opened_edition_id == edition.id,
             )
             .values(last_opened_edition_id=None, updated_at=datetime.now(UTC))
+        )
+        await self.session.execute(
+            delete(ReadingProgressModel).where(ReadingProgressModel.edition_id == edition.id)
         )
         for record in records:
             await self.session.delete(record.edition_file)
@@ -129,10 +137,12 @@ class LibraryFileService:
         await self.session.commit()
         await self._delete_physical_files(physical_keys)
 
-    async def delete_book(self, *, owner_user_id: UUID, book_id: UUID) -> None:
+    async def delete_book(self, *, scope: LibraryAccessScope, book_id: UUID) -> None:
+        owner_user_id = scope.owner_user_id
         book = await self.books.get(book_id, owner_user_id)
         if book is None:
             raise ApplicationError("book_not_found", "Book 不存在。", status_code=404)
+        await self.policy.require_book_delete(scope, book)
         editions = await self.books.editions(book.id)
         records: list[EditionFileRecord] = []
         for edition in editions:
@@ -152,9 +162,11 @@ class LibraryFileService:
         self._require_owned_files(owner_user_id, records)
         await self.session.execute(
             delete(UserBookPreferenceModel).where(
-                UserBookPreferenceModel.user_id == owner_user_id,
                 UserBookPreferenceModel.book_id == book.id,
             )
+        )
+        await self.session.execute(
+            delete(EditionTranslationRunModel).where(EditionTranslationRunModel.book_id == book.id)
         )
         if editions:
             edition_ids = [edition.id for edition in editions]

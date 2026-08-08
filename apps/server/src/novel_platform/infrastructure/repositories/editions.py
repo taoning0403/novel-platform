@@ -1,9 +1,9 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novel_platform.domain.editions.models import EditionStatus
+from novel_platform.domain.editions.models import CreationMethod, EditionStatus
 from novel_platform.infrastructure.database.models import (
     BookEditionModel,
     BookModel,
@@ -61,6 +61,35 @@ class EditionRepository:
             .where(
                 BookEditionModel.id == edition_id,
                 BookEditionModel.status == EditionStatus.READY,
+                EditionFileModel.is_current.is_(True),
+                BookModel.owner_user_id == owner_user_id,
+                StoredFileModel.owner_user_id == owner_user_id,
+            )
+        )
+        return (await self.session.scalars(statement)).one_or_none()
+
+    async def get_visible_for_reader(
+        self,
+        owner_user_id: UUID,
+        viewer_user_id: UUID,
+        edition_id: UUID,
+    ) -> BookEditionModel | None:
+        """Return a public-ready edition or the viewer's own generated draft."""
+        statement = (
+            select(BookEditionModel)
+            .join(BookModel, BookModel.id == BookEditionModel.book_id)
+            .join(EditionFileModel, EditionFileModel.edition_id == BookEditionModel.id)
+            .join(StoredFileModel, StoredFileModel.id == EditionFileModel.stored_file_id)
+            .where(
+                BookEditionModel.id == edition_id,
+                or_(
+                    BookEditionModel.status == EditionStatus.READY,
+                    and_(
+                        BookEditionModel.status == EditionStatus.DRAFT,
+                        BookEditionModel.creation_method == CreationMethod.GENERATED,
+                        BookEditionModel.created_by_user_id == viewer_user_id,
+                    ),
+                ),
                 EditionFileModel.is_current.is_(True),
                 BookModel.owner_user_id == owner_user_id,
                 StoredFileModel.owner_user_id == owner_user_id,

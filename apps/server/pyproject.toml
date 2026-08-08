@@ -1,14 +1,16 @@
 [project]
 name = "novel-platform-server"
-version = "0.8.0"
+version = "0.10.0"
 description = "Novel Platform modular-monolith API"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.14,<2",
   "charset-normalizer>=3.4,<4",
+  "cryptography>=44,<50",
   "defusedxml>=0.7,<1",
   "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
   "pillow>=11,<12",
   "psycopg[binary]>=3.2,<4",
   "pydantic-settings>=2.7,<3",
@@ -24,7 +26,6 @@ novel-platform = "novel_platform.cli:main"
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1",
   "mypy>=1.14,<2",
   "pytest>=8.3,<9",
   "pytest-asyncio>=0.25,<1",

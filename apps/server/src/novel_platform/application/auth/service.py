@@ -10,6 +10,7 @@ from novel_platform.application.auth.context import AuthContext, TokenResult
 from novel_platform.application.auth.security import TokenService
 from novel_platform.application.errors import ApplicationError
 from novel_platform.config import Settings
+from novel_platform.domain.auth.capabilities import ADMIN_CAPABILITIES, CredentialCapability
 from novel_platform.domain.auth.models import AccessCredentialStatus, UserRole, UserStatus
 from novel_platform.infrastructure.database.models import (
     AdminPasskeyModel,
@@ -347,7 +348,13 @@ class AuthService:
                 or device.access_credential_id != credential.id
             ):
                 raise self.invalid_session()
-        return AuthContext(user=user, device=device, session=auth_session)
+        capabilities = await self._effective_capabilities(user, auth_session)
+        return AuthContext(
+            user=user,
+            device=device,
+            session=auth_session,
+            capabilities=capabilities,
+        )
 
     async def logout(self, context: AuthContext) -> None:
         now = datetime.now(UTC)
@@ -618,8 +625,29 @@ class AuthService:
             expires_in=expires_in,
             refresh_token=raw_refresh,
             device_secret=device_secret,
-            context=AuthContext(user=user, device=device, session=auth_session),
+            context=AuthContext(
+                user=user,
+                device=device,
+                session=auth_session,
+                capabilities=await self._effective_capabilities(user, auth_session),
+            ),
         )
+
+    async def _effective_capabilities(
+        self,
+        user: UserModel,
+        auth_session: AuthSessionModel,
+    ) -> frozenset[CredentialCapability]:
+        if auth_session.recovery_mode:
+            return frozenset()
+        if user.role == UserRole.ADMIN:
+            return ADMIN_CAPABILITIES
+        if auth_session.access_credential_id is None:
+            raise self.invalid_session()
+        capabilities = await self.credentials.capabilities(auth_session.access_credential_id)
+        if CredentialCapability.LIBRARY_READ not in capabilities:
+            raise self.invalid_session()
+        return capabilities
 
     async def _admin_device(
         self,

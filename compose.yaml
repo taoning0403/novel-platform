@@ -17,6 +17,8 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    networks:
+      - database
 
   server:
     build:
@@ -55,6 +57,22 @@ services:
       MAX_EPUB_ENTRY_COUNT: ${MAX_EPUB_ENTRY_COUNT:-10000}
       MAX_COVER_BYTES: ${MAX_COVER_BYTES:-20971520}
       MAX_COVER_PIXELS: ${MAX_COVER_PIXELS:-40000000}
+      LINGUASPINDLE_ENABLED: ${LINGUASPINDLE_ENABLED:-false}
+      LINGUASPINDLE_BASE_URL: ${LINGUASPINDLE_BASE_URL:-http://linguaspindle:8765}
+      LINGUASPINDLE_VERSION_RANGE: ${LINGUASPINDLE_VERSION_RANGE:->=0.3.2,<0.4.0}
+      LINGUASPINDLE_PROVIDER_ID: ${LINGUASPINDLE_PROVIDER_ID:-openai-compatible}
+      LINGUASPINDLE_PROFILE_ID: ${LINGUASPINDLE_PROFILE_ID:-}
+      LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS: ${LINGUASPINDLE_CONNECT_TIMEOUT_SECONDS:-3}
+      LINGUASPINDLE_READ_TIMEOUT_SECONDS: ${LINGUASPINDLE_READ_TIMEOUT_SECONDS:-30}
+      LINGUASPINDLE_MAX_DOWNLOAD_BYTES: ${LINGUASPINDLE_MAX_DOWNLOAD_BYTES:-104857600}
+      PROVIDER_CREDENTIAL_MASTER_KEY: ${PROVIDER_CREDENTIAL_MASTER_KEY:?PROVIDER_CREDENTIAL_MASTER_KEY is required}
+      PROVIDER_RELAY_INTERNAL_URL: ${PROVIDER_RELAY_INTERNAL_URL:-http://novel-provider-relay:8790}
+      PROVIDER_RELAY_UPSTREAM_BASE_URL: ${PROVIDER_RELAY_UPSTREAM_BASE_URL:-https://api.openai.com/v1}
+      PROVIDER_RELAY_ALLOWED_MODELS: '${PROVIDER_RELAY_ALLOWED_MODELS:-["gpt-4.1-mini"]}'
+      PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS: "${PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS:-[]}"
+      PROVIDER_RELAY_CONNECT_TIMEOUT_SECONDS: ${PROVIDER_RELAY_CONNECT_TIMEOUT_SECONDS:-5}
+      PROVIDER_RELAY_READ_TIMEOUT_SECONDS: ${PROVIDER_RELAY_READ_TIMEOUT_SECONDS:-120}
+      PROVIDER_RELAY_MAX_RESPONSE_BYTES: ${PROVIDER_RELAY_MAX_RESPONSE_BYTES:-4194304}
     ports:
       - "${SERVER_PORT:-8000}:8000"
     volumes:
@@ -69,17 +87,21 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+    networks:
+      - database
 
   migrate:
     build:
       context: ./apps/server
     environment:
-      <<: *server-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-novel_platform}:${POSTGRES_PASSWORD:-novel_platform}@postgres:5432/${POSTGRES_DB:-novel_platform}
     depends_on:
       postgres:
         condition: service_healthy
     command: ["alembic", "upgrade", "head"]
     restart: "no"
+    networks:
+      - database
 
   web:
     build:
@@ -93,6 +115,12 @@ services:
       server:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - database
+
+networks:
+  database:
+    driver: bridge
 
 volumes:
   postgres_data:

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from novel_platform.domain.auth.capabilities import CredentialCapability
 from novel_platform.infrastructure.database.models import AuthSessionModel, DeviceModel, UserModel
 
 
@@ -8,6 +9,7 @@ class AuthContext:
     user: UserModel
     device: DeviceModel
     session: AuthSessionModel
+    capabilities: frozenset[CredentialCapability]
 
 
 @dataclass(frozen=True, slots=True)

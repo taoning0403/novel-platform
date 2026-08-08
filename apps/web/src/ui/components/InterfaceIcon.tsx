@@ -4,6 +4,7 @@ export type InterfaceIconName =
   | "library"
   | "series"
   | "upload"
+  | "translation"
   | "manage"
   | "readers"
   | "security"
@@ -19,6 +20,7 @@ const paths: Record<InterfaceIconName, ReactNode> = {
   library: <><path d="M4.5 5.5A2.5 2.5 0 0 1 7 3h12.5v15H7a2.5 2.5 0 0 0-2.5 2.5z" /><path d="M7 18a2.5 2.5 0 0 0 0 5h12.5v-5" /><path d="M8.5 7.5h7" /></>,
   series: <><path d="m4 8 8-4 8 4-8 4z" /><path d="m4 12 8 4 8-4" /><path d="m4 16 8 4 8-4" /></>,
   upload: <><path d="M12 16V4" /><path d="m7.5 8.5 4.5-4.5 4.5 4.5" /><path d="M4 14v6h16v-6" /></>,
+  translation: <><path d="M4 5h9M8.5 3v2c0 4.2-1.8 7.8-5 10" /><path d="M5 10c1.6 2.1 3.5 3.8 5.8 5" /><path d="m14 21 3.5-9 3.5 9M15.2 18h4.6" /></>,
   manage: <><path d="M4 5h16v14H4z" /><path d="M8 5V3h8v2" /><path d="M4 10h16" /><path d="M10 14h4" /></>,
   readers: <><circle cx="9" cy="8" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><circle cx="17" cy="9" r="2.25" /><path d="M15.5 14.5A4.5 4.5 0 0 1 21 19" /></>,
   security: <><path d="M12 3 19 6v5c0 4.6-2.8 8.2-7 10-4.2-1.8-7-5.4-7-10V6z" /><path d="m9 12 2 2 4-5" /></>,

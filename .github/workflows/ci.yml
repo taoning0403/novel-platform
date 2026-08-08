@@ -48,6 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.8.22"
@@ -62,6 +64,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: uv sync --frozen
         working-directory: apps/server
+      - run: pnpm verify -- --quality-only --all
+      - run: pnpm verify -- --config-only
       - run: pnpm api:check
       - run: pnpm lint
       - run: pnpm test

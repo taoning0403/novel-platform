@@ -4,12 +4,14 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.domain.auth.capabilities import CredentialCapability
 from novel_platform.domain.auth.models import AccessCredentialStatus, WebAuthnChallengePurpose
 from novel_platform.infrastructure.database.models import (
     AdminPasskeyModel,
     AdminRecoveryCredentialModel,
     DeviceModel,
     ReaderAccessCredentialModel,
+    ReaderCredentialCapabilityModel,
     WebAuthnChallengeModel,
 )
 
@@ -46,6 +48,30 @@ class CredentialRepository:
             .order_by(ReaderAccessCredentialModel.created_at.desc())
         )
         return list((await self.session.scalars(statement)).all())
+
+    async def capabilities(self, credential_id: UUID) -> frozenset[CredentialCapability]:
+        statement = (
+            select(ReaderCredentialCapabilityModel.capability)
+            .where(ReaderCredentialCapabilityModel.credential_id == credential_id)
+            .order_by(ReaderCredentialCapabilityModel.capability)
+        )
+        return frozenset(
+            CredentialCapability(value) for value in await self.session.scalars(statement)
+        )
+
+    async def add_capabilities(
+        self,
+        credential_id: UUID,
+        capabilities: frozenset[CredentialCapability],
+    ) -> None:
+        self.session.add_all(
+            ReaderCredentialCapabilityModel(
+                credential_id=credential_id,
+                capability=capability.value,
+            )
+            for capability in capabilities
+        )
+        await self.session.flush()
 
     async def recovery_for_token_hash(
         self, token_hash: str, *, for_update: bool = False

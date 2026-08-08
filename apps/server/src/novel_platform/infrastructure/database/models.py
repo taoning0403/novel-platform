@@ -23,6 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from novel_platform.domain.auth.capabilities import CredentialCapability
 from novel_platform.domain.auth.models import (
     AccessCredentialStatus,
     AdminRecoveryPurpose,
@@ -44,6 +45,10 @@ from novel_platform.domain.library.models import (
     StoredFilePurpose,
 )
 from novel_platform.domain.reader.models import ReaderFontFamily, ReaderTheme, ReadingStatus
+from novel_platform.domain.translations.models import (
+    TranslationCleanupStatus,
+    TranslationRunStatus,
+)
 from novel_platform.infrastructure.database.base import Base
 
 
@@ -180,6 +185,142 @@ class ReaderAccessCredentialModel(Base):
     )
 
 
+class ReaderCredentialCapabilityModel(Base):
+    __tablename__ = "reader_credential_capabilities"
+    __table_args__ = (
+        CheckConstraint(
+            "capability IN ('library.read', 'library.upload', 'translation.use')",
+            name="known_capability",
+        ),
+        Index("ix_reader_credential_capabilities_capability", "capability"),
+    )
+
+    credential_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reader_access_credentials.id", ondelete="CASCADE"), primary_key=True
+    )
+    capability: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    @property
+    def value(self) -> CredentialCapability:
+        return CredentialCapability(self.capability)
+
+
+class ProviderCredentialVersionModel(Base):
+    __tablename__ = "provider_credential_versions"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('openai_compatible', 'deepseek', 'kimi', 'custom')",
+            name="provider_known",
+        ),
+        CheckConstraint(
+            "(provider = 'custom' AND provider_name IS NOT NULL "
+            "AND length(btrim(provider_name)) > 0) "
+            "OR (provider <> 'custom' AND provider_name IS NULL)",
+            name="provider_name_matches_provider",
+        ),
+        CheckConstraint(
+            "length(btrim(base_url)) > 0",
+            name="base_url_not_blank",
+        ),
+        CheckConstraint(
+            "length(btrim(model)) > 0",
+            name="model_not_blank",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
+        CheckConstraint("octet_length(ciphertext) >= 17", name="ciphertext_has_tag"),
+        CheckConstraint(
+            "algorithm IN ('aes-256-gcm-v1', 'aes-256-gcm-v2')",
+            name="algorithm_supported",
+        ),
+        CheckConstraint(
+            "retired_at IS NULL OR retired_at >= created_at",
+            name="retired_after_creation",
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at",
+            name="revoked_after_creation",
+        ),
+        UniqueConstraint("user_id", "version", name="user_version"),
+        Index(
+            "uq_provider_credential_versions_current",
+            "user_id",
+            unique=True,
+            postgresql_where=text("retired_at IS NULL AND revoked_at IS NULL"),
+        ),
+        Index(
+            "ix_provider_credential_versions_user_created",
+            "user_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True, default=uuid4, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="openai_compatible", server_default="openai_compatible"
+    )
+    provider_name: Mapped[str | None] = mapped_column(String(120))
+    base_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    thinking_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    algorithm: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="aes-256-gcm-v2", server_default="aes-256-gcm-v2"
+    )
+    nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProviderUsageRecordModel(Base):
+    __tablename__ = "provider_usage_records"
+    __table_args__ = (
+        CheckConstraint("prompt_tokens >= 0", name="prompt_tokens_nonnegative"),
+        CheckConstraint("completion_tokens >= 0", name="completion_tokens_nonnegative"),
+        CheckConstraint("total_tokens >= 0", name="total_tokens_nonnegative"),
+        CheckConstraint(
+            "total_tokens >= prompt_tokens AND total_tokens >= completion_tokens",
+            name="total_tokens_consistent",
+        ),
+        CheckConstraint("length(btrim(model)) > 0", name="model_not_blank"),
+        Index(
+            "ix_provider_usage_records_credential_created",
+            "provider_credential_version_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True, default=uuid4, server_default=text("gen_random_uuid()")
+    )
+    provider_credential_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("provider_credential_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    remote_job_id: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class AdminRecoveryCredentialModel(Base):
     __tablename__ = "admin_recovery_credentials"
     __table_args__ = (
@@ -308,6 +449,9 @@ class StoredFileModel(Base):
     owner_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     storage_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     media_type: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -341,6 +485,9 @@ class BookModel(Base):
         primary_key=True, default=uuid4, server_default=text("gen_random_uuid()")
     )
     owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     canonical_title: Mapped[str] = mapped_column(String, nullable=False)
@@ -395,6 +542,9 @@ class BookEditionModel(Base):
     )
     book_id: Mapped[UUID] = mapped_column(
         ForeignKey("books.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
     language: Mapped[str] = mapped_column(String, nullable=False)
@@ -543,6 +693,9 @@ class LibraryImportModel(Base):
     owner_user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     status: Mapped[ImportStatus] = mapped_column(
         Enum(
             ImportStatus,
@@ -605,6 +758,178 @@ class LibraryImportModel(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EditionTranslationRunModel(Base):
+    __tablename__ = "edition_translation_runs"
+    __table_args__ = (
+        CheckConstraint("source_revision >= 1", name="source_revision_positive"),
+        CheckConstraint("source_sha256 ~ '^[0-9a-f]{64}$'", name="source_sha256_lower_hex"),
+        CheckConstraint(
+            "source_format IN ('epub', 'txt')",
+            name="source_format_supported",
+        ),
+        CheckConstraint("length(btrim(target_language)) > 0", name="target_language_not_blank"),
+        CheckConstraint("length(btrim(edition_title)) > 0", name="edition_title_not_blank"),
+        CheckConstraint(
+            "configuration_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="configuration_fingerprint_lower_hex",
+        ),
+        CheckConstraint("progress >= 0 AND progress <= 1", name="progress_range"),
+        CheckConstraint("retry_count >= 0", name="retry_count_nonnegative"),
+        CheckConstraint(
+            "status IN ('preparing', 'queued', 'running', 'paused', 'cancelling', "
+            "'cancelled', 'partially_succeeded', 'failed', 'ingesting', 'succeeded', "
+            "'attention_required')",
+            name="known_status",
+        ),
+        CheckConstraint(
+            "cleanup_status IN ('not_required', 'pending', 'succeeded', 'failed')",
+            name="known_cleanup_status",
+        ),
+        UniqueConstraint(
+            "created_by_user_id",
+            "client_request_id",
+            name="actor_client_request",
+        ),
+        Index(
+            "uq_translation_runs_active_equivalent",
+            "source_edition_file_id",
+            "target_language",
+            "configuration_fingerprint",
+            unique=True,
+            postgresql_where=text(
+                "status IN ('preparing', 'queued', 'running', 'paused', 'cancelling', "
+                "'ingesting', 'attention_required')"
+            ),
+        ),
+        Index(
+            "uq_translation_runs_remote_project",
+            "remote_project_id",
+            unique=True,
+            postgresql_where=text("remote_project_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_translation_runs_remote_job",
+            "remote_job_id",
+            unique=True,
+            postgresql_where=text("remote_job_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_translation_runs_remote_artifact",
+            "remote_artifact_id",
+            unique=True,
+            postgresql_where=text("remote_artifact_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_translation_runs_generated_edition",
+            "generated_edition_id",
+            unique=True,
+            postgresql_where=text("generated_edition_id IS NOT NULL"),
+        ),
+        Index("ix_translation_runs_owner_created", "library_owner_user_id", "created_at"),
+        Index("ix_translation_runs_actor_created", "created_by_user_id", "created_at"),
+        Index("ix_translation_runs_book_created", "book_id", "created_at"),
+        Index("ix_translation_runs_source_edition", "source_edition_id"),
+        Index(
+            "ix_edition_translation_runs_provider_credential_version_id",
+            "provider_credential_version_id",
+        ),
+        Index(
+            "uq_translation_runs_credential_bootstrap",
+            "provider_credential_version_id",
+            unique=True,
+            postgresql_where=text("remote_job_id IS NULL AND status = 'preparing'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        primary_key=True, default=uuid4, server_default=text("gen_random_uuid()")
+    )
+    library_owner_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    provider_credential_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("provider_credential_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    book_id: Mapped[UUID] = mapped_column(
+        ForeignKey("books.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_edition_id: Mapped[UUID] = mapped_column(
+        ForeignKey("book_editions.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_edition_file_id: Mapped[UUID] = mapped_column(
+        ForeignKey("edition_files.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_format: Mapped[FileFormat] = mapped_column(
+        Enum(FileFormat, name="file_format", values_callable=enum_values, create_constraint=False),
+        nullable=False,
+    )
+    target_language: Mapped[str] = mapped_column(String(100), nullable=False)
+    edition_title: Mapped[str] = mapped_column(String, nullable=False)
+    supersedes_edition_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("book_editions.id", ondelete="RESTRICT"), nullable=True
+    )
+    configuration_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    configuration_snapshot: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    client_request_id: Mapped[UUID] = mapped_column(nullable=False)
+    remote_project_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remote_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remote_artifact_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remote_request_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remote_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[TranslationRunStatus] = mapped_column(
+        Enum(
+            TranslationRunStatus,
+            name="translation_run_status",
+            values_callable=enum_values,
+            native_enum=False,
+            create_constraint=False,
+        ),
+        nullable=False,
+        default=TranslationRunStatus.PREPARING,
+        server_default=TranslationRunStatus.PREPARING.value,
+    )
+    progress: Mapped[float] = mapped_column(Float, nullable=False, default=0, server_default="0")
+    generated_edition_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("book_editions.id", ondelete="SET NULL"), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_details: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    cleanup_status: Mapped[TranslationCleanupStatus] = mapped_column(
+        Enum(
+            TranslationCleanupStatus,
+            name="translation_cleanup_status",
+            values_callable=enum_values,
+            native_enum=False,
+            create_constraint=False,
+        ),
+        nullable=False,
+        default=TranslationCleanupStatus.NOT_REQUIRED,
+        server_default=TranslationCleanupStatus.NOT_REQUIRED.value,
+    )
+    cleanup_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BookSeriesModel(Base):

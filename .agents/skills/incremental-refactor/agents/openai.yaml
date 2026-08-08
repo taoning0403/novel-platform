@@ -1,0 +1,4 @@
+interface:
+  display_name: "Incremental Refactor"
+  short_description: "Plan behavior-preserving refactors in safe slices"
+  default_prompt: "Use $incremental-refactor to plan and execute one reversible refactoring slice."

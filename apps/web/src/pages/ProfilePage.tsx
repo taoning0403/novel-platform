@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { userFacingError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { formatDate } from "../shared/format";
+import { credentialCapabilityLabels } from "../shared/labels";
 import { PageHeader } from "../ui/components/PageHeader";
 import { StatusTag } from "../ui/components/StatusTag";
 import styles from "./AccountPages.module.css";
@@ -50,6 +51,13 @@ export function ProfilePage() {
               { key: "name", label: "显示名称", children: user.display_name },
               { key: "role", label: "身份类型", children: user.role === "admin" ? "站点管理员" : "受邀阅读者" },
               { key: "status", label: "状态", children: <StatusTag status={user.status} /> },
+              {
+                key: "capabilities",
+                label: "有效权限",
+                children: user.capabilities.map(
+                  (capability) => credentialCapabilityLabels[capability],
+                ).join("、") || "无馆藏权限",
+              },
               { key: "created", label: "创建时间", children: formatDate(user.created_at) },
               { key: "login", label: "上次登录", children: user.last_login_at ? formatDate(user.last_login_at) : "尚无记录" },
             ]}

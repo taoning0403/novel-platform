@@ -1,8 +1,11 @@
 # Architecture
 
-漫读 (`novel-platform`) v0.8.0 remains a modular monolith: one React client, one FastAPI process,
-PostgreSQL, and a private local library volume. The public product is a personal non-commercial
-reading and collection-management site, not a public platform or book distribution service.
+漫读 (`novel-platform`) v0.10.0 remains a modular monolith for browser-facing product behavior:
+one React client, one FastAPI application, PostgreSQL, and a private local library volume. Optional
+novel translation crosses a private boundary to LinguaSpindle v0.3.2 and returns through a
+separately started Provider Relay process from the same Server package. The product remains a
+personal non-commercial reading and collection-management site, not a public platform or
+distribution service.
 
 ```text
 Browser
@@ -12,22 +15,32 @@ Nginx (static SPA, bounded upload proxy, header hardening)
   │ controlled proxy network
   v
 FastAPI modular monolith
-  ├── authentication / WebAuthn / reader administration / site / audit
-  ├── Books / Editions / imports / files / Series
+  ├── authentication / credential capabilities / WebAuthn / administration / audit
+  ├── contributor-attributed Books / Editions / imports / files / Series
+  ├── actor-scoped Translation Runs + encrypted Provider credential versions
   ├── safe Reader Projection / progress / settings / preferences
   ├── PostgreSQL
-  └── private library volume
+  ├── private Novel Platform library volume
+  └── private HTTP
+       ├── Server -> LinguaSpindle v0.3.2
+       │             └── independent SQLite + Artifact volume
+       └── LinguaSpindle -> Provider Relay
+                              ├── encrypted credential lookup + usage ledger
+                              └── version-bound approved OpenAI-compatible Provider
 ```
 
-There is no Redis, worker, queue, public object store, external identity provider, analytics
-service, mail/SMS dependency, or Cloudflare requirement. Cloudflare Access may be an optional
-outer layer, but application authentication and authorization stand alone.
+LinguaSpindle still shares no identity, database, volume or domain model with Novel Platform. It
+persists only an opaque credential scope needed to resume a Job and sends that scope back to the
+Relay; it never receives a User ID or upstream Provider key. Browser, Web, migrate and PostgreSQL
+never join the translation network. Relay joins the database and translation networks but has no
+proxy/edge network or host port. There is no Redis, worker, public object store, external identity
+provider, analytics service, mail/SMS dependency, or Cloudflare requirement. Cloudflare Access may
+be an optional outer layer, but application authentication and authorization stand alone.
 
 ## Web component and route boundary
 
-The v0.7.0 Web client applies the 漫读 Quiet Trace system without changing the HTTP,
-authentication, or authorization architecture. It retains the v0.6.0 Ant Design component
-foundation and route boundaries:
+The Web client retains the v0.7.0 漫读 Quiet Trace system and v0.6.0 Ant Design component
+foundation. v0.9 navigation/routes project server-returned capabilities and permission flags:
 
 ```text
 AppProviders
@@ -37,11 +50,12 @@ AppProviders
             ├── AppShell (non-Reader routes)
             │    ├── grouped desktop sidebar + account actions
             │    ├── mobile top bar + frequent bottom navigation
-            │    ├── role-aware full-navigation More Drawer
+            │    ├── capability-aware full-navigation More Drawer
             │    └── logout, recovery confinement, version footer
             └── lazy page routes + accessible Suspense fallback
                  ├── BrandMark / InterfaceIcon / shared interaction components
-                 ├── task-oriented Login / Library / administration layouts
+                 ├── Login / Library / contribution / administration layouts
+                 ├── Translation launch modal + actor-scoped master-detail workspace
                  ├── page and feature CSS Modules
                  └── Reader full-screen shell
                       ├── dedicated theme and publication typography
@@ -154,30 +168,37 @@ Local automated acceptance uses `localhost` and Chromium's virtual WebAuthn auth
 
 ## Authorization and library visibility
 
-The application separates two subjects:
+The application separates three subjects:
 
-- `library_owner_user_id`: the unique administrator used by manageable content queries;
+- `library_owner_user_id`: the unique administrator used for site-library containment, Series,
+  storage integrity and backup;
+- `actor_user_id`: the durable User attributed to uploaded/generated resources and Runs;
 - `viewer_user_id`: the authenticated identity used for progress, settings, preferences, devices,
   and Sessions.
 
-This avoids replacing historical owner scope with “any logged-in User.” Administrator mutations
-and raw file access require manager context in both route dependency and application service.
-Reader queries explicitly require a Book with a `ready`, current-file-backed Edition; Edition and
-Series results are filtered to the same readable set.
+Invited authority is stored on the current credential, not the User or JWT. `library.read` is
+mandatory; `library.upload` and `translation.use` are optional immutable snapshots. Every
+protected request reloads Session, credential and capability rows. Route dependencies first check
+administrator/capability/recovery confinement; application services then check the actor, library
+owner, resource creator, state and dependencies. Admin cannot bypass integrity constraints.
 
 ```text
-administrator                         invited reader
--------------                         --------------
-all content states                    ready + current-file Editions only
-Book/Edition/Series CRUD              no content mutation
-inspect/commit/replace imports        no import visibility or API access
-protected raw EPUB/TXT download       safe Reader Projection only
-own reading state                     own reading state
-reader/site/audit/Passkey admin       no administration
+administrator          read-only            library.upload             translation.use
+-------------          ---------            --------------             ---------------
+all content states     ready/current-file   ready/current-file         ready/current-file
+all library resources  no content mutation  own uploaded resources     own Runs/generated Editions
+Series/publish/raw      none                 none                       none
+all Runs/control       none                 none                       own Runs/control
+own reading state      own reading state    own reading state          own reading state
+security/site admin    none                 none                       none
 ```
 
-Cross-identity private resources retain 404 hiding. Role-forbidden management endpoints use stable
-403 responses. UI visibility is only presentation; direct API tests enforce every boundary.
+Upload and translation do not imply each other. A combined credential receives the union but
+never another actor's resource authority. A contributor-created Book containing another User's
+Edition/Run returns `409 book_contains_other_contributions` for contributor Book deletion. Active
+Import/Run and source/supersedes/file dependencies remain blocking. Cross-identity private
+Import/Run/draft resources retain 404 hiding; visible-but-forbidden writes use stable 403. UI
+visibility remains presentation only.
 
 ## Reader projection and private state
 
@@ -196,20 +217,93 @@ viewer-private. The administrator participates as a viewer with state independen
 
 ## Import, file revision, and Series boundaries
 
-Only the administrator runs the existing inspect-preview-commit import flow. Upload bytes are
-bounded and validated before a single commit transaction creates or changes Book/Edition/file
-relations. Edition-file replacement appends a new revision and preserves Edition identity.
-Storage cleanup is compensating and idempotent; database rollback does not leave a published
-partially committed domain graph.
+The administrator or a current `library.upload` credential runs inspect-preview-commit. Imports are
+isolated by `requested_by_user_id`; the administrator sees all, while another actor receives 404.
+Upload bytes are bounded and validated before one transaction creates/changes Book/Edition/file
+relations. `owner_user_id` remains the administrator; creator columns record the actor. An invited
+uploader may replace only a self-created Edition. Replacement appends a revision and preserves
+Edition identity. Compensation is idempotent and precisely deletes only unreferenced objects.
 
 Series remains an administrator-owned ordered grouping. A Book belongs to at most one Series;
 deleting a Series retains Books, Editions, files, preferences, and progress. Reader Series
 responses filter invisible Books and omit empty shells.
 
+## Private translation and Provider-credential boundary
+
+Translation remains synchronous HTTP orchestration from Server with persisted recovery state;
+React never performs remote multi-step calls and the HTTP client never creates an Edition. Before
+launch, the actor must have both current `translation.use` authority and a current encrypted
+Provider credential version. There is no shared administrator-key fallback.
+
+```text
+actor + fixed readable EPUB or TXT EditionFile
+  -> select exact actor credential version
+  -> create Run (actor/client UUID idempotency + source revision/SHA + credential snapshot)
+  -> format-specific Lingua status/version/pipeline/provider/idempotency checks
+  -> deterministic Project + scoped Job requests and stored correlation IDs
+  -> Lingua Job executes with opaque credential_scope + Job correlation
+  -> private Relay validates scope/binding/model/service Bearer and atomically claims a first Job ID
+  -> Relay decrypts only the bound key and calls its version-bound approved upstream/model
+  -> Relay rejects reflected secrets and records sanitized integer token usage without prompt/output
+  -> on-demand selected-Run sync/control (no worker or scheduler)
+  -> terminal successful Artifact metadata
+  -> same-origin bounded streaming download + size/SHA/format validation
+  -> EPUB archive/package/language reinspection or TXT normalization
+  -> generated-ingestion transaction + exact file compensation
+  -> draft/ai/generated Edition owned by library owner, attributed to actor
+  -> creator-only preview -> administrator-only ready publication
+```
+
+Lingua/Relay origins, compatible version, adapter/Profile identity, inbound adapter model,
+allowed custom HTTPS base URLs, timeouts and byte ceilings are operator configuration. New v2
+OpenAI credentials fix the preset to its official base URL; the separately configured upstream
+URL is retained only to preserve legacy v1 routing. The browser saves one current credential
+configuration through the self-service
+endpoint: OpenAI, DeepSeek, Kimi, or an operator-allowlisted custom OpenAI-compatible base URL,
+plus an upstream model selected from that Provider's live model catalogue and an explicit
+thinking-mode switch that defaults off. The authenticated catalogue endpoint uses the unsaved
+write-only key for one bounded, no-redirect `GET /models` call to the same validated destination,
+then returns only unique validated model IDs; it neither persists the key/raw response nor
+maintains a product model list. Provider/base URL/key changes invalidate the browser's transient
+catalogue. Thinking is supported only as a strict DeepSeek `deepseek-reasoner` mapping or the
+explicit Kimi `kimi-k2.5` request field; OpenAI, custom routes and unsupported Kimi models cannot
+enable it. The browser does not choose these values per Run or submit a profile/download URL. The
+raw key is accepted only as a write-only `SecretStr`, encrypted with AES-256-GCM on save and never
+returned. Both Provider clients follow no redirects, bound response sizes, do not propagate raw
+remote response bodies, reject reflected keys and sanitize error details.
+
+The first Provider request can race the Novel Platform Job-creation response. A partial unique
+index permits only one uncorrelated `preparing` Run per credential version; the Relay row-locks
+that Run, atomically persists the authenticated LinguaSpindle Job ID, and releases the transaction
+before calling the upstream. Every later call must match the stored ID. Unexpected Relay
+exceptions are converted without logging values, and a successful Provider JSON value containing
+the decrypted key is rejected before any response or usage write.
+
+Each immutable credential version has a random UUID scope, per-User monotonic version, Provider
+kind/name, normalized base URL, model, thinking state, nonce and ciphertext. One partial unique
+index permits only one current version across all Provider kinds. New ciphertext authenticated
+data binds the route, model and thinking state as well as User, credential UUID and version;
+legacy v1 OpenAI-compatible ciphertext retains its original fixed-upstream/model behavior with
+thinking forced off and without re-encryption. The separately injected 32-byte master key is
+absent from PostgreSQL and its backups. Rotation, switching Provider or changing thinking state
+retires the old version but existing bound Runs may continue; removal revokes every version and
+later Provider calls fail closed. The Relay revalidates preset/custom routing and Provider/model
+thinking policy at call time, then replaces LinguaSpindle's adapter model with the model bound to
+a v2 credential and injects only the supported Kimi field. Run and remote Job fingerprints
+include the scope, while safe API responses expose only non-secret configuration and version
+metadata. The Run also stores exact Project/Job/Artifact IDs. Retry recovers with deterministic
+idempotency; cleanup may delete only that stored Project. A cleanup failure never rolls back an
+already ingested Edition.
+
+Relay and Lingua availability are deliberately absent from main readiness, so disabling the
+feature/network affects only translation. Relay startup/health validates its master key, service
+secret and database reachability but does not make a paid upstream probe.
+
 ## Auditing and retention
 
-Authentication, credential, device, Session, Passkey, recovery, administrator-control, site
-setting, and important permission events use bounded structured audit rows. Metadata never
+Authentication, credential/capability, device, Session, Passkey, recovery, contributor mutation,
+translation control/publication, administrator-control, site setting, and important permission
+events use bounded structured audit rows. Metadata never
 contains raw credentials, tokens, Cookies, challenges, secrets, storage paths, or book content.
 The configured default retention is 90 days. There is no scheduler; an operator runs
 `auth audit cleanup`, which records a summary event after deletion.
@@ -221,31 +315,51 @@ Device-limit errors are the one explicit non-enumerating operational response.
 
 ## Migration, backup, and failure posture
 
-Alembic `20260715_0005` only adds/extends schema. The separate read-only preflight reports current
-revision, administrators, owners, private-state counts, and active authentication rows. Formal
-conversion refuses ambiguity unless the operator selects the target administrator and maps every
-other administrator to a reader. It then consolidates all content-owner FKs, clears password
-hashes, revokes legacy Device/Session/Refresh state, and marks migration complete without creating
-plaintext reader credentials.
+Alembic `20260723_0006` follows the completed v0.5 identity/owner conversion. Its internal
+count-only preflight refuses a missing conversion, non-unique owner/admin, owner mismatch, active
+Import, missing/mismatched file reference or invalid current-file set. It then clears private
+state/links pointing at fileless placeholders, deletes those Editions and resulting empty Books,
+backfills creator columns, grants every retained credential only `library.read`, and creates Run
+storage. It cannot be downgraded because placeholder deletion is destructive. Alembic
+`20260726_0007` then creates encrypted Provider-credential and sanitized usage storage and makes
+the credential-version binding non-null on every Run. It refuses any existing unscoped v0.9 Run
+instead of inventing a payer or deleting orchestration history. Alembic `20260726_0008` adds
+version-bound Provider routing/model/thinking metadata, preserves legacy v1 ciphertext, and
+enforces one current configuration and one monotonic version sequence per User. Alembic
+`20260727_0009` widens only the durable Run source-format check to `epub | txt`; it preserves
+existing TXT rows and refuses downgrade while an EPUB Run exists.
 
 Deployment order is:
 
 ```text
-validate HTTPS/secrets -> stop writers -> coordinated database+library backup
--> Alembic -> preflight -> explicit conversion -> volume integrity audit
--> API/Web health -> administrator recovery/Passkey verification
+validate candidate/config/topology -> stop writers -> sanitized count preflight
+-> coordinated database+library backup -> isolated restore
+-> explicit approval for destructive migration/reset -> Alembic 20260723_0006
+-> fail-closed unscoped-Run check -> Alembic 20260726_0007
+-> version-bound Provider route/model/thinking migration -> Alembic 20260726_0008
+-> EPUB/TXT Translation Run constraint migration -> Alembic 20260727_0009
+-> volume integrity audit -> API/Web health + credential capability matrix
+-> LinguaSpindle >=0.3.2 + private Relay network/secret/health verification
+-> scoped synthetic translation without a paid Provider call
+-> restart persistence + before/after topology comparison
 ```
 
 The library audit compares database permanent references/checksums and temporary references with
-the mounted volume but reports only counts. A coordinated backup captures PostgreSQL and the
-library while writers are stopped. Restore must first succeed against a temporary database and
-temporary volume. Rollback restores matching code + database + volume from that backup; deploy
-automation never guesses an Alembic downgrade and leaves the application stopped after a failed
-migration or integrity check.
+the mounted volume but reports only counts. A coordinated backup captures Novel Platform
+PostgreSQL and library while writers are stopped, including capability/creator/Run state,
+Provider ciphertext and sanitized usage. It deliberately excludes the vault master key as well as
+LinguaSpindle SQLite/Artifacts/containers/networks. Restoring usable Provider credentials requires
+the matching externally protected master key; LinguaSpindle state requires its own coordinated
+Volume backup. Restore must first succeed against a temporary database and temporary volume.
+Rollback restores matching code + database + library and, when required, the separately matched
+LinguaSpindle Volume; a translation-only failure disables the feature/network without deleting
+generated Editions. Remote Projects are never cleaned by pattern or inventory guess.
 
 ## Deliberate omissions
 
-v0.8.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
-public registration/catalogue, payments, advertising, reader downloads/uploads, LLM workflows,
-native clients, scheduled jobs, object storage, or Series nesting/reordering. Adding any durable
-boundary requires a new explicit milestone and ADR.
+v0.10.0 does not add bookmarks, highlights, annotations, comments, social features, sharing,
+public registration/catalogue, payments, advertising, public/raw downloads, native clients,
+scheduled jobs, object storage, Series nesting/reordering, manga or other-document translation,
+per-chapter review, per-Run Provider switching, arbitrary/unallowlisted custom upstreams,
+automatic Provider failover, site-funded fallback, budgets/quotas, vault-master-key rotation or
+arbitrary Artifact URLs. Adding any durable boundary requires a new explicit milestone and ADR.

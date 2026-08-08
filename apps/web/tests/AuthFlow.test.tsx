@@ -32,6 +32,11 @@ const admin = {
   id: "00000000-0000-0000-0000-000000000001",
   display_name: "管理员",
   role: "admin",
+  capabilities: [
+    "library.read",
+    "library.upload",
+    "translation.use",
+  ],
   status: "active",
   last_login_at: "2026-07-15T00:00:00Z",
   created_at: "2026-07-15T00:00:00Z",
@@ -43,6 +48,7 @@ const reader = {
   id: "00000000-0000-0000-0000-000000000002",
   display_name: "受邀读者",
   role: "reader",
+  capabilities: ["library.read"],
 };
 
 function tokenResponse(user = admin, recoveryMode = false) {
@@ -137,7 +143,60 @@ it("restores an authenticated admin from the HttpOnly refresh cookie", async () 
   const mainNavigation = screen.getByRole("navigation", { name: "主导航" });
   expect(within(mainNavigation).getByRole("link", { name: "管理" })).toBeInTheDocument();
   expect(within(mainNavigation).getByRole("link", { name: "上传" })).toBeInTheDocument();
+  expect(within(mainNavigation).getByRole("link", { name: "小说翻译" })).toBeInTheDocument();
+  expect(within(mainNavigation).getByRole("link", { name: "翻译凭据" })).toBeInTheDocument();
   expect(window.localStorage.getItem("access_token")).toBeNull();
+});
+
+it.each([
+  {
+    label: "上传者",
+    capabilities: ["library.read", "library.upload"],
+    upload: true,
+    translation: false,
+  },
+  {
+    label: "翻译者",
+    capabilities: ["library.read", "translation.use"],
+    upload: false,
+    translation: true,
+  },
+  {
+    label: "上传翻译者",
+    capabilities: ["library.read", "library.upload", "translation.use"],
+    upload: true,
+    translation: true,
+  },
+])("projects capability navigation for $label", async ({
+  label,
+  capabilities,
+  upload,
+  translation,
+}) => {
+  const contributor = {
+    ...reader,
+    display_name: label,
+    capabilities,
+  };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/v1/site")) return jsonResponse(publicSite);
+    if (url.endsWith("/auth/refresh")) return jsonResponse(tokenResponse(contributor));
+    if (url.includes("/books?")) return jsonResponse([]);
+    if (url.includes("/reader/recent?")) return jsonResponse([]);
+    throw new Error(`unexpected request ${url}`);
+  }));
+
+  renderApp("/");
+  await screen.findByRole("heading", { name: "书库" });
+  const navigation = screen.getByRole("navigation", { name: "主导航" });
+  const uploadLink = within(navigation).queryByRole("link", { name: "上传" });
+  const translationLink = within(navigation).queryByRole("link", { name: "小说翻译" });
+  const credentialLink = within(navigation).queryByRole("link", { name: "翻译凭据" });
+  expect(uploadLink === null).toBe(!upload);
+  expect(translationLink === null).toBe(!translation);
+  expect(credentialLink === null).toBe(!translation);
+  expect(within(navigation).queryByRole("link", { name: "管理" })).not.toBeInTheDocument();
 });
 
 it("logs a reader in with one credential and stores only a non-security device hint", async () => {

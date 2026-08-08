@@ -2,20 +2,25 @@
 
 [English](README.md) · **简体中文**
 
-漫读 v0.8.0（`novel-platform`）是一套私有、自托管的数字阅读与藏书整理站点，产品设计
-面向个人、非商业部署。唯一管理员维护共享的 EPUB/TXT 藏书，少量受邀阅读者可以阅读已
-发布的 Edition，并分别保存自己的进度、阅读设置、偏好、设备和会话。当前 Web 界面使用
-中文。
+漫读 v0.10.0（`novel-platform`）是一套私有、自托管的数字阅读与藏书整理站点，产品设计
+面向个人、非商业部署。唯一管理员拥有共享的 EPUB/TXT 藏书；少量受邀人可以阅读已发布
+Edition，管理员还可按凭证分别授予文件上传或 EPUB/TXT 小说翻译能力。每个人分别保存自己的
+进度、阅读设置、偏好、设备和会话。当前 Web 界面使用中文。
 
-项目刻意不提供公开注册或目录、阅读者上传、公开原文件下载、用户名/密码登录、评论、
+项目刻意不提供公开注册或目录、公开原文件下载、用户名/密码登录、评论、
 社交、支付、广告及公开发布能力。
 
-v0.8.0 是认证加固里程碑（ADR 0016）：staging 代理只从单一可信宿主边缘恢复真实客户端
-IP，并对公开认证入口限流；刷新轮换绑定会话对应的设备秘密；Cookie 模式刷新必须携带白
-名单 Origin；staging/production 强制认证 Cookie 使用 `SameSite=Strict`。本里程碑不改变
-v0.5.0 已验收的 API、授权、数据、导入、文件修订和 Reader 状态契约。
+v0.10.0 保留 v0.9 的 capability、贡献归属和生成 Edition 模型，并引入阅读者自有的
+Provider 凭据。每位翻译发起人把一个当前 OpenAI、DeepSeek、Kimi 或管理员允许的自定义
+配置及只写 Key 保存为不可变的 AES-256-GCM 加密版本；Run 全程固定该版本承担用量，并可
+查看脱敏的请求/Token 汇总。配置时使用只写 Key 读取所选 Provider 的实时 `/models` 目录并
+要求显式选择，漫读不维护或预选模型列表。LinguaSpindle v0.3.2 只接收不透明凭据 scope，
+再调用固定策略的私有 Relay；LinguaSpindle 与浏览器都拿不到上游 Key，系统也不会回退到
+管理员或共享 Key。
 
-当前仓库版本为 v0.8.0，仍属于 1.0 之前的软件。将站点暴露到互联网前，请先阅读
+已部署的 v0.10.0 基线已经完成；当前源码树包含尚未分配下一发布版本号的 post-v0.10
+Provider 路由增量，package/API metadata 暂时仍为 v0.10.0。候选与部署证据必须标明精确 commit，
+且不能覆盖已归档的 v0.10 证据。项目仍属于 1.0 之前的软件。将站点暴露到互联网前，请先阅读
 [当前项目状态](docs/PROJECT_STATE.md)和[部署手册](docs/staging-deployment.md)。
 
 ## 项目亮点
@@ -23,8 +28,14 @@ v0.5.0 已验收的 API、授权、数据、导入、文件修订和 Reader 状�
 - 通过“检查—预览—提交”工作流导入 EPUB/TXT，保留追加式文件修订，并协调备份数据库与
   私有书库目录。
 - 受邀阅读者通过有边界、已清洗的 Reader Projection 阅读，不直接接触原始源文件。
-- 管理员使用常驻且经过用户验证的 Passkey；阅读者使用高熵、可轮换、仅展示一次的访问
-  凭证。
+- 管理员使用常驻且经过用户验证的 Passkey；受邀人使用高熵、可轮换、仅展示一次且带显式
+  能力快照的访问凭证。
+- 上传或生成的 Book、Edition、文件、Import 与 Translation Run 归属到真实持久 User，同时
+  保持唯一管理员馆藏 owner 与按创建者限制的操作规则。
+- 通过仅 Server 可达的 LinguaSpindle 私网 HTTP 翻译可读 EPUB/TXT，持久化幂等 Run、保留
+  EPUB 结构、限制 Artifact 导入，并提供创建者草稿预览和管理员发布。
+- 每人只能配置、轮换或删除自己的只写 Provider Key；每个 Run 固定一个加密凭据版本，并
+  展示脱敏的本月/累计 Token 用量，不返回任何 Key 派生信息。
 - 会话绑定服务器授权设备，刷新令牌单次轮换，每个受保护请求重新验证当前授权状态；安全
   审计事件不记录原始秘密。
 - 在共享管理员藏书的同时，确保每位阅读者的进度、阅读设置、首选 Edition、设备和会话
@@ -42,7 +53,14 @@ Browser
       -> FastAPI 模块化单体
           -> PostgreSQL
           -> 私有本地 EPUB/TXT 书库卷
+          -> 可选私网 HTTP -> LinguaSpindle >=0.3.2
+                              -> 私有 Provider Relay
+                                  -> PostgreSQL 加密凭据查找
+                                  -> 版本绑定且经过批准的 OpenAI-compatible 上游
 ```
+
+LinguaSpindle 保留独立 SQLite 与 Artifact Volume，不知道 Novel Platform User，也不接收
+上游 Key。Relay 只加入数据库与翻译网络，不发布宿主端口。
 
 生产边界不依赖公开目录、公开对象存储、外部身份服务、分析服务、Worker、队列或 Redis。
 持久边界详见[架构](docs/architecture.md)、[数据模型](docs/data-model.md)和
@@ -83,6 +101,16 @@ cp .env.example .env
 openssl rand -hex 32
 ```
 
+再生成一份独立、严格 Base64 的 Provider 凭据库主密钥，并填入
+`PROVIDER_CREDENTIAL_MASTER_KEY`：
+
+```bash
+openssl rand -base64 32
+```
+
+不得把任何认证秘密复用为主密钥。基础本地栈仍关闭翻译；启用私有 overlay 时，还需要独立
+Relay service secret 及部署手册所述的外部 LinguaSpindle 网络。
+
 随后启动本地栈：
 
 ```bash
@@ -105,8 +133,9 @@ docker compose run --rm --no-deps --entrypoint novel-platform server \
 变量中，或让它进入 Shell 历史。打开 `http://localhost:3000/login`，输入凭证并立即注册
 第一个 Passkey。完成注册前，恢复会话无法访问书库或管理页面。
 
-之后管理员日常通过“使用安全设备登录”进入站点。在“管理 → 阅读者与凭证”中创建受邀
-阅读者；每份完整阅读者凭证同样只展示一次。
+之后管理员日常通过“使用安全设备登录”进入站点。在“管理 → 阅读者与凭证”中创建受邀人，
+按需选择上传/翻译能力并立即保存新凭证；每份完整凭证只展示一次。能力变更必须 reissue，
+旧凭证、设备、会话与刷新令牌立即失效。
 
 停止服务但保留 PostgreSQL 和书库数据：
 
@@ -123,6 +152,8 @@ docker compose down --volumes
 ## 认证模型
 
 - 阅读者身份是持久对象；重新签发访问凭证不会重建进度、设置或偏好。
+- 每份受邀凭证强制包含 `library.read`，可选的 `library.upload` 与 `translation.use` 是数据库中
+  不可变的签发快照；JWT 或前端状态都不是授权权威。
 - 阅读者访问凭证和管理员恢复凭证至少包含 256 位随机性；PostgreSQL 仅保存按域隔离的
   HMAC 与安全提示。
 - 设备授权使用服务器生成的 HttpOnly 设备秘密 Cookie；IP 和 `client_instance_id` 均不
@@ -154,11 +185,19 @@ docker compose down --volumes
 - 显式设置 `CORS_ORIGINS` 与 `TRUSTED_HOSTS`；
 - `OPENAPI_ENABLED=false`；
 - 使用前述三个相互独立的秘密；
+- 使用独立保护、严格 Base64 解码后恰为 32 字节的
+  `PROVIDER_CREDENTIAL_MASTER_KEY`；
+- 启用翻译时，使用独立的 `PROVIDER_RELAY_SERVICE_SECRET`、一个固定 HTTPS 上游及非空模型
+  allowlist；
 - 反向代理受控，并覆盖而不是透传客户端提供的转发头。
 
 `compose.staging.yml` 只发布 Nginx，API 与 PostgreSQL 保持在私有网络。Nginx 只信任单一
 宿主边缘对等地址以恢复真实客户端 IP，对公开认证入口限流；Uvicorn 只信任 Nginx 的固定
-内部地址。完整步骤见[部署手册](docs/staging-deployment.md)。
+内部地址。启用翻译时额外叠加 `compose.translation.yml`：`server` 加入既有外部
+`linguaspindle-private` 网络，同时启动只加入数据库与翻译网络的专用 Relay；Relay 不增加
+宿主或代理端口。LinguaSpindle 必须为 `>=0.3.2,<0.4.0`，只把独立 Relay service secret 当作
+内部 Bearer。上游 Key 只会作为只写输入与 Novel Platform 数据库中的密文存在；独立保护的
+32 字节主密钥不进入 PostgreSQL 或其备份。完整步骤见[部署手册](docs/staging-deployment.md)。
 
 ## 安全
 
@@ -204,22 +243,54 @@ auth audit cleanup
 `admin credentials reset` 会撤销 Passkey 与全部管理员会话，再输出用于注册新 Passkey 的
 恢复凭证。
 
-## 共享书库与阅读者边界
+## 共享书库与贡献者边界
 
-唯一管理员始终是 Book、Edition、StoredFile、Import 和 Series 的显式所有者。受邀阅读者
-只能看到经过过滤的可读投影：
+唯一管理员始终是 Book、Edition、StoredFile、Import、Translation Run 和 Series 的显式
+馆藏所有者；资源归属另行记录实际创建/发起的持久 User。受邀人只能看到经过过滤的可读
+投影：
 
 - 至少包含一个 `ready` 且有当前文件 Edition 的 Book；
 - `ready` 且有当前文件的 Edition；
 - 至少包含一个可见 Book 的 Series；
 - 受保护封面和安全的 EPUB/TXT Reader section/resource。
 
-阅读者只能更新自己的进度、状态、Reader Settings、首选/最近打开 Edition、设备名称以及
-会话/设备撤销。后端授权会拒绝阅读者导入、Book/Edition/Series 变更、原始 EPUB/TXT 下载、
-阅读者/站点/审计管理及 Passkey 管理；隐藏按钮不是安全控制。
+只读凭证只能更新自己的进度、状态、Reader Settings、首选/最近打开 Edition、设备名称及
+会话/设备撤销。`library.upload` 允许文件型创建/追加并管理本人上传资源；
+`translation.use` 独立允许翻译可读 EPUB/TXT 并管理本人 Run/生成 Edition。两者都不授予 Series、
+原文件下载、生成译本发布、阅读者/站点/审计或 Passkey 管理。Book 创建者不能删除含他人
+贡献的整本 Book。后端同时检查当前 capability 与资源 creator；隐藏按钮不是安全控制。
 
 v0.4 已验收的 Reader、文件修订、Edition 身份、source/supersedes、进度冲突和 Series 不变量
 保持不变。
+
+## 阅读者自有 Provider 凭据边界
+
+当前具备 `translation.use` 的 actor 只能通过 `/api/v1/me/provider-credential` 管理自己的
+一个当前 OpenAI、DeepSeek、Kimi 或管理员 allowlist 中的自定义 OpenAI-compatible 配置。
+原始 Key 只作为只写值由临时模型目录请求和凭据 PUT 接收；只有 PUT 会用唯一 nonce 及绑定
+所有者、版本、路由、模型和思考状态的认证数据加密。Web 保存前会清空表单，服务不会返回
+Key、提示、哈希或其他可逆/派生信息，也不会写入浏览器存储。思考模式默认关闭：DeepSeek
+与 `deepseek-reasoner` 严格对应，Kimi
+`kimi-k2.5` 会收到显式 enabled/disabled 字段，OpenAI、自定义及不支持的 Kimi 模型不能
+打开这个通用开关。轮换、切换 Provider 或改变思考状态都会创建新的不可变 current 版本并
+退休旧版本；已创建 Run 始终固定原版本。删除会撤销该 User 的全部版本，包括尚未完成 Run
+所绑定的版本。
+
+读取模型目录时，已认证页面把尚未保存的只写 Key 提交给 Server；Server 只对所选预设地址或
+精确命中 allowlist 的自定义地址执行一次有大小上限、禁止重定向的 `GET /models`。浏览器只
+收到去重并校验过的模型 ID，Key 和原始 Provider 响应不会持久化或返回。Provider、自定义
+Base URL 或 Key 任一变化都会使临时列表失效，保存前必须重新读取并从该列表选择。
+
+启动翻译必须同时具备当前翻译权限和当前个人凭据。凭据缺失、撤销、无法解密或绑定不符均
+失败关闭，绝不回退管理员或站点出资 Key。Relay 只接受固定 Chat Completions 路径、服务
+Bearer、不透明 scope、LinguaSpindle Job ID 及 allowlist 中的内部 adapter 模型，再按绑定
+版本路由到预设地址或管理员精确允许的自定义 HTTPS Base URL，并替换成绑定模型。它只在
+选定的上游边界把服务 Bearer 替换为解密后的 actor Key，只保存 Provider 返回的整数 Token
+用量，不保存 prompt、译文、原始响应、价格或费用估算。
+
+`PROVIDER_CREDENTIAL_MASTER_KEY` 必须为严格 Base64，解码后恰为 32 字节，并与数据库分开
+备份。`PROVIDER_RELAY_SERVICE_SECRET` 必须独立于凭据库主密钥及认证秘密，且只由 Relay 与
+LinguaSpindle 共享。丢失匹配的主密钥后，恢复出的凭据密文将按设计无法使用。
 
 ## 匿名页面与索引
 
@@ -229,6 +300,45 @@ v0.4 已验收的 Reader、文件修订、Edition 身份、source/supersedes、�
 
 FastAPI 对非健康检查响应添加 `X-Robots-Tag: noindex, nofollow, noarchive`，Nginx 对 HTML/
 静态响应应用同样策略。这只是认证的补充，不能代替访问控制。
+
+## v0.9.0 升级到 v0.10.0：BYOK 与私有 Relay
+
+v0.10.0 新增 Alembic `20260726_0007`、加密 Provider 凭据版本、脱敏用量记录，以及每个
+Translation Run 必填的凭据版本外键。历史 v0.9 Run 没有真实付款人/Key 归属，因此 0007
+只要发现任意既有 Run 就拒绝迁移；它不会删除 Run，也不会伪造 scope。必须先备份，再显式
+归档/删除这些测试 Run，或恢复/重置精确的一次性环境后重试。
+
+Alembic `20260726_0008` 新增不可变的 Provider 类型/名称/Base URL/模型/思考状态、每位 User
+一个当前配置及一条版本序列；既有 v1 OpenAI 密文保持兼容，新版本使用 v2 认证数据。
+
+Alembic `20260727_0009` 允许 EPUB 与 TXT 作为 Translation Run 原文格式，不改写既有 TXT
+数据；存在任意 EPUB Run 时拒绝降级。
+
+迁移前停止写入，执行 `scripts/staging/data/backup-library.sh`，并通过隔离的
+`scripts/staging/data/restore-library.sh --test`。匹配的 `PROVIDER_CREDENTIAL_MASTER_KEY`
+必须另行保护：PostgreSQL dump 包含凭据密文与用量，但不包含主密钥或 Relay service secret。若备份含
+自定义 Provider，还必须另行保护匹配的 `PROVIDER_RELAY_CUSTOM_ALLOWED_BASE_URLS` 配置代际；
+manifest 只声明此外部要求，不记录其值。部署
+LinguaSpindle `>=0.3.2,<0.4.0`，把其 OpenAI-compatible base URL 指向私有 Relay `/v1`，运行时
+API Key 设置为 Relay service secret，模型设置为 Relay allowlist 中的值；Relay、
+LinguaSpindle、API 与数据库均不得发布宿主端口。
+staging 健康门禁会用不存在的 synthetic scope 验证运行时主密钥/Bearer 一致及模型被接受；
+该请求必须在任何上游调用前固定停在 Relay 的 404。
+
+仓库门禁不执行真实付费 Provider 调用，也不外发真实正文。只有私有链路通过 synthetic/Mock
+验证后，才可在阅读者提供 Key 且另行明确授权的情况下执行该检查。
+
+## v0.8.0 升级到 v0.9.0（历史）
+
+v0.9.0 新增 Alembic `20260723_0006`：删除无文件占位 Edition/Book 及其偏好、进度和关系；
+将保留内容的贡献者回填为唯一馆藏 owner；现有受邀凭证只回填 `library.read`；并建立
+Translation Run 表。站点未完成 v0.5 转换、owner 不唯一、存在活动 Import 或文件引用异常时
+迁移会失败关闭。迁移不提供 downgrade；回滚必须恢复同一份协调 PostgreSQL + 书库备份。
+
+迁移前必须记录脱敏统计、停止写入，生成 `scripts/staging/data/backup-library.sh` 备份，并通过
+`scripts/staging/data/restore-library.sh --test`。实际服务器迁移或可丢弃环境 reset 仍需针对
+精确目标另行批准。不得删除或重建 LinguaSpindle SQLite、Artifact Volume、容器或网络。
+ADR 0019 与上方 v0.10 升级已经取代 v0.9 的“运营者持有 Provider Key”部署边界。
 
 ## v0.7.0 升级到 v0.8.0
 
@@ -260,8 +370,8 @@ v0.6.0 改变 Web 组件基础与静态 Bundle，不新增 API、数据库、认
 
 没有协调完成 PostgreSQL + 书库备份及隔离恢复测试前，禁止对在线数据运行 Alembic。
 
-1. 停止 Web/API 写入并生成 `scripts/backup-library.sh` 备份。
-2. 执行隔离的 `scripts/restore-library.sh --test BACKUP_DIRECTORY`。
+1. 停止 Web/API 写入并生成 `scripts/staging/data/backup-library.sh` 备份。
+2. 执行隔离的 `scripts/staging/data/restore-library.sh --test BACKUP_DIRECTORY`。
 3. 将 schema 升级到 Alembic `20260715_0005`。
 4. 执行 `auth migration preflight`。
 5. 若管理员或内容所有者存在歧义，显式选择 `--target-admin-id`，并通过
@@ -279,22 +389,28 @@ v0.6.0 改变 Web 组件基础与静态 Bundle，不新增 API、数据库、认
 在已配置宿主机上生成协调备份：
 
 ```bash
-./scripts/backup-library.sh
+./scripts/staging/data/backup-library.sh
 ```
 
 脚本会短暂停止写入，生成 PostgreSQL custom dump、书库归档与 manifest，并在发布备份目录前
-拒绝数据库/文件引用不一致。Dump 包括凭证、Passkey、设备、会话、站点设置、审计、Book、
-Edition、文件修订、Series、偏好、设置和进度。
+拒绝数据库/文件引用不一致。Dump 包括凭证与 capability、Passkey、设备、会话、站点设置、
+审计、Book、Edition、贡献者归属、Translation Run、文件修订、Series、偏好、设置和进度；
+还包括加密 Provider 凭据版本与脱敏用量记录。manifest 明确排除凭据库主密钥、自定义
+Provider allowlist 的值、Relay service secret 及全部 LinguaSpindle 数据/资源；要恢复可用
+凭据，还必须另行提供匹配的主密钥，并为自定义路由恢复经过复核的匹配 allowlist 代际。
 
 始终先在隔离资源中测试恢复：
 
 ```bash
-./scripts/restore-library.sh --test \
-  /srv/novel-platform/data/backups/novel-platform-v050-TIMESTAMP
+./scripts/staging/data/restore-library.sh --test \
+  /srv/novel-platform/data/backups/novel-platform-v0100-TIMESTAMP
 ```
 
-测试会校验 manifest 哈希、Alembic revision、永久文件 checksum、临时引用及 v0.5 新表，
-随后只删除临时数据库和卷。真正恢复 staging 还必须设置 `ALLOW_STAGING_RESTORE=1`、传入
+测试会校验 manifest 哈希、Alembic revision、永久文件 checksum、临时引用以及 capability、
+归属和 Translation Run 不变量，随后只删除临时数据库和卷。完整 dump 会恢复凭据/用量行，
+但除非另行把匹配的外部主密钥注入应用验证，否则该恢复测试不能证明密文可解密。真正恢复
+staging 还必须设置
+`ALLOW_STAGING_RESTORE=1`、传入
 `--staging` 并精确确认数据库名；脚本不会自动执行 Alembic downgrade。
 
 回滚意味着停止写入，并从同一份已验证升级前备份恢复相互匹配的代码、数据库和书库卷。
@@ -336,32 +452,37 @@ TEST_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost/ISOLATED_TEST_DB 
 
 ## 自动验收
 
-v0.8.0 发布门禁会创建唯一 Compose project、随机端口和相互独立的随机秘密，再使用带虚拟
-WebAuthn authenticator 的真实 Chromium 及至少四个隔离浏览器上下文：
+v0.10.0 发布候选门禁使用唯一、一次性的 Compose project 与隔离 PostgreSQL；先把仍适用的
+v0.9 capability/贡献归属/翻译及认证/Reader/代理行为重放到 v0.10 专属证据，再验证当前
+BYOK、Relay、Web、版本/OpenAPI 及拓扑/泄漏契约：
 
 ```bash
 pnpm acceptance
-# 等价命令
-pnpm acceptance:v080
+# 显式指定当前门禁
+pnpm acceptance -- v0100
+# 查看全部本地与 Staging 目标
+pnpm acceptance -- --list
 ```
 
-门禁原样重放 v0.5.0 的 84 项标准，覆盖匿名拒绝/noindex、CLI 初始化与恢复会话限制、
-Passkey 注册/登录、阅读者凭证与四设备限制、直接 RBAC 绕过、Reader Projection/进度冲突、
-重启持久性、完整备份/隔离恢复和泄漏扫描；再增加 9 项加固标准（106–114），验证模拟宿主
-边缘 → Compose Nginx → API 链的真实客户端 IP、伪造 `X-Forwarded-For` 拒绝、不可信对等方
-隔离、登录/Passkey options 的稳定 JSON 429、`Retry-After`、`no-store` 与无下游审计/Challenge
-写入、Cookie 刷新的 Origin 白名单、刷新与设备秘密绑定以及 staging `SameSite=Strict`。
-定向质量门禁还通过 67 个 Python 单元测试、20 个 PostgreSQL 集成测试和 37 个 Web 测试。
+`acceptance` 是唯一的 package script 入口。可选目标用于选择历史或 Staging 门禁，不再为每个
+小版本增加一条 package 命令；同时支持 `v0.9.0` 这类语义版本别名。
 
-脱敏产物为 `artifacts/acceptance-v080.{md,json}` 及继承核心证据
-`artifacts/acceptance-v080-core.json`。真实宿主边缘、真实域名 Passkey 与生产限流验证在获得
-明确部署授权前标为 `DEPLOYMENT_PENDING`。只有诊断失败的隔离环境时才设置
+门禁保留 v0.5 的 84 项适用标准、v0.8 的 9 项加固标准及 v0.9 的 11 项标准，不覆盖历史
+产物。扩展后的 6 项标准包括：继承回归；加密凭据生命周期/用量与 Run scope 固定；Relay
+认证、版本绑定路由/思考模式与脱敏；Web 凭据管理与无回退启动门禁；v0.10 package/OpenAPI；以及
+LinguaSpindle v0.3.2/私网拓扑/泄漏边界。
+
+本增量的脱敏产物为 `artifacts/acceptance-v0100-provider-routing.{md,json}`，继承回归证据
+写入 `artifacts/acceptance-v0100-provider-routing-regression*`，不会覆盖已归档的 v0.10
+产物。合成 fake transport 必须通过；真实 LinguaSpindle
+v0.3.2 + Mock Provider 与真实 OpenAI-compatible Provider 均保持
+`PENDING_OPERATOR_CONFIG`，不执行真实付费调用或正文外发。远端 migration、secret 注入、
+网络、HTTPS/Passkey、持久化和清理保持 `DEPLOYMENT_PENDING`。Provider 路由增量只有在记录
+精确 commit 的本地报告与外部部署结果后才完成。只有诊断失败的隔离环境时才设置
 `KEEP_ACCEPTANCE_ENV=1`。
 
-历史门禁 `acceptance:v010` 至 `acceptance:v070` 仍可运行，但不是 v0.8.0 发布门禁。v0.5
-核心保持可直接运行并通过参数重放，未被弱化或跳过。v0.7.0 历史证据位于
-`artifacts/acceptance-v070.{md,json}`、`artifacts/bundle-v070.{md,json}` 与
-`artifacts/visual-v070/`。
+历史门禁 `pnpm acceptance -- v010` 至 `pnpm acceptance -- v090` 及其证据保持可运行、
+可追溯；v0.10 不会改写历史证据来伪装无文件创建或运营者共享出资 Key 仍兼容。
 
 ## 已废止的验收语义
 
@@ -373,6 +494,13 @@ v0.5.0 明确废止依赖以下历史行为的断言：
 - 每位普通 member 拥有并上传到隔离的个人书库；
 - 普通 member 下载原始源文件或修改内容。
 
+v0.9.0 还废止公开 metadata-only Book/Edition 创建，以及“受邀凭证永远不能写入”的断言。
+新内容必须来自文件型导入或校验后的生成结果；受邀写入同时依赖当前 capability 与按创建者
+限制的资源策略。
+
+v0.10.0 还废止 Novel Platform 翻译使用运营者/共享 Provider Key 的语义。翻译发起人必须
+配置当前个人凭据，每个新 Run 必须固定其精确加密版本。
+
 这些行为不会以兼容后门形式保留。仍有效的 BookEdition、文件修订、安全 Reader、私有状态、
 Series、持久性、备份/恢复和泄漏断言均在当前门禁中重放。
 
@@ -383,9 +511,14 @@ Series、持久性、备份/恢复和泄漏断言均在当前门禁中重放。
 - `/site`：安全的公开站点配置；
 - `/auth`：凭证/Passkey 登录、注册、刷新、身份、登出与会话；
 - `/devices`、`/users/me`：当前阅读者私有控制；
+- `/me/provider-credential` 与 `/me/provider-credential/usage`：面向
+  `translation.use` actor 的只写个人 Provider Key 生命周期及非秘密状态/用量；
 - `/admin/readers`、`/admin/site`、`/admin/audit`：仅管理员管理；
-- `/books`、嵌套 `/editions`、`/series`：可读查询与管理员变更；
-- `/imports`：仅管理员检查/提交/文件修订；
+- `/books`、嵌套 `/editions`、`/series`：可读查询与 capability/creator 感知的馆藏变更
+  （Series 仍仅管理员）；
+- `/imports`：管理员或 `library.upload` 检查/提交/文件修订，并按 actor 隔离；
+- 嵌套 `/translation-runs` 与 `/translations`：按 actor 隔离的 EPUB/TXT 翻译创建、列表、
+  控制、同步、草稿预览和管理员发布；
 - `/editions/{id}/file`：仅管理员原始下载；
 - 受保护 Book 封面和 `/editions/{id}/reader/*`：安全可读资源；
 - `/books/{id}/preferences`、`/reader/settings`、`/reader/recent`：当前阅读者私有状态；

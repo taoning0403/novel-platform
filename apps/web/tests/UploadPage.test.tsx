@@ -6,11 +6,24 @@ import { ApiError, api } from "../src/api/client";
 import type { BookDetail, ImportRecord } from "../src/api/types";
 import { UploadPage } from "../src/pages/UploadPage";
 
+const contributor = {
+  display_name: "测试用户",
+};
+
+const resourcePermissions = {
+  can_edit: true,
+  can_delete: true,
+  can_upload_edition: true,
+  can_translate: true,
+};
+
 const book: BookDetail = {
   id: "00000000-0000-0000-0000-000000000010",
   canonical_title: "目标图书",
   canonical_author: null,
   description: null,
+  contributor,
+  ...resourcePermissions,
   metadata: {},
   cover_url: null,
   cover_thumbnail_url: null,
@@ -51,6 +64,8 @@ describe("UploadPage", () => {
       canonical_title: book.canonical_title,
       canonical_author: null,
       description: null,
+      contributor,
+      ...resourcePermissions,
       edition_count: 0,
       languages: [],
       file_formats: [],
@@ -78,6 +93,8 @@ describe("UploadPage", () => {
         content_role: "translation",
         translation_origin: "ai",
         creation_method: "uploaded",
+        contributor,
+        ...resourcePermissions,
         source_edition_id: null,
         supersedes_edition_id: null,
         status: "ready",
@@ -141,6 +158,8 @@ describe("UploadPage", () => {
       content_role: "source" as const,
       translation_origin: null,
       creation_method: "uploaded" as const,
+      contributor,
+      ...resourcePermissions,
       source_edition_id: null,
       supersedes_edition_id: null,
       status: "ready" as const,
@@ -170,6 +189,8 @@ describe("UploadPage", () => {
       canonical_title: book.canonical_title,
       canonical_author: null,
       description: null,
+      contributor,
+      ...resourcePermissions,
       edition_count: 1,
       languages: ["ja"],
       file_formats: ["epub"],
@@ -216,7 +237,7 @@ describe("UploadPage", () => {
         </Routes>
       </MemoryRouter>,
     );
-    await screen.findByTitle("现有 EPUB · epub");
+    await screen.findByTitle("现有 EPUB · EPUB");
     fireEvent.change(screen.getByLabelText("选择 EPUB 或 TXT 文件"), {
       target: { files: [new File(["正文"], "new.txt", { type: "text/plain" })] },
     });
@@ -303,6 +324,8 @@ describe("UploadPage", () => {
       canonical_title: item.canonical_title,
       canonical_author: item.canonical_author,
       description: item.description,
+      contributor,
+      ...resourcePermissions,
       edition_count: item.edition_count,
       languages: [],
       file_formats: [],

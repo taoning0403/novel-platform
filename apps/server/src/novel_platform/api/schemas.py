@@ -2,8 +2,13 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
+from novel_platform.domain.auth.capabilities import (
+    CredentialCapability,
+    sorted_capabilities,
+    validate_credential_capabilities,
+)
 from novel_platform.domain.auth.models import (
     AccessCredentialStatus,
     DevicePlatform,
@@ -21,10 +26,27 @@ from novel_platform.domain.library.models import (
     ImportStatus,
 )
 from novel_platform.domain.reader.models import ReaderFontFamily, ReaderTheme, ReadingStatus
+from novel_platform.domain.translations.models import (
+    TranslationCleanupStatus,
+    TranslationRunStatus,
+)
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+type ProviderKind = Literal["openai_compatible", "deepseek", "kimi", "custom"]
+
+
+def validate_capability_list(
+    values: list[CredentialCapability],
+) -> list[CredentialCapability]:
+    try:
+        capabilities = validate_credential_capabilities(values)
+    except ValueError as error:
+        raise ValueError(str(error)) from error
+    return sorted_capabilities(capabilities)
 
 
 class ErrorDetail(BaseModel):
@@ -37,38 +59,36 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
-class BookCreate(StrictModel):
-    canonical_title: str = Field(min_length=1)
-    canonical_author: str | None = None
-    description: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("canonical_title")
-    @classmethod
-    def strip_title(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("must not be blank")
-        return value
+class ContributorSummary(BaseModel):
+    display_name: str
 
 
-class BookResponse(BaseModel):
+class ResourcePermissionsResponse(BaseModel):
+    can_edit: bool
+    can_delete: bool
+    can_upload_edition: bool
+    can_translate: bool
+
+
+class BookResponse(ResourcePermissionsResponse):
     id: UUID
     canonical_title: str
     canonical_author: str | None
     description: str | None
     metadata: dict[str, Any]
+    contributor: ContributorSummary
     cover_url: str | None
     cover_thumbnail_url: str | None
     created_at: datetime
     updated_at: datetime
 
 
-class BookListItem(BaseModel):
+class BookListItem(ResourcePermissionsResponse):
     id: UUID
     canonical_title: str
     canonical_author: str | None
     description: str | None
+    contributor: ContributorSummary
     edition_count: int
     languages: list[str]
     file_formats: list[FileFormat]
@@ -148,27 +168,6 @@ class SeriesDetailResponse(SeriesResponse):
     books: list[BookListItem]
 
 
-class EditionCreate(StrictModel):
-    title: str = Field(min_length=1)
-    language: str = Field(min_length=1)
-    content_role: ContentRole
-    translation_origin: TranslationOrigin | None = None
-    creation_method: CreationMethod
-    source_edition_id: UUID | None = None
-    supersedes_edition_id: UUID | None = None
-    status: EditionStatus = EditionStatus.DRAFT
-    revision: int = 1
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("title", "language")
-    @classmethod
-    def strip_required_text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("must not be blank")
-        return value
-
-
 class EditionPatch(StrictModel):
     title: str | None = None
     status: EditionStatus | None = None
@@ -194,7 +193,7 @@ class EditionPatch(StrictModel):
         return self
 
 
-class EditionResponse(BaseModel):
+class EditionResponse(ResourcePermissionsResponse):
     id: UUID
     book_id: UUID
     title: str
@@ -207,6 +206,7 @@ class EditionResponse(BaseModel):
     status: EditionStatus
     revision: int
     metadata: dict[str, Any]
+    contributor: ContributorSummary
     current_file: "EditionFileResponse | None"
     reader_available: bool
     reading_status: ReadingStatus
@@ -391,6 +391,157 @@ class HealthResponse(BaseModel):
     status: str
 
 
+class TranslationServiceStatusResponse(BaseModel):
+    enabled: bool
+    available: bool
+    version: str | None
+    source_format: FileFormat
+    pipeline_key: str
+    pipeline_version: str | None
+    provider_id: str
+    provider_name: str | None
+    provider_model: str | None
+    provider_offline: bool
+    idempotency_required: bool | None
+    error_code: str | None
+    error_message: str | None
+
+
+class ProviderCredentialPut(StrictModel):
+    provider: ProviderKind = "openai_compatible"
+    custom_name: str | None = Field(default=None, min_length=1, max_length=120)
+    base_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    model: str = Field(min_length=1, max_length=120)
+    thinking_enabled: bool = False
+    api_key: SecretStr = Field(
+        min_length=1,
+        max_length=8192,
+        json_schema_extra={"format": "password", "writeOnly": True},
+    )
+
+    @model_validator(mode="after")
+    def validate_provider_configuration(self) -> "ProviderCredentialPut":
+        for field_name in ("custom_name", "base_url", "model"):
+            value = getattr(self, field_name)
+            if value is not None:
+                normalized = value.strip()
+                if not normalized:
+                    raise ValueError(f"{field_name} must not be blank")
+                setattr(self, field_name, normalized)
+        if self.provider == "custom":
+            if self.custom_name is None or self.base_url is None:
+                raise ValueError("custom Provider requires custom_name and base_url")
+        elif self.custom_name is not None or self.base_url is not None:
+            raise ValueError("preset Providers do not accept custom_name or base_url")
+        return self
+
+
+class ProviderModelsRequest(StrictModel):
+    provider: ProviderKind
+    base_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    api_key: SecretStr = Field(
+        min_length=1,
+        max_length=8192,
+        json_schema_extra={"format": "password", "writeOnly": True},
+    )
+
+    @model_validator(mode="after")
+    def validate_provider_configuration(self) -> "ProviderModelsRequest":
+        if self.base_url is not None:
+            self.base_url = self.base_url.strip()
+            if not self.base_url:
+                raise ValueError("base_url must not be blank")
+        if self.provider == "custom":
+            if self.base_url is None:
+                raise ValueError("custom Provider requires base_url")
+        elif self.base_url is not None:
+            raise ValueError("preset Providers do not accept base_url")
+        return self
+
+
+class ProviderModelsResponse(BaseModel):
+    provider: ProviderKind
+    models: list[str]
+
+
+class ProviderUsageTotalsResponse(BaseModel):
+    request_count: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ProviderCredentialUsageResponse(BaseModel):
+    all_time: ProviderUsageTotalsResponse
+    current_month: ProviderUsageTotalsResponse
+
+
+class ProviderCredentialStatusResponse(BaseModel):
+    configured: bool
+    provider: ProviderKind
+    provider_name: str
+    base_url: str
+    model: str | None
+    thinking_enabled: bool
+    version: int | None
+    updated_at: datetime | None
+    usage: ProviderCredentialUsageResponse
+
+
+class TranslationRunCreate(StrictModel):
+    target_language: str = Field(min_length=1, max_length=100)
+    edition_title: str = Field(min_length=1, max_length=500)
+    client_request_id: UUID
+    supersedes_edition_id: UUID | None = None
+
+    @field_validator("target_language", "edition_title")
+    @classmethod
+    def strip_translation_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class TranslationRunResponse(BaseModel):
+    id: UUID
+    book_id: UUID
+    book_title: str
+    source_edition_id: UUID
+    source_edition_title: str
+    source_revision: int
+    source_sha256: str
+    source_format: FileFormat
+    target_language: str
+    edition_title: str
+    supersedes_edition_id: UUID | None
+    configuration: dict[str, Any]
+    creator: ContributorSummary
+    status: TranslationRunStatus
+    progress: float
+    generated_edition_id: UUID | None
+    generated_edition_title: str | None
+    remote_project_id: str | None
+    remote_job_id: str | None
+    remote_artifact_id: str | None
+    remote_request_id: str | None
+    remote_status: str | None
+    error_code: str | None
+    error_message: str | None
+    error_details: dict[str, Any]
+    retry_count: int
+    cleanup_status: TranslationCleanupStatus
+    cleanup_error: str | None
+    available_actions: list[Literal["pause", "resume", "cancel", "retry", "sync", "cleanup"]]
+    can_preview_draft: bool
+    can_publish: bool
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    last_synced_at: datetime | None
+
+
 class BookPreferencePatch(StrictModel):
     preferred_edition_id: UUID | None = None
     last_opened_edition_id: UUID | None = None
@@ -405,6 +556,7 @@ class UserResponse(BaseModel):
     id: UUID
     display_name: str
     role: Literal["admin", "reader"]
+    capabilities: list[CredentialCapability]
     status: UserStatus
     last_login_at: datetime | None
     created_at: datetime
@@ -542,6 +694,7 @@ class ReaderCredentialResponse(BaseModel):
     expires_at: datetime
     allow_new_devices: bool
     max_devices: int
+    capabilities: list[CredentialCapability]
     active_device_count: int
     last_used_at: datetime | None
     suspended_at: datetime | None
@@ -566,6 +719,9 @@ class ReaderCreate(StrictModel):
     expires_at: datetime
     max_devices: int | None = Field(default=None, ge=1, le=100)
     allow_new_devices: bool = True
+    capabilities: list[CredentialCapability]
+
+    _validate_capabilities = field_validator("capabilities")(validate_capability_list)
 
     @field_validator("expires_at")
     @classmethod
@@ -603,6 +759,9 @@ class CredentialReissueRequest(StrictModel):
     expires_at: datetime
     max_devices: int | None = Field(default=None, ge=1, le=100)
     allow_new_devices: bool = True
+    capabilities: list[CredentialCapability]
+
+    _validate_capabilities = field_validator("capabilities")(validate_capability_list)
 
     @field_validator("expires_at")
     @classmethod

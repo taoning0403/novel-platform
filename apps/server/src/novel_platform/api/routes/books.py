@@ -7,16 +7,15 @@ from novel_platform.api.dependencies.auth import CurrentAuth
 from novel_platform.api.dependencies.database import DatabaseSession
 from novel_platform.api.dependencies.storage import FileStorageDependency
 from novel_platform.api.file_responses import stored_file_response
+from novel_platform.api.library_responses import LibraryResponseBuilder
 from novel_platform.api.schemas import (
-    BookCreate,
     BookDetailResponse,
     BookListItem,
     BookPatch,
     BookResponse,
 )
-from novel_platform.api.serializers import book_detail_response, book_list_item, book_response
 from novel_platform.application.access import LibraryAccessService
-from novel_platform.application.books.commands import CreateBook, UpdateBook
+from novel_platform.application.books.commands import UpdateBook
 from novel_platform.application.books.service import BookService
 from novel_platform.application.library.file_service import LibraryFileService
 from novel_platform.domain.editions.models import ContentRole
@@ -26,23 +25,6 @@ from novel_platform.infrastructure.repositories.reader import ReaderRepository
 from novel_platform.infrastructure.repositories.series import SeriesRepository
 
 router = APIRouter(prefix="/books", tags=["books"])
-
-
-@router.post("", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
-async def create_book(
-    payload: BookCreate, session: DatabaseSession, current: CurrentAuth
-) -> BookResponse:
-    owner_user_id = await LibraryAccessService(session).require_manager(current)
-    book = await BookService(session).create(
-        CreateBook(
-            canonical_title=payload.canonical_title,
-            canonical_author=payload.canonical_author,
-            description=payload.description,
-            metadata=payload.metadata,
-        ),
-        owner_user_id,
-    )
-    return book_response(book)
 
 
 @router.get("", response_model=list[BookListItem])
@@ -84,8 +66,9 @@ async def list_books(
         scope.owner_user_id,
         [book.id for book, _ in rows],
     )
+    responses = LibraryResponseBuilder(session, scope)
     return [
-        book_list_item(
+        await responses.book_list_item(
             book,
             count,
             summaries.get(book.id),
@@ -105,7 +88,11 @@ async def get_book(
     if scope.can_manage:
         book, editions = await book_service.detail(book_id, scope.owner_user_id)
     else:
-        book, editions = await book_service.readable_detail(book_id, scope.owner_user_id)
+        book, editions = await book_service.visible_detail(
+            book_id,
+            scope.owner_user_id,
+            scope.viewer_user_id,
+        )
     library = LibraryRepository(session)
     files = {
         edition.id: record
@@ -122,12 +109,11 @@ async def get_book(
         scope.viewer_user_id,
         [edition.id for edition in editions],
     )
-    return book_detail_response(
+    return await LibraryResponseBuilder(session, scope).detail(
         book,
         editions,
         files,
         progresses,
-        include_download=scope.can_manage,
     )
 
 
@@ -138,13 +124,14 @@ async def update_book(
     session: DatabaseSession,
     current: CurrentAuth,
 ) -> BookResponse:
-    owner_user_id = await LibraryAccessService(session).require_manager(current)
+    scope = await LibraryAccessService(session).require_upload(current)
     book = await BookService(session).update(
         book_id,
-        owner_user_id,
+        scope.owner_user_id,
         UpdateBook(changes=payload.model_dump(exclude_unset=True)),
+        scope=scope,
     )
-    return book_response(book)
+    return await LibraryResponseBuilder(session, scope).book(book)
 
 
 @router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -154,9 +141,9 @@ async def delete_book(
     current: CurrentAuth,
     storage: FileStorageDependency,
 ) -> Response:
-    owner_user_id = await LibraryAccessService(session).require_manager(current)
+    scope = await LibraryAccessService(session).require_upload(current)
     await LibraryFileService(session, storage).delete_book(
-        owner_user_id=owner_user_id,
+        scope=scope,
         book_id=book_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

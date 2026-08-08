@@ -3,16 +3,21 @@
 ```text
 SiteSettings ── library owner ──> User(admin)
 User
-├── ReaderAccessCredential ──> Device ──> AuthSession ──> RefreshToken
+├── ReaderAccessCredential ──> ReaderCredentialCapability
+│                            └── Device ──> AuthSession ──> RefreshToken
 ├── AdminRecoveryCredential ─────────────> AuthSession
 ├── AdminPasskey ────────────────────────> AuthSession
 ├── WebAuthnChallenge
+├── ProviderCredentialVersion ──> ProviderUsageRecord
 ├── ReaderSettings
 ├── ReadingProgress ──> BookEdition
 └── UserBookPreference ──> Book / BookEdition
 
-User(admin, content owner)
+User(admin, library owner) + User(actual creator)
 ├── Book ──> BookEdition ──> EditionFile ──> StoredFile
+│              └── EditionTranslationRun
+│                    ├── exact ProviderCredentialVersion
+│                    └── optional generated BookEdition
 ├── BookSeries ──> SeriesMembership ──> Book
 └── LibraryImport ──> StoredFile
 
@@ -39,7 +44,7 @@ created through the application.
 
 ## Reader credential and device chain
 
-`reader_access_credentials` separates a durable reader identity from a rotatable secret. It
+`reader_access_credentials` separates a durable invited identity from a rotatable secret. It
 stores only a domain-separated HMAC, a safe hint, lifecycle status (`active`, `suspended`, or
 `revoked`), expiry, `allow_new_devices`, positive `max_devices`, use/lifecycle timestamps,
 administrator attribution, and an optional replacement link. A partial unique index permits at
@@ -53,6 +58,13 @@ reader User 1 ── * credential history
 The effective state is revoked, suspended, expired, or active in that order. Revocation is final.
 Suspension and expiry revoke Sessions but preserve authorized Devices. Reissue revokes the old
 credential, all its Devices and Sessions, then creates a new credential for the same User.
+
+`reader_credential_capabilities` is keyed by `(credential_id, capability)` and permits exactly
+`library.read`, `library.upload`, or `translation.use`. Every credential must include
+`library.read`; create/reissue rejects missing-read, unknown or duplicate input. Rows are an
+immutable issuance snapshot. Capability is not stored on User and is not trusted from JWT. The
+foreign key cascades only with credential history deletion; normal reissue retains revoked
+credential/capability history.
 
 `devices` stores an HttpOnly device-secret HMAC plus the credential that authorized a reader
 device. The browser `client_instance_id`, name, platform, app version, IP fields, and User-Agent
@@ -101,10 +113,21 @@ its own summary event.
 
 ## Shared content ownership and readable visibility
 
-Every `books`, `book_series`, `stored_files`, and `library_imports` row keeps a non-null owner FK.
-After conversion all site content owners equal the unique administrator. This is not replaced by
-an unscoped query: manager paths require that owner; reader paths explicitly build a filtered
-readable projection.
+Every `books`, `book_series`, `stored_files`, `library_imports`, and `edition_translation_runs`
+row keeps a non-null owner FK. All site library owners equal the unique administrator. Creator
+attribution is separate and non-null:
+
+| Table | Actor field | Meaning |
+| --- | --- | --- |
+| `books` | `created_by_user_id` | User whose first file import created the Book |
+| `book_editions` | `created_by_user_id` | User who uploaded or generated the Edition |
+| `stored_files` | `created_by_user_id` | User whose operation introduced the object |
+| `library_imports` | `requested_by_user_id` | User who owns the inspect/commit workflow |
+| `edition_translation_runs` | `created_by_user_id` | User who requested translation/retranslation |
+
+This preserves one library containment boundary without claiming the administrator performed
+every contribution. Credential rotation does not change attribution. API projections expose only
+a safe display-name summary and computed permissions, never these IDs to another invited person.
 
 A reader-visible Book has at least one `ready` BookEdition with a current EditionFile. A visible
 Series contains only visible Books and is omitted when empty. Readers never receive owner IDs,
@@ -120,17 +143,91 @@ Book 1 ── * BookEdition
                └── optional supersedes_edition_id (same Book, not itself)
 ```
 
-A translation may remain valid without a source. Edition identity, Book, role, translation origin,
-creation method, revision, source/supersedes relationships, status, and metadata survive v0.5
-conversion without ID rewrites.
+A historical translation may remain valid without a source. New generated v0.9 translations keep
+the fixed source link and optional valid same-Book supersedes link. Edition identity, Book, role,
+translation origin, creation method, revision, relationships, status and metadata remain stable.
 
-`stored_files` holds owner, random storage key, original filename, media/format/purpose, size,
-SHA-256, and time. `edition_files` is append-only by `(edition_id, revision)` with one current
-revision. Replacement creates a new EditionFile and preserves BookEdition identity and historical
-file rows. Cover/thumbnail references remain protected StoredFiles.
+`stored_files` holds owner and creator, random storage key, original filename,
+media/format/purpose, size, SHA-256, and time. `edition_files` is append-only by
+`(edition_id, revision)` with one current revision. Replacement creates a new EditionFile and
+preserves BookEdition identity and historical file rows. Cover/thumbnail references remain
+protected StoredFiles.
 
-`library_imports` records bounded inspect/commit state and temporary references. Only the
-administrator can access it. It is never included in reader projections.
+`library_imports` records bounded inspect/commit state, actor and temporary references. Admin sees
+all; a current uploader sees only their own row; other actors receive 404. It is never included in
+reader projections.
+
+## Provider credentials and usage
+
+`provider_credential_versions` retains immutable OpenAI-compatible credential versions for one
+User. `(user_id, version)` is unique and a partial unique index permits at most one current
+non-retired/non-revoked version across OpenAI, DeepSeek, Kimi and custom Provider kinds. Each row
+stores:
+
+- random UUID used as the opaque integration scope;
+- owner User, Provider kind, optional custom display name, normalized base URL, model,
+  `thinking_enabled` defaulting to false, and positive per-User version;
+- `aes-256-gcm-v2` for new rows, a 12-byte random nonce and authenticated ciphertext; and
+- creation, retirement and revocation times.
+
+The AES key is environment-only. v2 authenticated data binds User, credential UUID, version,
+Provider kind/name, base URL, model and thinking state, so moving ciphertext or changing its
+routing metadata fails decryption. Existing `aes-256-gcm-v1` OpenAI-compatible rows retain their
+original fixed-upstream/model behavior, force thinking off and are not re-encrypted by migration.
+No raw key, suffix, plaintext hash or upstream authorization value has a column. Rotation,
+switching Provider or changing thinking state retires the prior current row and creates another;
+removal revokes all non-revoked history. Retired ciphertext remains usable only through an
+eligible Run that already references it. Revocation is final.
+
+Preset routes are Server-normalized. A custom base URL must exactly match the deployment
+allow-list when saved and again when used by the Relay; staging/production custom routes use
+HTTPS. `model` is the explicit ID selected from the Provider's transient `/models` response at
+configuration time; the catalogue itself is neither product-maintained nor persisted, and later
+Provider catalogue changes do not mutate a stored version. The persistent `base_url` and `model`
+columns have no application or database defaults; every new version must bind both explicitly.
+Thinking is false by default:
+DeepSeek requires exact equivalence with
+`deepseek-reasoner`; Kimi permits true only for `kimi-k2.5` and then receives an explicit
+enabled/disabled request field; OpenAI and custom routes cannot enable the generic switch. The
+non-secret self-status projection may return Provider kind/name, base URL, model, thinking state,
+version and lifecycle time but never the credential scope or encrypted fields.
+
+`provider_usage_records` contains one sanitized successful Relay call record: credential version,
+bounded model name, optional LinguaSpindle Job correlation, nonnegative prompt/completion/total
+token counts and time. It contains no User-supplied prompt, translated output, Provider response,
+key, scope header or price estimate. User totals are derived by joining through the credential
+owner; current-month totals use UTC month boundaries.
+
+## Translation Runs
+
+`edition_translation_runs` is durable orchestration state, not a queue or LinguaSpindle mirror.
+It stores:
+
+- library owner, actor, Book, fixed source Edition + EditionFile + revision + SHA-256 +
+  `epub | txt`;
+- exact non-null Provider credential-version foreign key;
+- target language, requested title, optional same-Book generated Edition to supersede;
+- non-secret configuration fingerprint/snapshot (service/pipeline/provider/profile/model IDs,
+  bound Provider routing/thinking metadata and safe credential version number);
+- actor-scoped `client_request_id` and remote Project/Job/Artifact/request IDs;
+- local/remote status, progress, sanitized error, retry, cleanup and timestamps;
+- optional generated Edition ID (`ON DELETE SET NULL`) so Run history survives Edition deletion.
+
+`(created_by_user_id, client_request_id)` is unique. The configuration fingerprint includes the
+credential UUID even though API snapshots expose only its version. A partial unique index prevents
+an equivalent active source-file/target/configuration/credential Run; remote
+Project/Job/Artifact and generated Edition IDs are unique when present. Status and cleanup values
+use checked strings so service changes do not silently expand the local state machine.
+A second partial unique index permits only one `preparing` Run with no remote Job ID per credential
+version. This makes the Relay's first authenticated Job-ID claim unambiguous; after that atomic
+bootstrap, every Provider call must match the persisted Job correlation.
+
+The source snapshot never follows a later file replacement. Only a verified successful Artifact
+can create one `draft + ai + generated` Edition and file relation. That Edition's creator is the
+Run actor; its owner remains the site owner. Creator/admin may see the draft; only admin changes it
+to `ready`. TXT output stores the downloaded text plus its normalized UTF-8 StoredFile. EPUB output
+stores one revalidated `application/epub+zip` Edition source with no normalized TXT relation.
+Partial/failed/corrupt/format-mismatched output leaves `generated_edition_id` null.
 
 ## Private reading state
 
@@ -154,7 +251,7 @@ belongs to at most one Series; `(series_id, position)` provides stable append or
 Series removes memberships only. Reader queries filter members through Book readability and hide
 an empty result.
 
-## v0.5 migration
+## v0.5 through EPUB-translation migrations
 
 Migration `20260715_0005` adds the site/credential/Passkey/challenge schema and expands
 User/Device/Session/audit rows without deleting content or private reading state. The separate
@@ -166,3 +263,25 @@ It never generates reader plaintext credentials.
 After conversion, `auth migration audit` compares database permanent-file references and SHA-256
 values with the library volume, checks referenced temporary files, and reports counts only—never
 storage keys or paths.
+
+Migration `20260723_0006` requires either a pristine database or a completed, unambiguous v0.5
+conversion. Its count-only preflight rejects owner mismatch, active imports, missing/mismatched
+file references and invalid current-file cardinality. It deletes Edition rows with no EditionFile,
+clears their preferences/progress/source/supersedes references, and deletes Books left without an
+Edition. It then backfills all creator fields to the unique owner, inserts only `library.read` for
+every retained credential, and creates Translation Run storage. Notices/reporting contain counts,
+not titles, filenames, paths, IDs or content. Destructive cleanup makes downgrade unsupported;
+restore the matching coordinated PostgreSQL + library backup.
+
+Migration `20260726_0007` creates encrypted credential-version and usage storage and makes every
+new Translation Run bind one credential version. A historical v0.9 Run has no truthful payer/key
+version; the migration therefore fails closed if any Run exists instead of deleting it or
+fabricating attribution. The operator must retain the pre-upgrade backup, explicitly clean/reset
+those orchestration rows under the approved deployment procedure, and rerun. A direct
+v0.8-to-v0.10 upgrade first creates an empty Run table in `0006`, so `0007` is non-destructive for
+that path.
+
+Migration `20260726_0008` adds immutable Provider routing/model/thinking metadata and preserves
+legacy v1 credential semantics. Migration `20260727_0009` changes only the Run source-format
+check from TXT to `epub | txt`; it does not rewrite existing TXT rows. Downgrade refuses while any
+EPUB Run remains because converting or deleting that durable history would be untruthful.

@@ -10,6 +10,10 @@ from novel_platform.application.auth.context import AuthContext
 from novel_platform.application.auth.security import TokenService
 from novel_platform.application.errors import ApplicationError
 from novel_platform.config import Settings
+from novel_platform.domain.auth.capabilities import (
+    CredentialCapability,
+    validate_credential_capabilities,
+)
 from novel_platform.domain.auth.models import AccessCredentialStatus, UserRole, UserStatus
 from novel_platform.domain.auth.rules import normalize_display_name
 from novel_platform.infrastructure.database.models import (
@@ -29,6 +33,15 @@ class IssuedReaderCredential:
     user: UserModel
     credential: ReaderAccessCredentialModel
     raw_credential: str
+    capabilities: frozenset[CredentialCapability]
+
+
+ReaderRecord = tuple[
+    UserModel,
+    ReaderAccessCredentialModel | None,
+    int,
+    frozenset[CredentialCapability],
+]
 
 
 class ReaderManagementService:
@@ -43,7 +56,7 @@ class ReaderManagementService:
 
     async def list_readers(
         self,
-    ) -> list[tuple[UserModel, ReaderAccessCredentialModel | None, int]]:
+    ) -> list[ReaderRecord]:
         users = list(
             (
                 await self.session.scalars(
@@ -56,18 +69,21 @@ class ReaderManagementService:
                 )
             ).all()
         )
-        rows: list[tuple[UserModel, ReaderAccessCredentialModel | None, int]] = []
+        rows: list[ReaderRecord] = []
         for user in users:
             credential = await self.credentials.current_reader_credential(user.id)
             device_count = (
                 await self.credentials.active_device_count(credential.id) if credential else 0
             )
-            rows.append((user, credential, device_count))
+            capabilities = (
+                await self.credentials.capabilities(credential.id)
+                if credential is not None
+                else frozenset()
+            )
+            rows.append((user, credential, device_count, capabilities))
         return rows
 
-    async def get_reader(
-        self, user_id: UUID
-    ) -> tuple[UserModel, ReaderAccessCredentialModel | None, int]:
+    async def get_reader(self, user_id: UUID) -> ReaderRecord:
         user = await self.users.get(user_id)
         if user is None or user.role != UserRole.MEMBER:
             raise ApplicationError(
@@ -77,7 +93,12 @@ class ReaderManagementService:
         device_count = (
             await self.credentials.active_device_count(credential.id) if credential else 0
         )
-        return user, credential, device_count
+        capabilities = (
+            await self.credentials.capabilities(credential.id)
+            if credential is not None
+            else frozenset()
+        )
+        return user, credential, device_count, capabilities
 
     async def create_reader(
         self,
@@ -88,9 +109,11 @@ class ReaderManagementService:
         expires_at: datetime,
         max_devices: int | None,
         allow_new_devices: bool,
+        capabilities: list[CredentialCapability],
     ) -> IssuedReaderCredential:
         now = datetime.now(UTC)
         self._validate_expiry(expires_at, now)
+        capability_snapshot = self._validate_capabilities(capabilities)
         site = await self.site.get()
         user_id = uuid4()
         internal_username = f"reader-{user_id.hex}"
@@ -113,6 +136,7 @@ class ReaderManagementService:
             expires_at=expires_at,
             max_devices=max_devices or site.default_reader_max_devices,
             allow_new_devices=allow_new_devices,
+            capabilities=capability_snapshot,
             now=now,
         )
         self.auth.audit(
@@ -136,8 +160,8 @@ class ReaderManagementService:
         expires_at: datetime | None,
         max_devices: int | None,
         allow_new_devices: bool | None,
-    ) -> tuple[UserModel, ReaderAccessCredentialModel | None, int]:
-        user, credential, _ = await self.get_reader(user_id)
+    ) -> ReaderRecord:
+        user, credential, _, _ = await self.get_reader(user_id)
         now = datetime.now(UTC)
         changed: list[str] = []
         expiry_event: str | None = None
@@ -248,10 +272,12 @@ class ReaderManagementService:
         expires_at: datetime,
         max_devices: int | None,
         allow_new_devices: bool,
+        capabilities: list[CredentialCapability],
     ) -> IssuedReaderCredential:
-        user, current, _ = await self.get_reader(user_id)
+        user, current, _, _ = await self.get_reader(user_id)
         now = datetime.now(UTC)
         self._validate_expiry(expires_at, now)
+        capability_snapshot = self._validate_capabilities(capabilities)
         site = await self.site.get()
         if current is not None:
             await self._revoke_credential(actor, user, current, reason="credential_reissued")
@@ -262,6 +288,7 @@ class ReaderManagementService:
             expires_at=expires_at,
             max_devices=max_devices or site.default_reader_max_devices,
             allow_new_devices=allow_new_devices,
+            capabilities=capability_snapshot,
             now=now,
         )
         if current is not None:
@@ -272,12 +299,13 @@ class ReaderManagementService:
             actor_user_id=actor.user.id,
             subject_user_id=user.id,
             access_credential_id=issued.credential.id,
+            metadata={"capabilities": sorted(item.value for item in issued.capabilities)},
         )
         await self.session.commit()
         return issued
 
     async def revoke_all_sessions(self, actor: AuthContext, user_id: UUID) -> int:
-        user, credential, _ = await self.get_reader(user_id)
+        user, credential, _, _ = await self.get_reader(user_id)
         if credential is None:
             return 0
         count = await self.auth.revoke_credential_sessions(
@@ -295,11 +323,11 @@ class ReaderManagementService:
         return count
 
     async def list_devices(self, user_id: UUID) -> list[tuple[DeviceModel, int]]:
-        user, _, _ = await self.get_reader(user_id)
+        user, _, _, _ = await self.get_reader(user_id)
         return await self.auth.list_devices(user.id)
 
     async def revoke_device(self, actor: AuthContext, user_id: UUID, device_id: UUID) -> None:
-        user, _, _ = await self.get_reader(user_id)
+        user, _, _, _ = await self.get_reader(user_id)
         device = await self.auth.owned_device(user.id, device_id)
         if device is None:
             raise ApplicationError(
@@ -337,6 +365,7 @@ class ReaderManagementService:
         expires_at: datetime,
         max_devices: int,
         allow_new_devices: bool,
+        capabilities: frozenset[CredentialCapability],
         now: datetime,
     ) -> IssuedReaderCredential:
         if max_devices < 1:
@@ -357,19 +386,21 @@ class ReaderManagementService:
         )
         self.session.add(credential)
         await self.session.flush()
+        await self.credentials.add_capabilities(credential.id, capabilities)
         self.auth.audit(
             "credential_created",
             "success",
             actor_user_id=actor.user.id,
             subject_user_id=user.id,
             access_credential_id=credential.id,
+            metadata={"capabilities": sorted(item.value for item in capabilities)},
         )
-        return IssuedReaderCredential(user, credential, raw)
+        return IssuedReaderCredential(user, credential, raw, capabilities)
 
     async def _current_for_update(
         self, user_id: UUID
     ) -> tuple[UserModel, ReaderAccessCredentialModel]:
-        user, _, _ = await self.get_reader(user_id)
+        user, _, _, _ = await self.get_reader(user_id)
         credential = await self.credentials.current_reader_credential(user.id, for_update=True)
         if credential is None:
             raise ApplicationError(
@@ -426,3 +457,16 @@ class ReaderManagementService:
     def _validate_expiry(expires_at: datetime, now: datetime) -> None:
         if expires_at <= now:
             raise ApplicationError("validation_error", "凭证有效期必须晚于当前时间。")
+
+    @staticmethod
+    def _validate_capabilities(
+        capabilities: list[CredentialCapability],
+    ) -> frozenset[CredentialCapability]:
+        try:
+            return validate_credential_capabilities(capabilities)
+        except ValueError as error:
+            raise ApplicationError(
+                "invalid_credential_capabilities",
+                "访问权限集合无效。",
+                status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+            ) from error

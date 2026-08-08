@@ -1,9 +1,9 @@
 from uuid import UUID
 
-from sqlalchemy import Select, case, func, or_, select
+from sqlalchemy import Select, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novel_platform.domain.editions.models import ContentRole, EditionStatus
+from novel_platform.domain.editions.models import ContentRole, CreationMethod, EditionStatus
 from novel_platform.domain.library.models import FileFormat
 from novel_platform.infrastructure.database.models import (
     BookEditionModel,
@@ -225,6 +225,35 @@ class BookRepository:
             .where(
                 BookEditionModel.book_id == book_id,
                 BookEditionModel.status == EditionStatus.READY,
+                EditionFileModel.is_current.is_(True),
+                StoredFileModel.owner_user_id == owner_user_id,
+            )
+            .order_by(role_order, BookEditionModel.created_at.asc(), BookEditionModel.id.asc())
+        )
+        return list((await self.session.scalars(statement)).all())
+
+    async def visible_editions(
+        self,
+        book_id: UUID,
+        owner_user_id: UUID,
+        viewer_user_id: UUID,
+    ) -> list[BookEditionModel]:
+        """List ready editions plus generated drafts created by this viewer."""
+        role_order = case((BookEditionModel.content_role == ContentRole.SOURCE, 0), else_=1)
+        statement = (
+            select(BookEditionModel)
+            .join(EditionFileModel, EditionFileModel.edition_id == BookEditionModel.id)
+            .join(StoredFileModel, StoredFileModel.id == EditionFileModel.stored_file_id)
+            .where(
+                BookEditionModel.book_id == book_id,
+                or_(
+                    BookEditionModel.status == EditionStatus.READY,
+                    and_(
+                        BookEditionModel.status == EditionStatus.DRAFT,
+                        BookEditionModel.creation_method == CreationMethod.GENERATED,
+                        BookEditionModel.created_by_user_id == viewer_user_id,
+                    ),
+                ),
                 EditionFileModel.is_current.is_(True),
                 StoredFileModel.owner_user_id == owner_user_id,
             )

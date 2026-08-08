@@ -20,7 +20,7 @@ logging.basicConfig(level=settings.log_level.upper())
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.8.0",
+    version="0.10.0",
     docs_url="/api/docs" if settings.openapi_enabled else None,
     redoc_url=None,
     openapi_url="/openapi.json" if settings.openapi_enabled else None,
@@ -34,7 +34,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)

@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from novel_platform.application.auth.admin_service import AdminService
 from novel_platform.application.auth.audit_service import AuditService
@@ -15,6 +15,7 @@ from novel_platform.infrastructure.database.models import (
     AdminRecoveryCredentialModel,
     AuthAuditEventModel,
     ReaderAccessCredentialModel,
+    ReaderCredentialCapabilityModel,
 )
 
 
@@ -45,6 +46,7 @@ async def create_reader(
     max_devices: int = 3,
     allow_new_devices: bool = True,
     expires_at: datetime | None = None,
+    capabilities: list[str] | None = None,
 ) -> tuple[dict[str, Any], str]:
     response = await client.post(
         "/api/v1/admin/readers",
@@ -55,6 +57,7 @@ async def create_reader(
             "expires_at": (expires_at or datetime.now(UTC) + timedelta(days=30)).isoformat(),
             "max_devices": max_devices,
             "allow_new_devices": allow_new_devices,
+            "capabilities": capabilities or ["library.read"],
         },
     )
     assert response.status_code == 201, response.text
@@ -84,6 +87,111 @@ async def login(
 
 def bearer(body: dict[str, Any]) -> dict[str, str]:
     return {"Authorization": f"Bearer {body['access_token']}"}
+
+
+@pytest.mark.integration
+async def test_credential_capabilities_are_snapshot_scoped_and_database_authoritative(
+    app_harness,
+) -> None:
+    admin = await app_harness.provision_admin()
+    admin_me = await app_harness.client.get("/api/v1/auth/me", headers=admin.headers)
+    assert admin_me.status_code == 200
+    assert admin_me.json()["user"]["capabilities"] == [
+        "library.read",
+        "library.upload",
+        "translation.use",
+    ]
+
+    reader, raw = await create_reader(
+        app_harness.client,
+        admin.headers,
+        capabilities=["library.read", "translation.use"],
+    )
+    assert reader["credential"]["capabilities"] == ["library.read", "translation.use"]
+    logged_in = await login(app_harness.client, raw)
+    assert logged_in.status_code == 200, logged_in.text
+    reader_headers = bearer(logged_in.json())
+    assert logged_in.json()["user"]["capabilities"] == [
+        "library.read",
+        "translation.use",
+    ]
+
+    immutable = await app_harness.client.patch(
+        f"/api/v1/admin/readers/{reader['id']}",
+        headers=admin.headers,
+        json={"capabilities": ["library.read", "library.upload"]},
+    )
+    assert immutable.status_code == 422
+
+    async with app_harness.session_factory() as session:
+        credential = (
+            await session.scalars(
+                select(ReaderAccessCredentialModel).where(
+                    ReaderAccessCredentialModel.user_id == UUID(reader["id"]),
+                    ReaderAccessCredentialModel.status == "active",
+                )
+            )
+        ).one()
+        await session.execute(
+            delete(ReaderCredentialCapabilityModel).where(
+                ReaderCredentialCapabilityModel.credential_id == credential.id,
+                ReaderCredentialCapabilityModel.capability == "translation.use",
+            )
+        )
+        await session.commit()
+
+    refreshed_me = await app_harness.client.get("/api/v1/auth/me", headers=reader_headers)
+    assert refreshed_me.status_code == 200
+    assert refreshed_me.json()["user"]["capabilities"] == ["library.read"]
+
+    invalid_sets = (
+        ["library.upload"],
+        ["library.read", "library.read"],
+        ["library.read", "unknown.capability"],
+    )
+    for capabilities in invalid_sets:
+        rejected = await app_harness.client.post(
+            "/api/v1/admin/readers",
+            headers=admin.headers,
+            json={
+                "display_name": "无效能力",
+                "expires_at": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
+                "capabilities": capabilities,
+            },
+        )
+        assert rejected.status_code == 422
+
+    reissued = await app_harness.client.post(
+        f"/api/v1/admin/readers/{reader['id']}/credential/reissue",
+        headers=admin.headers,
+        json={
+            "expires_at": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
+            "allow_new_devices": True,
+            "capabilities": ["library.read", "library.upload"],
+        },
+    )
+    assert reissued.status_code == 200, reissued.text
+    assert reissued.json()["reader"]["credential"]["capabilities"] == [
+        "library.read",
+        "library.upload",
+    ]
+    new_raw = reissued.json()["access_credential"]
+    assert new_raw != raw
+    revoked_session = await app_harness.client.get("/api/v1/auth/me", headers=reader_headers)
+    assert revoked_session.status_code == 401
+    replacement_login = await login(app_harness.client, new_raw)
+    assert replacement_login.status_code == 200
+    assert replacement_login.json()["user"]["capabilities"] == [
+        "library.read",
+        "library.upload",
+    ]
+    audit = await app_harness.client.get(
+        f"/api/v1/admin/readers/{reader['id']}/audit",
+        headers=admin.headers,
+    )
+    assert audit.status_code == 200
+    assert raw not in audit.text
+    assert new_raw not in audit.text
 
 
 @pytest.mark.integration
@@ -352,6 +460,7 @@ async def test_reader_suspend_expiry_reissue_and_uniform_failures(app_harness) -
                 "expires_at": (datetime.now(UTC) + timedelta(days=20)).isoformat(),
                 "max_devices": 2,
                 "allow_new_devices": True,
+                "capabilities": ["library.read"],
             },
         )
         assert reissued.status_code == 200

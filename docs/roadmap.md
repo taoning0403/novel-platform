@@ -21,23 +21,46 @@
   desktop/mobile navigation, cover-led library and filter workflow, reader-management
   master-detail, restrained responsive Reader chrome, and v0.7 acceptance with preserved
   authentication, authorization, API, and data contracts.
+- v0.8.0: trusted-edge real client IP restoration, public authentication-entry rate limiting,
+  device-secret-bound refresh, allowlisted cookie-refresh Origin, bounded WebAuthn challenge
+  cleanup and SameSite=Strict staging/production Cookies.
+- v0.9.0: immutable invited credential capabilities, durable contributor attribution,
+  creator-aware upload/delete policy, removal of fileless creation, and actor-scoped private
+  LinguaSpindle v0.3.1 TXT translation into creator-preview/admin-publish generated Editions.
+- v0.10.0: immutable AES-256-GCM-encrypted reader-owned OpenAI-compatible credential versions,
+  exact Run-to-version binding, sanitized Provider token usage, opaque LinguaSpindle v0.3.2
+  credential scopes, and a private Relay with no administrator/shared-key fallback.
+- Post-v0.10 Provider routing: exact version-bound OpenAI, DeepSeek, Kimi or
+  operator-allowlisted custom routing, live model-catalogue selection and default-off thinking.
+
+## Current committed milestone
+
+- Structure-preserving EPUB translation: extend the existing private scoped Run workflow from TXT
+  to common valid, unencrypted EPUB 2/3 through LinguaSpindle's native `novel_epub_v1` Pipeline,
+  local Artifact revalidation and creator-preview/admin-publish generated EPUB Editions.
+
+The implementation, focused verification and revision-0009 migration must be consolidated before
+assigning the next release version. Staging deployment remains a separate action.
 
 ## Committed boundary
 
-There is no committed post-v0.7.0 milestone. New durable behavior requires an explicit task,
+ADR 0021 defines the current increment. Further durable behavior requires an explicit task,
 incremental acceptance criteria, and any necessary ADR before implementation.
 
 ## Reserved future increments
 
 Candidate later work, not committed:
 
-1. Consider annotations/export and traceable editing/retranslation in a later milestone.
+1. Consider annotations/export and per-chapter translation review/editing in a later milestone.
 2. Consider optional source comparison without making normal reading depend on a source link.
 3. Evaluate object storage, a worker, and a queue only when measured workloads justify them.
-4. Add client-supplied LLM credentials only after a reviewed security model.
+4. Consider manga/other-document translation, site-funded translation, per-Run Provider selection or
+   automatic Provider failover only after explicit scope, threat-model and cost/data-egress
+   review; keep upstream keys write-only/encrypted and out of Browser/LinguaSpindle public state.
 5. Evaluate native clients only after their secure credential and offline synchronization model is
    designed.
 
-Every increment must preserve the unique administrator owner, invited-reader isolation,
-independent translations, and normal use of a translation without a source link. Do not begin
-another milestone without an explicit task and the necessary ADRs.
+Every increment must preserve the unique administrator owner, database-backed capability plus
+resource-creator checks, invited-user/private-state isolation, independent Editions, no shared-key
+fallback, and the private Server → LinguaSpindle → Relay boundary. Do not begin another milestone
+without an explicit task and the necessary ADRs.

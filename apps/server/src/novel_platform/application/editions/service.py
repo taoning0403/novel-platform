@@ -5,8 +5,10 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.editions.commands import CreateEdition, UpdateEdition
 from novel_platform.application.errors import ApplicationError
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.domain.editions.models import ContentRole, validate_edition
 from novel_platform.infrastructure.database.models import BookEditionModel
 from novel_platform.infrastructure.repositories.books import BookRepository
@@ -87,6 +89,7 @@ class EditionService:
         owner_user_id: UUID,
         command: CreateEdition,
         *,
+        created_by_user_id: UUID,
         commit: bool = True,
     ) -> BookEditionModel:
         await self._require_book(book_id, owner_user_id)
@@ -110,6 +113,7 @@ class EditionService:
         edition = BookEditionModel(
             id=edition_id,
             book_id=book_id,
+            created_by_user_id=created_by_user_id,
             title=title,
             language=language,
             content_role=command.content_role,
@@ -163,14 +167,37 @@ class EditionService:
             )
         return edition
 
+    async def get_visible_for_reader(
+        self,
+        book_id: UUID,
+        owner_user_id: UUID,
+        viewer_user_id: UUID,
+        edition_id: UUID,
+    ) -> BookEditionModel:
+        edition = await self.editions.get_visible_for_reader(
+            owner_user_id,
+            viewer_user_id,
+            edition_id,
+        )
+        if edition is None or edition.book_id != book_id:
+            raise ApplicationError(
+                "edition_not_found",
+                "The requested edition does not exist for this book.",
+                status_code=HTTPStatus.NOT_FOUND,
+            )
+        return edition
+
     async def update(
         self,
         book_id: UUID,
         owner_user_id: UUID,
         edition_id: UUID,
         command: UpdateEdition,
+        *,
+        scope: LibraryAccessScope,
     ) -> BookEditionModel:
         edition = await self.get(book_id, owner_user_id, edition_id)
+        await LibraryResourcePolicy(self.session).require_edition_edit(scope, edition)
         unexpected = set(command.changes) - self._PATCHABLE_FIELDS
         if unexpected:
             raise ApplicationError(
@@ -178,6 +205,14 @@ class EditionService:
                 "One or more edition fields cannot be changed.",
                 status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
                 details={"fields": sorted(unexpected)},
+            )
+        contributor_forbidden = set(command.changes) - {"title", "metadata"}
+        if not scope.can_manage and contributor_forbidden:
+            raise ApplicationError(
+                "contributor_field_forbidden",
+                "贡献者只能修改自己上传版本的标题和元数据。",
+                status_code=HTTPStatus.FORBIDDEN,
+                details={"fields": sorted(contributor_forbidden)},
             )
 
         candidate: dict[str, Any] = {

@@ -1,0 +1,498 @@
+.libraryPage {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.continueStrip {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 22px;
+  padding: 18px 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.continueCover,
+.continueCoverFallback {
+  width: 64px;
+  height: 88px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.continueCoverFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+  color: #fff;
+  text-align: center;
+}
+
+.continueCoverFallback::before {
+  content: attr(data-title);
+  overflow: hidden;
+  font-family: var(--font-book);
+  font-size: 13px;
+  line-height: 1.45;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 24%);
+}
+
+.continueCopy {
+  min-width: 0;
+}
+
+.continueLabel {
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
+
+.continueTitleRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  margin-bottom: 8px;
+}
+
+.continueTitleRow h3 {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.continueTitleRow p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.continueProgress {
+  max-width: 380px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.continueProgress .traceProgress {
+  flex: 1;
+}
+
+.continueProgress strong {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.continueProgressMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.continueAction {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 17px;
+  border-radius: 10px;
+  color: #fff;
+  background: var(--brand);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-press) var(--ease-out),
+    transform var(--motion-press) var(--ease-out);
+}
+
+.catalogue {
+  min-width: 0;
+}
+
+.searchTools {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.searchTools > :global(.ant-input-affix-wrapper) {
+  width: min(340px, 100%);
+}
+
+.filterCount {
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  margin-left: 7px;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--brand);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.activeFilters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 20px;
+}
+
+.activeFilters button {
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-soft);
+  background: var(--surface);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.activeFilters button span {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.activeFilters > span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.activeFilters button:last-child {
+  border-color: transparent;
+  color: var(--brand);
+  background: transparent;
+}
+
+.bookGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 24px;
+}
+
+.catalogueBook {
+  position: relative;
+  min-width: 0;
+}
+
+.cardOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 10px;
+}
+
+.catalogueCoverWrap {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.catalogueCover,
+.catalogueCoverFallback {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  display: flex;
+  object-fit: cover;
+}
+
+.catalogueCover,
+.catalogueCoverFallback {
+  transition:
+    transform var(--motion-press) var(--ease-out),
+    box-shadow var(--motion-press) var(--ease-out);
+}
+
+.catalogueCoverFallback {
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px;
+  color: #fff;
+}
+
+.catalogueCoverFallback span {
+  color: rgb(255 255 255 / 72%);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.catalogueCoverFallback::before {
+  content: attr(data-title);
+  margin-bottom: auto;
+  padding-top: 8px;
+  font-family: var(--font-book);
+  font-size: 17px;
+  line-height: 1.5;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+}
+
+.catalogueCoverFallback::after {
+  content: attr(data-author);
+  color: rgb(255 255 255 / 84%);
+  font-size: 11.5px;
+}
+
+.coverBlue {
+  background: linear-gradient(158deg, #1d2a4a 0%, #315ef4 78%, #5f83f8 100%);
+}
+
+.coverPlum {
+  background: linear-gradient(158deg, #3a2a4d 0%, #8a5fa8 80%, #b08ccb 100%);
+}
+
+.coverTeal {
+  background: linear-gradient(158deg, #103c39 0%, #0e8f7c 85%, #3bb3a2 100%);
+}
+
+.coverAmber {
+  background: linear-gradient(158deg, #54371f 0%, #c98a4b 88%, #e0ac74 100%);
+}
+
+.coverSlate {
+  background: linear-gradient(158deg, #2b2f3a 0%, #5c6b8c 82%, #8a99b8 100%);
+}
+
+.catalogueCopy {
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.catalogueCopy h3 {
+  display: -webkit-box;
+  margin-bottom: 2px;
+  overflow: hidden;
+  font-family: var(--font-interface);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.catalogueAuthor,
+.preferredEdition,
+.notStarted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.catalogueAuthor {
+  margin-bottom: 6px;
+}
+
+.bookTags {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+  pointer-events: none;
+}
+
+.bookTags :global(.ant-tag) {
+  margin-inline-end: 0;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.traceProgress {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line-soft);
+}
+
+.traceProgress span {
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: var(--brand);
+}
+
+.bookProgress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bookProgress .traceProgress {
+  flex: 1;
+}
+
+.bookProgress > span,
+.notStarted,
+.bookUtilityRow,
+.preferredEdition {
+  font-size: 12px;
+}
+
+.bookProgress > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.notStarted {
+  margin: 0;
+}
+
+.bookUtilityRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.bookUtilityRow :global(.ant-tag) {
+  margin: 0;
+}
+
+.preferredEdition {
+  margin: 5px 0 0;
+}
+
+.catalogueAuthor,
+.bookUtilityRow,
+.preferredEdition {
+  display: none;
+}
+
+.filterDrawer {
+  display: grid;
+  gap: 22px;
+}
+
+.filterDrawer label {
+  display: grid;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.filterActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .continueAction:hover {
+    color: #fff;
+    background: var(--brand-strong);
+  }
+
+  .catalogueBook:hover .catalogueCover,
+  .catalogueBook:hover .catalogueCoverFallback {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgb(31 42 68 / 12%);
+  }
+}
+
+.continueAction:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 860px) {
+  .libraryPage {
+    padding: 28px 18px 48px;
+  }
+}
+
+@media (max-width: 620px) {
+  .continueStrip {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 14px;
+    padding: 15px;
+  }
+
+  .continueCover,
+  .continueCoverFallback {
+    width: 72px;
+    height: 98px;
+  }
+
+  .continueAction {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .continueProgressMeta {
+    display: none;
+  }
+
+  .searchTools > :global(.ant-input-affix-wrapper) {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .activeFilters > span {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .bookGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px 16px;
+  }
+
+  .catalogueCoverFallback {
+    padding: 11px;
+  }
+
+  .catalogueCoverFallback::before {
+    font-size: 15px;
+  }
+
+  .catalogueAuthor,
+  .preferredEdition,
+  .bookUtilityRow {
+    display: none;
+  }
+
+  .bookTags :global(.ant-tag) {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 360px) {
+  .libraryPage {
+    padding-inline: 14px;
+  }
+
+  .bookGrid {
+    gap-inline: 12px;
+  }
+}

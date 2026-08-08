@@ -7,6 +7,7 @@ from uuid import UUID
 from anyio import to_thread
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novel_platform.application.access import LibraryAccessScope
 from novel_platform.application.books.commands import CreateBook
 from novel_platform.application.books.service import BookService
 from novel_platform.application.editions.commands import CreateEdition
@@ -14,10 +15,11 @@ from novel_platform.application.editions.service import EditionService
 from novel_platform.application.errors import ApplicationError
 from novel_platform.application.library.commands import CommitImport
 from novel_platform.application.library.filenames import sanitize_filename
+from novel_platform.application.library.policy import LibraryResourcePolicy
 from novel_platform.application.library.storage import FileStorage, StorageError
 from novel_platform.application.preferences.service import PreferenceService
 from novel_platform.application.series.service import SeriesService
-from novel_platform.domain.editions.models import CreationMethod
+from novel_platform.domain.editions.models import CreationMethod, EditionStatus
 from novel_platform.domain.errors import DomainRuleViolation
 from novel_platform.domain.library.models import (
     FileFormat,
@@ -64,14 +66,17 @@ class ImportCommitService:
         self.editions = EditionService(session)
         self.preferences = PreferenceService(session)
         self.series = SeriesService(session)
+        self.policy = LibraryResourcePolicy(session)
 
     async def commit(
         self,
         *,
-        owner_user_id: UUID,
+        scope: LibraryAccessScope,
         import_id: UUID,
         command: CommitImport,
     ) -> CommittedImport:
+        self.policy.require_upload_capability(scope)
+        owner_user_id = scope.owner_user_id
         library_import = await self.library.get_import(
             owner_user_id,
             import_id,
@@ -79,6 +84,7 @@ class ImportCommitService:
         )
         if library_import is None:
             raise ApplicationError("upload_not_found", "上传记录不存在。", status_code=404)
+        self.policy.require_import_access(scope, library_import)
         if library_import.status is ImportStatus.SUCCEEDED:
             raise ApplicationError(
                 "upload_already_committed", "该上传已经完成导入。", status_code=409
@@ -88,6 +94,7 @@ class ImportCommitService:
                 "upload_not_ready", "上传尚未通过校验，不能提交。", status_code=409
             )
         self._validate_command(library_import, command)
+        await self._validate_actor_command(scope, library_import, command)
         try:
             assets = await self._prepare_assets(library_import, command)
         except StorageError as exc:
@@ -108,6 +115,7 @@ class ImportCommitService:
             for asset, storage_key in moved:
                 stored_file = StoredFileModel(
                     owner_user_id=owner_user_id,
+                    created_by_user_id=scope.viewer_user_id,
                     storage_key=storage_key,
                     original_filename=asset.original_filename,
                     media_type=asset.media_type,
@@ -121,6 +129,7 @@ class ImportCommitService:
 
             book, edition = await self._apply_operation(
                 owner_user_id=owner_user_id,
+                scope=scope,
                 library_import=library_import,
                 command=command,
                 stored_files=stored_files,
@@ -168,14 +177,15 @@ class ImportCommitService:
     async def record_expected_failure(
         self,
         *,
-        owner_user_id: UUID,
+        scope: LibraryAccessScope,
         import_id: UUID,
         error: ApplicationError | DomainRuleViolation,
     ) -> None:
         await self.session.rollback()
-        library_import = await self.library.get_import(owner_user_id, import_id)
+        library_import = await self.library.get_import(scope.owner_user_id, import_id)
         if library_import is None or library_import.status is not ImportStatus.READY:
             return
+        self.policy.require_import_access(scope, library_import)
         if self._is_terminal_commit_error(library_import, error):
             library_import.status = ImportStatus.FAILED
         library_import.error_code = error.code
@@ -183,12 +193,18 @@ class ImportCommitService:
         library_import.completed_at = datetime.now(UTC)
         await self.session.commit()
 
-    async def record_unexpected_failure(self, *, owner_user_id: UUID, import_id: UUID) -> None:
+    async def record_unexpected_failure(
+        self,
+        *,
+        scope: LibraryAccessScope,
+        import_id: UUID,
+    ) -> None:
         try:
             await self.session.rollback()
-            library_import = await self.library.get_import(owner_user_id, import_id)
+            library_import = await self.library.get_import(scope.owner_user_id, import_id)
             if library_import is None or library_import.status is not ImportStatus.READY:
                 return
+            self.policy.require_import_access(scope, library_import)
             library_import.status = ImportStatus.FAILED
             library_import.error_code = "internal_error"
             library_import.error_message = "导入提交失败，请联系管理员。"
@@ -311,6 +327,7 @@ class ImportCommitService:
         self,
         *,
         owner_user_id: UUID,
+        scope: LibraryAccessScope,
         library_import: LibraryImportModel,
         command: CommitImport,
         stored_files: dict[StoredFilePurpose, StoredFileModel],
@@ -325,6 +342,7 @@ class ImportCommitService:
                 library_import.target_edition_id,
                 for_update=True,
             )
+            await self.policy.require_edition_replace(scope, edition)
             current = await self.library.get_current_edition_file(edition.id)
             if current:
                 current.edition_file.is_current = False
@@ -344,6 +362,7 @@ class ImportCommitService:
                         },
                     ),
                     owner_user_id,
+                    created_by_user_id=scope.viewer_user_id,
                     commit=False,
                 )
                 if command.series_id is not None:
@@ -374,6 +393,7 @@ class ImportCommitService:
                         **command.edition_metadata,
                     },
                 ),
+                created_by_user_id=scope.viewer_user_id,
                 commit=False,
             )
             file_revision = 1
@@ -397,10 +417,10 @@ class ImportCommitService:
         ):
             await self.preferences.update(
                 owner_user_id,
-                owner_user_id,
+                scope.viewer_user_id,
                 book.id,
                 {"preferred_edition_id": edition.id},
-                readable_only=False,
+                readable_only=not scope.can_manage,
                 commit=False,
             )
         return book, edition
@@ -489,6 +509,64 @@ class ImportCommitService:
             raise ApplicationError("validation_error", "必须填写 Edition 语言。", status_code=422)
         if command.content_role is None:
             raise ApplicationError("validation_error", "必须选择 Edition 类型。", status_code=422)
+
+    async def _validate_actor_command(
+        self,
+        scope: LibraryAccessScope,
+        library_import: LibraryImportModel,
+        command: CommitImport,
+    ) -> None:
+        self.policy.require_upload_capability(scope)
+        if scope.can_manage:
+            return
+        forbidden: list[str] = []
+        if command.series_id is not None:
+            forbidden.append("series_id")
+        if command.edition_status is not EditionStatus.READY:
+            forbidden.append("edition_status")
+        if forbidden:
+            raise ApplicationError(
+                "contributor_field_forbidden",
+                "贡献者不能管理系列或版本发布状态。",
+                status_code=403,
+                details={"fields": forbidden},
+            )
+
+        if library_import.operation is ImportOperation.ADD_EDITION:
+            if library_import.target_book_id is None:
+                raise ApplicationError("book_not_found", "Book 不存在。", status_code=404)
+            book = await self.books.repository.get_readable(
+                library_import.target_book_id,
+                scope.owner_user_id,
+            )
+            await self.policy.require_readable_book_for_upload(scope, book)
+        elif library_import.operation is ImportOperation.REPLACE_EDITION_FILE:
+            if library_import.target_edition_id is None:
+                raise ApplicationError("edition_not_found", "Edition 不存在。", status_code=404)
+            edition = await self.editions.editions.get_readable(
+                scope.owner_user_id,
+                library_import.target_edition_id,
+            )
+            if edition is None:
+                raise ApplicationError("edition_not_found", "Edition 不存在。", status_code=404)
+            await self.policy.require_edition_replace(scope, edition)
+
+        for referenced_id in (
+            command.source_edition_id,
+            command.supersedes_edition_id,
+        ):
+            if referenced_id is None:
+                continue
+            referenced = await self.editions.editions.get_readable(
+                scope.owner_user_id,
+                referenced_id,
+            )
+            if referenced is None:
+                raise ApplicationError(
+                    "edition_not_found",
+                    "引用的 Edition 不存在。",
+                    status_code=404,
+                )
 
     @staticmethod
     def _unselected_temporary_keys(

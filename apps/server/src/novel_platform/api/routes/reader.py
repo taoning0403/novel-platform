@@ -6,7 +6,9 @@ from fastapi import APIRouter, Query, Response
 from novel_platform.api.dependencies.auth import CurrentAuth
 from novel_platform.api.dependencies.database import DatabaseSession
 from novel_platform.api.dependencies.storage import FileStorageDependency
+from novel_platform.api.library_responses import LibraryResponseBuilder
 from novel_platform.api.schemas import (
+    BookResponse,
     ReaderEditionOption,
     ReaderOpenResponse,
     ReaderPublicationResponse,
@@ -19,7 +21,6 @@ from novel_platform.api.schemas import (
     ReadingProgressUpdate,
     RecentReadingResponse,
 )
-from novel_platform.api.serializers import book_response
 from novel_platform.application.access import LibraryAccessService
 from novel_platform.application.reader.service import (
     OpenedReader,
@@ -74,11 +75,11 @@ def edition_option(record: ReaderEditionRecord) -> ReaderEditionOption:
     )
 
 
-def open_response(opened: OpenedReader) -> ReaderOpenResponse:
+def open_response(opened: OpenedReader, book: BookResponse) -> ReaderOpenResponse:
     options = [edition_option(record) for record in opened.editions]
     current = next(option for option in options if option.id == opened.edition.id)
     return ReaderOpenResponse(
-        book=book_response(opened.book),
+        book=book,
         edition=current,
         available_editions=options,
         publication=ReaderPublicationResponse(
@@ -113,7 +114,10 @@ async def open_reader(
         edition_id=edition_id,
         readable_only=not scope.can_manage,
     )
-    return open_response(opened)
+    return open_response(
+        opened,
+        await LibraryResponseBuilder(session, scope).book(opened.book),
+    )
 
 
 @router.get(
@@ -130,6 +134,7 @@ async def get_reader_section(
     scope = await LibraryAccessService(session).scope(current)
     content = await ReaderService(session, storage, get_settings()).section(
         owner_user_id=scope.owner_user_id,
+        viewer_user_id=scope.viewer_user_id,
         edition_id=edition_id,
         section_id=section_id,
         readable_only=not scope.can_manage,
@@ -154,6 +159,7 @@ async def get_reader_resource(
     scope = await LibraryAccessService(session).scope(current)
     resource = await ReaderService(session, storage, get_settings()).resource(
         owner_user_id=scope.owner_user_id,
+        viewer_user_id=scope.viewer_user_id,
         edition_id=edition_id,
         resource_id=resource_id,
         readable_only=not scope.can_manage,

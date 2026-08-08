@@ -13,4 +13,7 @@ router = APIRouter(prefix="/users", tags=["profile"])
 async def update_me(
     payload: ProfilePatch, session: DatabaseSession, current: CurrentAuth
 ) -> UserResponse:
-    return user_response(await UserService(session).update_me(current, payload.display_name))
+    return user_response(
+        await UserService(session).update_me(current, payload.display_name),
+        current.capabilities,
+    )
